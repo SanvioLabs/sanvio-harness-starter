@@ -33,3 +33,6 @@ python3 gates/proposal_gate.py proposals/<file>.md
 
 Run it and show the output. Never say a proposal is done, ready or finished
 while the gate fails, and never edit the gate to make a proposal pass.
+
+The same gate runs in `.githooks/pre-commit`, along with a check for secrets.
+If a commit is blocked, fix what it names. Never commit with `--no-verify`.

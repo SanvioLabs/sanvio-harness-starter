@@ -1,0 +1,32 @@
+#!/bin/sh
+# Runs before every commit, whichever agent or human is committing.
+# Git only runs it after: git config core.hooksPath .githooks
+
+status=0
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+# 1. Credentials never get committed.
+for f in $staged; do
+  case "$f" in
+    .env|.env.*|*/.env|*.pem|*.key|id_rsa*)
+      echo "BLOCKED: $f looks like a credential file. Unstage it: git reset -- $f"
+      status=1
+      continue
+      ;;
+  esac
+  if git show ":$f" | grep -Eq 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+    echo "BLOCKED: $f contains something that looks like a secret. Remove it and use an environment variable."
+    status=1
+  fi
+done
+
+# 2. A proposal only gets committed if the gate passes.
+proposals=$(printf '%s\n' $staged | grep '^proposals/.*\.md$')
+if [ -n "$proposals" ]; then
+  python3 gates/proposal_gate.py $proposals || status=1
+fi
+
+if [ "$status" -ne 0 ]; then
+  echo "Commit blocked. Fix what's named above. Don't reach for --no-verify."
+fi
+exit $status
