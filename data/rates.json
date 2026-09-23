@@ -1,0 +1,9 @@
+{
+  "currency": "USD",
+  "roles": {
+    "Engineer": 175,
+    "Designer": 150,
+    "Project lead": 200
+  },
+  "minimum_fee": 5000
+}
