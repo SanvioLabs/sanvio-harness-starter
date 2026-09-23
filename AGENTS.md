@@ -22,6 +22,7 @@ steps in order.
 | Skill | Use when |
 |---|---|
 | `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
+| `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
 
 ## Done means the gate passes
 
