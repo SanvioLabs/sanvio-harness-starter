@@ -36,3 +36,14 @@ while the gate fails, and never edit the gate to make a proposal pass.
 
 The same gate runs in `.githooks/pre-commit`, along with a check for secrets.
 If a commit is blocked, fix what it names. Never commit with `--no-verify`.
+
+## Agents
+
+After the gate passes, hand the proposal to a reviewer before a human sees it.
+
+| Agent | Does |
+|---|---|
+| `agents/proposal-reviewer.md` | Reads a proposal as the client would and reports what's unclear. Never edits |
+
+In Claude Code it runs as the `proposal-reviewer` subagent. In other tools, run
+it as a separate session with that file as its instructions.
