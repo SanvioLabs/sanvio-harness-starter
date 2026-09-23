@@ -77,6 +77,36 @@ reads as the rule.
 enforcement. It runs whatever the agent decided. Anything you'd hate to get
 wrong belongs in the second one.
 
+## Four loops that keep it working
+
+The layers are what a harness is made of. The loops are how you run it. Each
+one is small, and each one is the difference between a harness that works on
+day one and a harness that still works in month six.
+
+**1. Fix and recheck.** A check fails, you fix what it names, it runs again,
+and nothing moves until it passes. Here that's the skill's last two steps and
+the hook refusing a commit. The rule that makes it a loop: never edit the check
+to make the work pass.
+
+**2. A pass goes stale.** A check that passed yesterday says nothing about the
+file you edited this morning. That's why the gate runs in the hook on every
+commit, not once when someone remembers. In your job, anything that was
+reviewed and then changed gets reviewed again.
+
+**3. The flywheel.** Every stage ends at a gate, and the output of one turn is
+the input to the next. A proposal becomes a signed scope, the scope becomes the
+build, and the build's lessons change the next proposal. Keep each turn small
+enough to finish.
+
+**4. Mistake to rule.** When the agent gets something wrong, don't just fix the
+output. Write the rule that stops it happening again, in the file that governs
+it: `AGENTS.md`, a skill, or a gate if it has to hold. Mitchell Hashimoto calls
+this harness engineering. A correction you only said out loud hasn't happened,
+because the next session never heard it.
+
+The fourth loop is the one that makes the others better. Every other file in
+this repo exists because of it.
+
 ## Your turn
 
 `EXERCISES.md` has the hands-on: swap the proposal job for one you actually do,
