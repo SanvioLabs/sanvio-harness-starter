@@ -40,6 +40,12 @@ Copy `agents/proposal-reviewer.md` and point it at your output. Give it a
 different job from the one that wrote the thing: read it as the person who
 receives it. It reports and never edits.
 
+## Bonus: borrow a skill safely
+
+Pick one skill from `mattpocock/skills` or `obra/superpowers` and ask your agent
+to review it with `skills/review-skill/`. What did it find that you already had?
+What gap did it fill? Did anything get flagged?
+
 ## Bonus: a hook inside the agent loop
 
 The git hook runs at commit. Claude Code, Codex and Kiro each have their own

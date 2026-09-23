@@ -107,6 +107,47 @@ because the next session never heard it.
 The fourth loop is the one that makes the others better. Every other file in
 this repo exists because of it.
 
+## Borrowing other people's skills
+
+Other people's skills are the fastest way to get better. Matt Pocock's and Jesse
+Vincent's collections below are full of procedures you'd take months to arrive
+at on your own. Use them.
+
+Carefully, though. A skill is instructions your agent follows with your
+permissions, and the registries have no review. In February 2026, Snyk scanned
+3,984 public skills and found 13.4% with a critical issue: malware, prompt
+injection, exposed secrets.
+
+So don't install a skill. Have your harness review it:
+
+```text
+review the skill at https://github.com/<someone>/<skills>/tree/main/<skill>
+```
+
+`skills/review-skill/` quarantines it in `incoming/`, reads every file, flags
+anything that reaches for credentials or tells the agent to skip your rules,
+then compares it with what you already have. You adopt only the gaps, rewritten
+in your own conventions, with the source and licence noted. Your harness stays
+yours, and it gets better every time you read someone else's.
+
+## People to follow
+
+- **Mitchell Hashimoto** named harness engineering: every agent mistake becomes
+  a permanent fix in its environment. Start with
+  [My AI Adoption Journey](https://mitchellh.com/writing/my-ai-adoption-journey).
+- **Matt Pocock** publishes his own skills, including a TDD skill that won't let
+  the agent write code before a failing test:
+  [mattpocock/skills](https://github.com/mattpocock/skills).
+- **Jesse Vincent** built Superpowers, a whole method as skills: brainstorm,
+  plan, test, review: [obra/superpowers](https://github.com/obra/superpowers).
+- **Geoffrey Huntley** runs the same prompt in a loop with fresh context and
+  lets the files carry the state:
+  [everything is a ralph loop](https://ghuntley.com/loop/).
+- **Dex Horthy** wrote the principles for agents that hold up in production:
+  [12-factor agents](https://github.com/humanlayer/12-factor-agents).
+- **Simon Willison** writes up what actually works, week by week, with the
+  receipts: [simonwillison.net](https://simonwillison.net/).
+
 ## Your turn
 
 `EXERCISES.md` has the hands-on: swap the proposal job for one you actually do,
