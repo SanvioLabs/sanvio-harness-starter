@@ -22,3 +22,14 @@ steps in order.
 | Skill | Use when |
 |---|---|
 | `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
+
+## Done means the gate passes
+
+A proposal is done when this passes:
+
+```bash
+python3 gates/proposal_gate.py proposals/<file>.md
+```
+
+Run it and show the output. Never say a proposal is done, ready or finished
+while the gate fails, and never edit the gate to make a proposal pass.
