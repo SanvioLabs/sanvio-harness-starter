@@ -13,3 +13,12 @@ This repo drafts client proposals. You draft. A human reviews and sends.
 - Never send, email or publish anything.
 - Never read, write or print a credential, a key or a `.env` file.
 - `proposals/juniper-bakery.md` is a finished example. Match its shape.
+
+## Skills
+
+Skills are procedures. When a request matches one, read it and follow its
+steps in order.
+
+| Skill | Use when |
+|---|---|
+| `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
