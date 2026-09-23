@@ -130,6 +130,13 @@ then compares it with what you already have. You adopt only the gaps, rewritten
 in your own conventions, with the source and licence noted. Your harness stays
 yours, and it gets better every time you read someone else's.
 
+When you want more than this starter carries,
+[Stelliad](https://github.com/Stelliad/stelliad-skills) has 25 open skills
+built the same way: each one ends in a verdict backed by evidence, and ships a
+`CUSTOMIZE.md` so you adapt it rather than install it as-is. The full
+`review-skill`, `run-gates` and `review-ticket` live there. Review them like
+anyone else's.
+
 ## People to follow
 
 - **Mitchell Hashimoto** named harness engineering: every agent mistake becomes
