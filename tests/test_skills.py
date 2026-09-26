@@ -45,10 +45,11 @@ description: Write the weekly status update. Use when asked for this week's stat
 
 class Skills(unittest.TestCase):
     def problems(self, text, agents_text="| `skills/weekly-status/SKILL.md` | Asked for a status |"):
-        folder = Path(tempfile.mkdtemp()) / "weekly-status"
-        folder.mkdir()
-        (folder / "SKILL.md").write_text(text)
-        return problems(folder / "SKILL.md", agents_text)
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "weekly-status"
+            folder.mkdir()
+            (folder / "SKILL.md").write_text(text)
+            return problems(folder / "SKILL.md", agents_text)
 
     def test_every_skill_in_this_repo_is_registered(self):
         agents_text = (ROOT / "AGENTS.md").read_text()
