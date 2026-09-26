@@ -23,6 +23,7 @@ steps in order.
 |---|---|
 | `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
 | `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
+| `skills/start-here/SKILL.md` | Someone is new here, asks how to use this, says "get me started", or wants it set up for their own job |
 
 ## Done means the gate passes
 

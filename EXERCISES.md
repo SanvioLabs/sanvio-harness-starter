@@ -4,6 +4,9 @@ Work in pairs. Pick a job one of you does every week: a status update, a code
 review, an invoice, a support reply, a release note. Then build the five layers
 around it, in this repo or a copy of it.
 
+On your own? Say "get me started" to your agent, and `skills/start-here/`
+walks you through the same five layers, one at a time.
+
 ## 1. Write the instructions file (10 min)
 
 Rewrite `AGENTS.md` for your job. Three things only:

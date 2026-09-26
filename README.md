@@ -26,6 +26,10 @@ a real harness for months, and nobody noticed because nothing failed.
 
 You need Python 3.9 or newer and no packages.
 
+Working through this on your own? Open the repo in your agent and say "get me
+started". `skills/start-here/` checks your setup, then walks you through the
+five layers around your own job.
+
 On Windows, clone with `git clone -c core.symlinks=true` from a terminal with
 Developer Mode on, or the two links below arrive as plain text files. If they
 do, `AGENTS.md` still works for every tool.
