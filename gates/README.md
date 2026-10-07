@@ -1,0 +1,18 @@
+# Gates
+
+A gate is a script that exits non-zero when work isn't ready. It checks what's
+cheap to check and expensive to miss: an empty section, a placeholder left in,
+a number that doesn't match its source.
+
+Your gates go here, one per job: `gates/<job>_gate.py`. The pattern to copy is
+`examples/proposal/gates/proposal_gate.py`:
+
+- Standard library only, so it runs anywhere Python 3.9 does
+- One `PASS` or `FAIL` line per file, and each problem named on its own line
+- Exit 1 when anything fails, so the hook and CI can block on it
+- A test in `tests/` for each thing it checks
+
+Then add a block to `.githooks/pre-commit` that runs it on the staged files it
+covers, after the ones already there, and a step to `.github/workflows/ci.yml`.
+
+Never edit a gate to make work pass. Fix the work.

@@ -17,6 +17,7 @@ read, plus a few short scripts that run whatever the agent decides.
 | `.githooks/` | The check at commit | Git, whatever the agent decided |
 | `.claude/hooks/` | Checks before each tool call and at session start | Claude Code, whatever the agent decided |
 | `company/`, `projects/` | Who you are, where your data is, your code | Read by the agent, never committed here |
+| `examples/` | One worked job with all five layers, to read and copy | You, and the agent when you point it there |
 
 The tool (Claude Code, Codex or Kiro) does the model calls, the tool calls, the
 MCP connections and the context handling. The harness writes none of that. It

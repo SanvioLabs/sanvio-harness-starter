@@ -1,6 +1,7 @@
 # How to work in this repo
 
-This repo drafts client proposals. You draft. A human reviews and sends.
+This is a harness: the rules, skills, gates and agents you work inside. You do
+the work. A human reviews it, and a human sends, merges or pays.
 
 ## Who you work for
 
@@ -24,16 +25,14 @@ project. Where the two disagree, these rules win and you say so.
 
 ## Rules
 
-- Rates come from `data/rates.json` and nowhere else. Never invent a rate and
-  never discount unless a human tells you to in this session.
-- Every proposal starts from `templates/proposal.md` and is saved as
-  `proposals/<client-name-in-kebab-case>.md`.
-- Leave no `{{placeholder}}` in a finished proposal. If you don't know
-  something, ask. Don't guess, and don't fill it with something plausible.
+- Every input comes from a named source: a file, a connector in
+  `company/DATA.md`, or the person in this session. Never invent one. If you
+  don't know something, ask. Don't guess, and don't fill it with something
+  plausible.
+- Leave no `{{placeholder}}`, `TODO` or `TBD` in finished work.
 - Never send, email or publish anything. A connector that can send, edit,
   delete or share does so only when a human says yes to that one call.
 - Never read, write or print a credential, a key or a `.env` file.
-- `proposals/juniper-bakery.md` is a finished example. Match its shape.
 
 ## Skills
 
@@ -42,7 +41,6 @@ steps in order.
 
 | Skill | Use when |
 |---|---|
-| `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
 | `skills/review-pr/SKILL.md` | Asked to review a pull request, a branch or a diff, or whether a change is ready to merge |
 | `skills/review-tests/SKILL.md` | Asked whether tests are any good or would catch a regression, or after tests were written by an agent |
 | `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
@@ -51,16 +49,12 @@ steps in order.
 
 ## Done means the gate passes
 
-A proposal is done when this passes:
+Work that has a gate is done when its gate passes. Each job's skill names its
+gate and the command that runs it. Run it and show the output. Never say work
+is done, ready or finished while its gate fails, and never edit a gate to make
+work pass.
 
-```bash
-python3 gates/proposal_gate.py proposals/<file>.md
-```
-
-Run it and show the output. Never say a proposal is done, ready or finished
-while the gate fails, and never edit the gate to make a proposal pass.
-
-The same gate runs in `.githooks/pre-commit`, along with a check for secrets.
+The gates also run in `.githooks/pre-commit`, along with a check for secrets.
 If a commit is blocked, fix what it names. Never commit with `--no-verify`.
 
 In Claude Code, `.claude/hooks/guard.py` also runs before every tool call: it
@@ -70,11 +64,20 @@ what you needed and ask.
 
 ## Agents
 
-After the gate passes, hand the proposal to a reviewer before a human sees it.
+After the gate passes, hand the work to a reviewer before a human sees it.
 
 | Agent | Does |
 |---|---|
-| `agents/proposal-reviewer.md` | Reads a proposal as the client would and reports what's unclear. Never edits |
+| `agents/reviewer.md` | Reads finished work as the person who receives it would and reports what's unclear or over-promised, using the job's brief if it has one. Never edits |
 
-In Claude Code it runs as the `proposal-reviewer` subagent. In other tools, run
-it as a separate session with that file as its instructions.
+In Claude Code it runs as the `reviewer` subagent. In other tools, run it as a
+separate session with that file as its instructions.
+
+## Examples
+
+`examples/` holds worked jobs to read and copy. Before working in one, read its
+`README.md`: it carries that job's rules, and they apply on top of these.
+
+| Example | Shows |
+|---|---|
+| `examples/proposal/` | Drafting a client proposal: inputs, rules, a skill (`skills/draft-proposal/SKILL.md` inside it), a gate, the hook block and a review brief |

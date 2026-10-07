@@ -26,7 +26,7 @@ behaviour was.
 
    | If | It goes in |
    |---|---|
-   | It must hold even when the agent decides otherwise, and a script can check it | A gate in `gates/`, with a test in `tests/`, run by `.githooks/pre-commit` |
+   | It must hold even when the agent decides otherwise, and a script can check it | A gate in `gates/`, with a test in `tests/`, run by `.githooks/pre-commit` (`gates/README.md` has how) |
    | It's one step of a procedure that a skill already runs | That skill's `SKILL.md`, as a step or a line in its Rules |
    | It's about the company: what you sell, how you sound, what you won't do | `company/COMPANY.md` |
    | It's where to find something, or how to reach it | `company/DATA.md` |

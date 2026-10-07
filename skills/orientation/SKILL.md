@@ -19,10 +19,12 @@ You draft. They say yes or no. Nothing gets written without a yes.
 - Never overwrite silently. If a file you're about to write already exists,
   it's probably from an earlier run: show what's there and ask whether to keep
   it, edit it or replace it.
-- Never remove or weaken a check in `.githooks/pre-commit` or
-  `gates/proposal_gate.py`. New checks go alongside the proposal one.
-- Never rewrite `AGENTS.md` wholesale. Add to it. The proposal rules and the
-  Skills and Agents tables stay.
+- Never remove or weaken a check in `.githooks/pre-commit` or any gate. New
+  checks go alongside the ones already there.
+- Never edit `examples/`. It's the reference the person copies from. Their job
+  is built at the root.
+- Never rewrite `AGENTS.md` wholesale. Add to it. The existing rules and the
+  Skills, Agents and Examples tables stay.
 - Never run a fix the setup check names, never run `git checkout`, and never
   commit. Name the command and let the person run it.
 - Never add, log in to or configure a connector or MCP server, and never ask
@@ -33,8 +35,8 @@ You draft. They say yes or no. Nothing gets written without a yes.
 - A no skips that step or layer and offers the next one. It doesn't end the
   conversation.
 - If a request needs a tool-specific hook (`.claude/settings.json`, a Codex or
-  Kiro hook) or a change to `gates/proposal_gate.py`, stop and say it's outside
-  this skill. The in-loop hook is the last bonus in `EXERCISES.md`.
+  Kiro hook) or a change to an existing gate, stop and say it's outside this
+  skill. The in-loop hook is the last bonus in `EXERCISES.md`.
 
 ## Steps
 
@@ -49,9 +51,10 @@ python3 -m unittest discover -s tests
 
 `check_setup.py` prints one `PASS`, `WARN` or `FAIL` line per item with the fix
 under it: Python version, whether the hook is switched on, whether the
-`CLAUDE.md`, `.claude/skills` and Kiro links work, where `origin` points, and
-whether the example proposal passes its gate, whether a company record
-exists yet, and whether a personal skill is hiding one of the repo's. Pass its lines through as printed. For the tests, one line: passed, or the names that failed.
+`CLAUDE.md`, `.claude/skills` and Kiro links work, whether the example in
+`examples/proposal/` passes its gate, whether a company record exists yet,
+whether a personal skill is hiding one of the repo's, and where `origin`
+points. Pass its lines through as printed. For the tests, one line: passed, or the names that failed.
 
 Say these out loud when they show up:
 
@@ -77,8 +80,9 @@ Say these out loud when they show up:
   restart at the root, and stop there.
 
 Then list any files in `skills/`, `gates/` and `agents/` beyond the ones this
-repo ships (`draft-proposal`, `review-skill`, `review-pr`, `review-tests`, `orientation`, `learn`,
-`proposal_gate.py`, `proposal-reviewer.md`), and whether `company/COMPANY.md`
+repo ships (the skills `orientation`, `learn`, `review-pr`, `review-tests` and
+`review-skill`, `gates/README.md`, and `agents/reviewer.md`), and whether
+`company/COMPANY.md`
 and `company/DATA.md` exist. Those are from an earlier run and show where the
 person left off. Read them, and skip the questions they've already answered.
 
@@ -205,7 +209,7 @@ no, say the layer is skipped and offer the next one. Keep a list of every file
 you write or edit.
 
 **Layer 1: Instructions.** Draft a new section in `AGENTS.md` headed with the
-job, below the proposal rules. Three things only:
+job, below the Rules section. Three things only:
 
 - Where the inputs come from, pointing at `company/DATA.md` for where they
   live if step 4 wrote it rather than copying its rows into this tracked file,
@@ -219,7 +223,7 @@ Code through `CLAUDE.md`, and in Kiro through `.kiro/steering/`, so it's one
 edit for all three.
 
 **Layer 2: Skill.** Draft `skills/<job-name>/SKILL.md`, shaped like
-`skills/draft-proposal/SKILL.md`: `name` and `description` frontmatter, with
+`examples/proposal/skills/draft-proposal/SKILL.md`: `name` and `description` frontmatter, with
 the description saying when to use it; Inputs; numbered Steps; Output. If the
 person can't say what the output is, ask until they can. In the same draft,
 add a row for it to the Skills table in `AGENTS.md`. Tell them
@@ -228,7 +232,7 @@ frontmatter or its row. Claude Code finds it through the `.claude/skills` link;
 Codex and Kiro find it through `AGENTS.md`.
 
 **Layer 3: Gate.** Draft `gates/<job-name>_gate.py`, shaped like
-`gates/proposal_gate.py`: standard library only, Python 3.9, one `PASS` or
+`examples/proposal/gates/proposal_gate.py` (`gates/README.md` has the rules): standard library only, Python 3.9, one `PASS` or
 `FAIL` line per file, each problem named on its own line, exit 1 on any
 failure. Check what's cheap to check and expensive to miss: an empty section,
 a placeholder, a number that doesn't match its source. In the same draft, show:
@@ -251,14 +255,16 @@ step 1, repeat the fix, `git config core.hooksPath .githooks`, and say the hook
 won't run until they do. To test it, they commit an output that should fail and
 watch the commit refuse.
 
-**Layer 5: Review agent.** Draft `agents/<job-name>-reviewer.md`, shaped like
-`agents/proposal-reviewer.md`: it reads the output as the person who receives
-it, looks for what the gate can't check, reports at most ten findings, and
-never edits. In the same draft, add a row to the Agents table in `AGENTS.md`.
-If they drive with Claude Code, also draft
-`.claude/agents/<job-name>-reviewer.md`, a short pointer like
-`.claude/agents/proposal-reviewer.md`. In Codex or Kiro, tell them to run it
-as a separate session with the agents file as its instructions.
+**Layer 5: Review agent.** The harness already has one reviewer,
+`agents/reviewer.md`, that reads any work as the person who receives it. What
+this job needs is a brief for it. Draft `agents/<job-name>-brief.md`, shaped
+like `examples/proposal/agents/proposal-reviewer.md`: who receives the output,
+what they'll hold the author to, and what to look for that the gate can't
+check. In the same draft, add a line to the last step of their skill, if Layer
+2 was written: hand the output to the `reviewer` agent with this brief. In
+Claude Code that's the `reviewer` subagent. In Codex or Kiro, tell them to run
+a separate session with `agents/reviewer.md` as its instructions and point it
+at the brief.
 
 ## Output
 

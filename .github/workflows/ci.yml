@@ -24,8 +24,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Tests
         run: python3 -m unittest discover -s tests -v
-      - name: Every proposal passes the gate
-        run: python3 gates/proposal_gate.py
+      - name: The example's proposals pass their gate
+        run: python3 examples/proposal/gates/proposal_gate.py
       - name: Setup check
         run: |
           git config core.hooksPath .githooks

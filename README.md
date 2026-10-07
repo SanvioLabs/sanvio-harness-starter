@@ -4,10 +4,13 @@ A harness is everything around the model: the rules it reads, the procedures it
 follows, the checks that stop it, and the other agents it hands work to. The
 model is the engine. The harness is what makes it safe to leave running.
 
-This repo is the smallest harness that still does the job. It drafts client
+This repo is the smallest harness that still does the job. The root is
+generic: rules, skills, a reviewer, the checks, and a place for your company
+and your code. One worked job sits in `examples/proposal/`, drafting client
 proposals, because a proposal is where the cheap mistakes live: a placeholder
 left in, a rate somebody made up, a total that doesn't add up. None of those are
-hard. All of them ship anyway when the process lives in your head.
+hard. All of them ship anyway when the process lives in your head. You read
+the example, then build your own job the same way at the root.
 
 It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 
@@ -16,7 +19,7 @@ It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 ```bash
 git clone <this repo> && cd harness-starter
 git config core.hooksPath .githooks
-python3 gates/proposal_gate.py
+python3 scripts/check_setup.py
 ```
 
 **Don't skip the middle line.** Git won't run the hook in `.githooks/` unless
@@ -60,8 +63,11 @@ git diff step-2 step-3       # what the gate adds
 git checkout main            # everything
 ```
 
-`main` has all five layers, so the exercises have something to copy from.
-Check out `step-0` to start where the talk started.
+The tags build the proposal job at the root, one layer at a time, which is
+how the talk builds it. On `main` the same files live in `examples/proposal/`,
+the reviewer is generic (`agents/reviewer.md`, with the proposal brief in the
+example), and the root is left for your own job. Check out `step-0` to start
+where the talk started.
 
 ## One file, three tools
 
@@ -187,8 +193,8 @@ anyone else's.
 
 ## Your turn
 
-`EXERCISES.md` has the hands-on: swap the proposal job for one you actually do,
-and build the same five layers around it.
+`EXERCISES.md` has the hands-on: pick a job you actually do, and build the
+same five layers around it that `examples/proposal/` has.
 
 ## Licence
 
