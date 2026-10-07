@@ -26,9 +26,15 @@ a real harness for months, and nobody noticed because nothing failed.
 
 You need Python 3.9 or newer and no packages.
 
-Working through this on your own? Open the repo in your agent and say "get me
-started". `skills/start-here/` checks your setup, then walks you through the
-five layers around your own job.
+Working through this on your own? Open the repo in your agent and run
+`/orientation` in Claude Code, or say "get me started" in any of them.
+`skills/orientation/` checks your setup, asks where your company's data lives
+and how the agent should reach it, then walks you through the five layers
+around your own job.
+
+`python3 scripts/check_setup.py` runs the setup check on its own: Python, the
+hook, the links below, and whether `origin` is still this public repo. Make
+your own private copy before any company material goes in.
 
 On Windows, clone with `git clone -c core.symlinks=true` from a terminal with
 Developer Mode on, or the two links below arrive as plain text files. If they
