@@ -40,29 +40,18 @@ is cheaper than the problem it prevents.
 
 ## 2. Spec before code (30 to 60 min)
 
-Write the data model first, then how the core logic works, then the user flow.
-It forces the architecture decisions before there's code to defend.
-
-The spec lives in the repo it describes: `SPEC.md` at the root for the whole
-system, `docs/specs/` for the parts. A spec kept anywhere else stops travelling
-with the code.
+Write the spec before the code, in the repo it describes.
+`building-and-testing.md` has the order and where it lives.
 
 ## 3. Scaffold by hand (15 min)
 
-Don't use interactive scaffolding tools in an agent session. They prompt, fail
-on existing folders and waste time. Write the config files and folders
-directly, install dependencies, and check a build passes before writing
-features. Write one test straight away and run it.
+Write the config and folders directly, check a build passes, and write one
+test straight away. `building-and-testing.md` has why.
 
-## 4. Infrastructure and deploy (20 min)
+## 4. Infrastructure and the deploy script (20 min)
 
-- Infrastructure as code, with a named cloud profile. Confirm which account
-  you're in before anything changes.
-- **A separate cloud account for anything with personal, health, financial or
-  children's data**, or anything you might need to delete completely.
-- Write the deploy script before the first deploy, and use it from then on.
-- Smoke test the deployed thing, happy path and error cases. Deployed and
-  untested is worse than not deployed.
+Infrastructure as code, a separate account for sensitive data, and the deploy
+script written before the first deploy. `deploying.md` has the full list.
 
 ## 5. Tickets, once you know the work (10 min)
 
@@ -75,3 +64,5 @@ order that makes it testable end to end soonest.
 - Code before the spec.
 - Sensitive data in a shared account.
 - A deploy script written after the manual deploys.
+
+The detail behind each is in `building-and-testing.md` and `deploying.md`.
