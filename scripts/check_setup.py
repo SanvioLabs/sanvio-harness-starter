@@ -60,6 +60,9 @@ def check_links(root):
     steering = root / ".kiro" / "steering" / "project.md"
     if not steering.is_file() or steering.resolve() != (root / "AGENTS.md").resolve():
         problems.append(".kiro/steering/project.md isn't a link to AGENTS.md")
+    for link in sorted((root / ".kiro" / "steering").glob("*.md")):
+        if link.name != "project.md" and link.resolve() != (root / "steering" / link.name).resolve():
+            problems.append(".kiro/steering/{} isn't a link to steering/{}".format(link.name, link.name))
     if not problems:
         return ("PASS", "links: CLAUDE.md, .claude/skills and .kiro/steering lead to the real files", None)
     return ("FAIL", "links: " + "; ".join(problems),

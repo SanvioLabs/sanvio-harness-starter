@@ -11,6 +11,7 @@ read, plus a few short scripts that run whatever the agent decides.
 | Piece | Is | Who runs it |
 |---|---|---|
 | `AGENTS.md` | Standing rules | The agent reads it at the start of every session |
+| `steering/` | Standing guidance, one topic per file. Three load every session, the rest when needed | The agent, through `AGENTS.md` |
 | `skills/` | Named procedures with inputs, steps and an output | The agent, when a request matches one |
 | `agents/` | Instructions for a second reader with one job | A separate agent session, started by the first |
 | `gates/` | Scripts that exit non-zero when work isn't ready | The agent, the git hook and CI |
