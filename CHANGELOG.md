@@ -8,6 +8,16 @@ starter's copy, and tells you what you don't have yet.
 Changing your own harness? Add an entry at the top in the same shape. Then
 "what's new" works for your team too.
 
+## 2026-10-07: What's new only names commands
+
+`whats-new` no longer offers to merge the starter's changes for you. A copy
+made with *Use this template* has no shared history, so it names the per-file
+commands instead and stops.
+
+**Files:** `skills/whats-new/SKILL.md`
+
+**Do:** nothing.
+
 ## 2026-10-07: What's new
 
 A release log, this file, and a skill that answers "what's new" from it,
