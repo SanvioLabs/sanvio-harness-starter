@@ -235,7 +235,10 @@ Codex and Kiro find it through `AGENTS.md`.
 `examples/proposal/gates/proposal_gate.py` (`gates/README.md` has the rules): standard library only, Python 3.9, one `PASS` or
 `FAIL` line per file, each problem named on its own line, exit 1 on any
 failure. Check what's cheap to check and expensive to miss: an empty section,
-a placeholder, a number that doesn't match its source. In the same draft, show:
+a placeholder, a number that doesn't match its source. With file paths it
+checks those; with none it checks every output the job has. Anything that
+needs judgement goes to the brief in layer 5 instead (`steering/gates.md` has
+the test). In the same draft, show:
 
 - The edit to the last steps of their skill, if Layer 2 was written: run the
   gate, fix what it names, run it again until it passes
@@ -250,7 +253,11 @@ no gate for the job exists, say the hook has nothing to run yet and offer
 Layer 5. Otherwise draft a diff to `.githooks/pre-commit` that adds a new
 numbered block after block 2, in the same style: collect the staged files
 matching the job's output path and run the new gate on them with
-`|| status=1`. Blocks 1 and 2 stay exactly as they are. If the hook was FAIL in
+`|| status=1`. Blocks 1 and 2 stay exactly as they are. In the same draft, add
+a step to `.github/workflows/ci.yml` that runs the gate with no arguments, after
+the example's step: the hook can be skipped, CI can't once it's a required
+check. If the gate takes more than a few seconds, leave it out of the hook and
+put it in CI only, and say why (`steering/gates.md`). If the hook was FAIL in
 step 1, repeat the fix, `git config core.hooksPath .githooks`, and say the hook
 won't run until they do. To test it, they commit an output that should fail and
 watch the commit refuse.
