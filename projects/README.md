@@ -15,11 +15,11 @@ cd ..                         # then start your agent from the harness root
 Then point it at the project: "in projects/billing, fix the failing test".
 
 This matters more than it looks. We tested Claude Code started inside
-`projects/<repo>`: it still reads the harness's `CLAUDE.md` and `AGENTS.md`
-from the folder above, but it loads **none of the harness's skills, agents or
-hooks**. No `/orientation`, no `review-pr`, no credential guard. The rules
-are there and nothing enforces them, and nothing tells you so. `AGENTS.md`
-asks the agent to say so out loud if it finds itself started below the root.
+`projects/<repo>`: it reads the harness's `CLAUDE.md` from the folder above,
+but not the `AGENTS.md` that file imports, and **none of the harness's
+skills, agents or hooks**. No rules, no `/orientation`, no `review-pr`, no
+credential guard, and nothing tells you so. `CLAUDE.md` carries one warning
+outside the import for exactly this, so the agent says so out loud.
 
 In Kiro, open the harness root as the workspace, for the same reason.
 

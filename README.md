@@ -71,7 +71,7 @@ file and the others point at it:
 | Tool | Reads | Here |
 |---|---|---|
 | Codex | `AGENTS.md` | The real file |
-| Claude Code | `CLAUDE.md` | One line: `@AGENTS.md` |
+| Claude Code | `CLAUDE.md` | `@AGENTS.md`, plus one warning for a session started in the wrong folder |
 | Kiro | `.kiro/steering/` | A symlink to `AGENTS.md` |
 
 Skills and agents work the same way: the real file lives in `skills/` or
