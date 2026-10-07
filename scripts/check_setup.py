@@ -79,8 +79,8 @@ def check_remote(root):
     shown = safe_url(url)
     if STARTER.search(url):
         return ("WARN", "remote: origin is the public starter ({})".format(shown),
-                "Make your own private copy before any company material, rules or data "
-                "locations go in. Anything pushed to a public repo is public.")
+                "company/ stays on your machine either way. Make your own private copy "
+                "before you push your own work: anything pushed to a public repo is public.")
     return ("WARN", "remote: origin is {}".format(shown),
             "If that repo is public, keep company material out of it. "
             "Check: gh repo view --json visibility")
@@ -100,8 +100,17 @@ def check_gate(root):
             "git status to see what changed.")
 
 
+def check_company(root):
+    record = root / "company" / "COMPANY.md"
+    if record.is_file():
+        return ("PASS", "company: company/COMPANY.md is written", None)
+    return ("WARN", "company: no company record yet, so the agent doesn't know who it works for",
+            "Run /orientation, or say \"get me started\", and it interviews you for it.")
+
+
 def run(root):
-    return [check_python(), check_hooks(root), check_links(root), check_remote(root), check_gate(root)]
+    return [check_python(), check_hooks(root), check_links(root), check_gate(root),
+            check_company(root), check_remote(root)]
 
 
 def main():

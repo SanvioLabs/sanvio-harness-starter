@@ -95,6 +95,25 @@ class SetupCheck(unittest.TestCase):
     def test_a_missing_example_warns_rather_than_fails(self):
         self.assertEqual(check_setup.check_gate(self.root)[0], "WARN")
 
+    def test_no_company_record_warns_and_points_at_orientation(self):
+        status, _, fix = check_setup.check_company(self.root)
+        self.assertEqual(status, "WARN")
+        self.assertIn("/orientation", fix)
+
+    def test_a_written_company_record_passes(self):
+        (self.root / "company").mkdir()
+        (self.root / "company" / "COMPANY.md").write_text("# Company\n")
+        self.assertEqual(check_setup.check_company(self.root)[0], "PASS")
+
+    def test_the_company_record_never_gets_committed(self):
+        def ignored(path):
+            return subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", path],
+                                  env=ISOLATED).returncode == 0
+        self.assertTrue(ignored("company/COMPANY.md"))
+        self.assertTrue(ignored("company/DATA.md"))
+        self.assertFalse(ignored("company/README.md"))
+        self.assertFalse(ignored("company/COMPANY.example.md"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,13 @@
 ---
 name: orientation
-description: Get someone ready to use this harness. Checks the clone, asks what job they want to hand to an agent, which tool they drive it with and where their company's data lives, maps how the agent can reach that data, then walks them through the five layers around their job, one drafted file at a time. Use when someone runs /orientation, says "get me started", "orient me", "how do I use this", "new here", "set this up for my job", or asks where to begin.
+description: Get someone ready to use this harness. Checks the clone, asks what job they want to hand to an agent, which tool they drive it with and where their company's data lives, maps how the agent can reach that data, interviews them for a short company record, then walks them through the five layers around their job, one drafted file at a time. Use when someone runs /orientation, says "get me started", "orient me", "how do I use this", "new here", "set this up for my job", or asks where to begin.
 ---
 
 # Orientation
 
 The person has just cloned this repo. Show them the harness working on them:
-check their setup, find out what they do and where their company's data lives,
-then build the five layers around their job one at a time. Instructions, a
+check their setup, find out what they do, where their company's data lives and
+who the company is, then build the five layers around their job one at a time. Instructions, a
 skill, a gate, the hook, a review agent.
 
 You draft. They say yes or no. Nothing gets written without a yes.
@@ -50,27 +50,28 @@ python3 -m unittest discover -s tests
 `check_setup.py` prints one `PASS`, `WARN` or `FAIL` line per item with the fix
 under it: Python version, whether the hook is switched on, whether the
 `CLAUDE.md`, `.claude/skills` and Kiro links work, where `origin` points, and
-whether the example proposal passes its gate. Pass its lines through as
-printed. For the tests, one line: passed, or the names that failed.
+whether the example proposal passes its gate, and whether a company record
+exists yet. Pass its lines through as printed. For the tests, one line: passed, or the names that failed.
 
 Say these out loud when they show up:
 
 - **Hook FAIL.** Every check in the hook silently does nothing until they run
   the fix. Don't run it for them.
-- **Remote WARN on the public starter.** Before anything company-specific goes
-  in (rules, data locations, their own job), they need their own private copy.
-  On GitHub that's *Use this template* with the visibility set to private, then
-  clone that. If `gh` is installed and `origin` is on GitHub, run
+- **Remote WARN on the public starter.** Everything in `company/` is
+  gitignored, so the company record and the data map stay on their machine
+  either way. Their own job's files (the five layers) are tracked, though, and
+  before they push those anywhere they need their own private copy. On GitHub
+  that's *Use this template* with the visibility set to private. If `gh` is
+  installed and `origin` is on GitHub, run
   `gh repo view --json visibility -q .visibility` and say what it returns.
-  Hold step 4's write until the answer is private or there's no remote.
 - **Gate or tests FAIL.** On a clean clone of `main` these pass, so suggest
   `git status` to look for local changes.
 
 Then list any files in `skills/`, `gates/` and `agents/` beyond the ones this
-repo ships (`draft-proposal`, `review-skill`, `orientation`,
-`proposal_gate.py`, `proposal-reviewer.md`), and any "Where company data
-lives" section already in `AGENTS.md`. Those are from an earlier run and show
-where the person left off. Skip the questions they've already answered.
+repo ships (`draft-proposal`, `review-skill`, `orientation`, `learn`,
+`proposal_gate.py`, `proposal-reviewer.md`), and whether `company/COMPANY.md`
+and `company/DATA.md` exist. Those are from an earlier run and show where the
+person left off. Read them, and skip the questions they've already answered.
 
 A FAIL doesn't stop the walk. Go on to step 2.
 
@@ -124,13 +125,10 @@ list of things the agent never does on its own in layer 1.
 
 ### 4. Write down where the data lives
 
-Only once step 1's remote check is private or there's no remote. If it's still
-the public starter, say so, show the draft, and hold the write.
-
-Draft a new section in `AGENTS.md`, below the proposal rules:
+Draft `company/DATA.md`:
 
 ```markdown
-## Where company data lives
+# Where company data lives
 
 | Source | What's there | How you reach it | Cleared for this tool |
 |---|---|---|---|
@@ -146,10 +144,36 @@ Draft a new section in `AGENTS.md`, below the proposal rules:
 
 Fill it from the person's answers, not the example rows. Write on a yes.
 
-Mention once that this is the one part of orientation every session will use:
-the next agent that opens the repo knows where to look without asking.
+Say once that `company/` is gitignored, so this stays on their machine, and that
+every session reads it: the next agent that opens the repo knows where to look
+without asking. `company/README.md` says how to share it with a team once their
+copy is private.
 
-### 5. If they want to see the layers first
+### 5. Write the company record
+
+Offer it in one line: "Want to spend five minutes telling me about the company?
+I'll write it down so every session knows who it's working for." A no skips to
+step 6, and a later run picks it up.
+
+On a yes:
+
+1. If `company/COMPANY.md` doesn't exist, copy `company/COMPANY.example.md`
+   there. If it does, read it and only ask about the sections still empty. A
+   section is empty when everything under its heading is blank or an HTML
+   comment: the `<!-- -->` prompts are not answers.
+2. Ask one section at a time, in order, as a real question rather than the
+   heading. "What do you turn down, even when the money's good?" not "What we
+   won't do".
+3. After each answer, write it into that section in their words, lightly
+   cleaned up, then ask the next. Write as you go, so stopping halfway keeps
+   everything answered so far. This file is gitignored and theirs, so each
+   answer they give is the yes to write it.
+4. Set `updated:` to today when they finish or stop.
+
+Never draft an answer for them and never fill a section they skipped. "Skip"
+leaves a section empty, "stop" ends the interview.
+
+### 6. If they want to see the layers first
 
 Offer it in one line: each layer is a tag, and `git diff step-1 step-2` shows
 exactly what one adds. If they want the tour, run
@@ -158,9 +182,9 @@ in two sentences what that layer adds and what it fixes (the table in
 `README.md` has it). Don't check anything out: `skills/orientation/` doesn't
 exist at `step-0`, and this conversation would lose its instructions.
 
-If they'd rather build now, go on to step 6.
+If they'd rather build now, go on to step 7.
 
-### 6. Build the five layers, in order
+### 7. Build the five layers, in order
 
 For each layer: say in one sentence what it's for, draft the files for the
 person's job, show the drafts, and ask "Write this?" Write only on a yes. On a
@@ -170,8 +194,9 @@ you write or edit.
 **Layer 1: Instructions.** Draft a new section in `AGENTS.md` headed with the
 job, below the proposal rules. Three things only:
 
-- Where the inputs come from, naming sources from "Where company data lives"
-  if step 4 wrote it, and that the agent never invents them
+- Where the inputs come from, pointing at `company/DATA.md` for where they
+  live if step 4 wrote it rather than copying its rows into this tracked file,
+  and that the agent never invents them
 - Where the output goes, and what it's called
 - What the agent never does on its own (send, pay, delete, merge, and anything
   a connector from step 3 can write)
@@ -229,9 +254,13 @@ Last, in one message:
 - Every file written or edited, one per line, with created or edited
 - Each data source, with how the agent reaches it and whether it's cleared,
   and any source still `unconfirmed` or still to connect
+- Which sections of `company/COMPANY.md` are written and which are still
+  empty
 - For each gate added, the one command that checks it:
   `python3 gates/<job-name>_gate.py <path to an output>`. If no gate was
   added, say so
 - Any FAIL or WARN from step 1 still open, with its fix
 - The steps and layers skipped, so they know what's left if they run this
   again
+- One line on what to do next time the agent gets something wrong: say "learn
+  from that", and `skills/learn/` writes the rule down where it governs

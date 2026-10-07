@@ -87,6 +87,21 @@ reads as the rule.
 enforcement. It runs whatever the agent decided. Anything you'd hate to get
 wrong belongs in the second one.
 
+## Beyond the five layers
+
+Four more pieces, each one the small version of something a working harness
+runs on every day.
+
+| Piece | Where | What it does |
+|---|---|---|
+| A company record | `company/` | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
+| Guards inside the agent | `.claude/settings.json`, `.claude/hooks/` | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
+| A way to learn | `skills/learn/` | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
+| CI | `.github/workflows/ci.yml` | The tests, the gate and the setup check run on every push, so a check someone skipped locally still runs before anything merges. Make it a required check in your branch protection, or it only reports |
+
+The in-agent guards are Claude Code only. Codex and Kiro have their own hook
+systems; the git hook is the check all three share.
+
 ## Four loops that keep it working
 
 The layers are what a harness is made of. The loops are how you run it. Each
