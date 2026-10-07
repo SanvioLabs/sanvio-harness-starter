@@ -30,7 +30,7 @@ behaviour was.
    | It's one step of a procedure that a skill already runs | That skill's `SKILL.md`, as a step or a line in its Rules |
    | It's about the company: what you sell, how you sound, what you won't do | `company/COMPANY.md` |
    | It's where to find something, or how to reach it | `company/DATA.md` |
-   | It's about how you work on a topic a steering file covers: replies, writing, data and tools, setup, models, gates | That file in `steering/` |
+   | It's about how you work on a topic a steering file covers: replies, writing, data and tools, setup, building and testing, deploying, models, gates | That file in `steering/` |
    | It's a standing rule for any work in this repo | `AGENTS.md`, under the section it belongs to |
 
    If a rule that covers it already exists and the agent broke it anyway, the

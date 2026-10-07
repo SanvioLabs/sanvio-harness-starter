@@ -30,7 +30,7 @@ Earliest and cheapest first. Each place catches what the one above it missed.
 | The git hook, `.githooks/pre-commit` | Every commit, from any tool or person | Fast checks on the staged files. Seconds, not minutes | `core.hooksPath` isn't set in that clone, or someone uses `--no-verify` |
 | CI, `.github/workflows/ci.yml` | Every push and pull request | Slow checks, whole-repo checks, the tests. The copy nobody can skip by accident | It isn't a required check, so it only reports |
 | A required check | Before a merge | Turning CI from a report into a block | Nothing in the repo gets past it. `project-setup.md` has how to set it |
-| Your release step, if you have one | Before anything leaves | One-way doors: production, anything outbound | It's run by hand and someone forgets |
+| Your release step, if you have one | Before anything leaves | One-way doors: production, anything outbound. `deploying.md` has the checklist | It's run by hand and someone forgets |
 
 Five rules for placing a check:
 

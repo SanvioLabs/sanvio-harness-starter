@@ -19,6 +19,8 @@ Read these when their moment comes:
 |---|---|
 | `steering/writing.md` | Writing anything a person outside the company will read |
 | `steering/project-setup.md` | Starting a new repo or project |
+| `steering/building-and-testing.md` | Writing or changing code, or writing tests for it |
+| `steering/deploying.md` | Setting up infrastructure, deploying, or changing anything people use |
 | `steering/model-selection.md` | Deciding which model runs what, or handing work to a subagent |
 | `steering/gates.md` | Adding, moving or strengthening a check, or deciding whether a rule needs one |
 
