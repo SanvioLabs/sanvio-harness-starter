@@ -48,8 +48,13 @@ it, and the starter's copy, and tells the person what's new for them.
 
 ## Rules
 
-- Never pull, merge, check out, copy or commit. Name the command and let the
-  person run it.
+- Never pull, merge, check out, copy or commit, and never offer to. Name the
+  command and let the person run it. A bare "say the word and I'll merge" is
+  the thing this rule is for.
+- Never suggest `git pull` or `git merge` to take the starter's changes. A
+  copy made with *Use this template* shares no history with the starter, so a
+  merge either refuses or tries to merge everything. The way in is one file at
+  a time, with the commands in step 5.
 - Quote the **Do:** line as written. Don't add steps it doesn't have.
 - Never call a copy up to date when step 2 failed. Say the starter couldn't be
   read.
@@ -58,4 +63,4 @@ it, and the starter's copy, and tells the person what's new for them.
 
 The entries new to them, each with what it adds and what to do, or that
 they're up to date. Then, if they're behind, the one command that shows what
-would change.
+would change. End there: the next step is theirs to run.

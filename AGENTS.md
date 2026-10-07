@@ -91,11 +91,11 @@ what you needed and ask.
 
 ## Changing the harness
 
-A change to `steering/`, `skills/`, `gates/`, `agents/`, the hooks or
-`AGENTS.md` adds an entry at the top of `CHANGELOG.md`: a dated heading with a
-name that won't change, what it adds, the files it touched, and a **Do:** line
-saying what someone needs to do to take it. "Nothing" is a valid Do. That's how
-the next person finds out with "what's new".
+A noticeable change (something new, something that works differently,
+something that moved, or anything someone has to act on) adds an entry at the
+top of `CHANGELOG.md` in the same change. `steering/operating.md` has what
+counts and the shape of an entry. That's how the next person finds out with
+"what's new".
 
 ## Agents
 

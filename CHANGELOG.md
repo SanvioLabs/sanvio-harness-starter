@@ -5,8 +5,21 @@ changes, what it adds, the files it touched, and **Do:** what you need to do to
 take it. Ask the agent "what's new" and `skills/whats-new/` reads this, and the
 starter's copy, and tells you what you don't have yet.
 
-Changing your own harness? Add an entry at the top in the same shape. Then
-"what's new" works for your team too.
+Changing your own harness? Anything noticeable gets an entry at the top in
+the same shape (`steering/operating.md` says what counts). Then "what's new"
+works for your team too.
+
+## 2026-10-07: What goes in the log
+
+`steering/operating.md` now says which changes get an entry here: anything
+new, anything that works differently, anything that moved, and anything you
+have to act on. `whats-new` also stops at naming commands, and no longer
+offers to merge the starter's changes, which can't work on a template copy.
+
+**Files:** `steering/operating.md`, `AGENTS.md`, `skills/whats-new/SKILL.md`,
+`skills/review-pr/SKILL.md`, `CHANGELOG.md`
+
+**Do:** nothing. Add an entry when you change something noticeable.
 
 ## 2026-10-07: What's new
 
