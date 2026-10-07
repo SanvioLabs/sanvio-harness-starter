@@ -14,7 +14,7 @@ number or a fact to fill a gap. Ask.
 ## The phases, and how to act in each
 
 Work moves through five phases. Each one ends at a gate: a check that has to
-pass before the next phase starts.
+pass before the next phase starts. `gates.md` has what each one asks.
 
 | Phase | What happens | How you act |
 |---|---|---|

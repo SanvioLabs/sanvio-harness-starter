@@ -10,9 +10,14 @@ Your gates go here, one per job: `gates/<job>_gate.py`. The pattern to copy is
 - Standard library only, so it runs anywhere Python 3.9 does
 - One `PASS` or `FAIL` line per file, and each problem named on its own line
 - Exit 1 when anything fails, so the hook and CI can block on it
+- With file paths, check those. With none, check every output the job has,
+  which is how CI runs it
 - A test in `tests/` for each thing it checks
 
 Then add a block to `.githooks/pre-commit` that runs it on the staged files it
 covers, after the ones already there, and a step to `.github/workflows/ci.yml`.
+
+Whether a check earns a gate, which of those places it runs in, and what to
+check between phases: `steering/gates.md`.
 
 Never edit a gate to make work pass. Fix the work.

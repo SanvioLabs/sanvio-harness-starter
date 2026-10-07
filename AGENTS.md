@@ -20,6 +20,7 @@ Read these when their moment comes:
 | `steering/writing.md` | Writing anything a person outside the company will read |
 | `steering/project-setup.md` | Starting a new repo or project |
 | `steering/model-selection.md` | Deciding which model runs what, or handing work to a subagent |
+| `steering/gates.md` | Adding, moving or strengthening a check, or deciding whether a rule needs one |
 
 Add your own the same way: one topic per file, and a row here saying when it
 applies. Where a steering file and this file disagree, this file wins, and you
