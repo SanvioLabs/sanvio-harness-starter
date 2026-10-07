@@ -38,6 +38,7 @@ that file in place.
 - **Its own git hooks and CI.** Each project is a separate repo, so the
   harness's `.githooks/pre-commit` doesn't run on its commits. Wire the
   project's own checks there, and in its own pipeline.
+  `examples/ci/project-checks.yml` is a CI file to start from.
 - **Its own history.** Commit and push inside the project folder. The harness
   repo never sees the project's files.
 

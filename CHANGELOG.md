@@ -9,6 +9,44 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape (`steering/operating.md` says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-07: Running one harness across teams
+
+`HOW-IT-WORKS.md` now says how strictness follows risk (a read-only project
+against one that writes to something people use), how a change to the harness
+travels from one person's mistake to everyone's `/whats-new`, and who owns
+which part, with `CODEOWNERS` to make it hold.
+
+**Files:** `HOW-IT-WORKS.md`
+
+**Do:** nothing. If more than one person changes your harness, read "Who owns
+what" and decide yours.
+
+## 2026-10-07: CI for your own repos, and the deploy workflow
+
+`examples/ci/project-checks.yml` is CI to copy into a repo in `projects/`. It's
+green on an empty repo and checks more as the repo grows. `deploying.md` has a
+new section on the deploy workflow: one workflow with a caller per
+environment, production started by hand with a typed confirmation, plan on
+the pull request and apply only in the deploy, short-lived credentials.
+
+**Files:** `examples/ci/project-checks.yml`, `steering/deploying.md`,
+`steering/building-and-testing.md`, `projects/README.md`
+
+**Do:** copy `examples/ci/project-checks.yml` into each of your code repos as
+`.github/workflows/checks.yml`, then require its jobs once they've run.
+
+## 2026-10-07: Secret scan in CI
+
+`.github/workflows/secrets.yml` runs gitleaks over the whole history on every
+push to main and every pull request. The hook checks for secrets too, but
+`--no-verify` skips the hook, and nothing skips this.
+
+**Files:** `.github/workflows/secrets.yml`, `README.md`
+
+**Do:** take the file from the starter. After it has run once on a pull
+request, add `secret scan` to your required checks. If it finds something,
+rotate the secret first: deleting the commit doesn't un-leak it.
+
 ## 2026-10-07: CI should block, not just report
 
 Nothing in your copy changes. CI runs the tests, the gate and the setup check

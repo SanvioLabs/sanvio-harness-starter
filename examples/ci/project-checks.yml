@@ -1,0 +1,94 @@
+# CI for a code repo you keep in projects/. Copy it into that repo as
+# .github/workflows/checks.yml.
+#
+# It's safe on an empty repo. Each job looks for the file it needs
+# (pyproject.toml, package.json) and skips with a notice when it isn't there,
+# so a new repo gets green, honest CI on day one and checks more as it grows.
+# Once a job has run on a pull request, make it a required check, using the
+# name from that run.
+#
+# When the repo has a real command for something, swap the guard for the
+# command. A step written against a command that doesn't exist yet only
+# teaches people to ignore red.
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Look for a Python project
+        id: detect
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No pyproject.toml, so the Python checks skip."
+          fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.detect.outputs.found == 'true'
+      - name: Install
+        if: steps.detect.outputs.found == 'true'
+        run: uv sync --dev
+      - name: Lint and format
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          if uv run ruff --version >/dev/null 2>&1; then
+            uv run ruff check . && uv run ruff format --check .
+          else
+            echo "::notice::ruff isn't a dev dependency, so lint skips."
+          fi
+      - name: Tests
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          if uv run pytest --version >/dev/null 2>&1; then
+            uv run pytest
+          else
+            echo "::notice::pytest isn't a dev dependency, so tests skip."
+          fi
+
+  node:
+    name: node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Look for a Node project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No package.json, so the Node checks skip."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.found == 'true'
+        with:
+          node-version: lts/*
+      - name: Install
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      # --if-present is the guard: a script the project hasn't defined yet is
+      # skipped rather than failing the build.
+      - name: Lint, types, tests, build
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          npm run --if-present lint
+          npm run --if-present typecheck
+          npm run --if-present test
+          npm run --if-present build

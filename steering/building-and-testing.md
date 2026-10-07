@@ -26,6 +26,10 @@ language, the habits are the same.
   works. Click it, call it, read what comes back.
 - **Add a dependency only when it earns its place.** Pin it, and commit the
   lockfile.
+- **CI from the first commit.** `examples/ci/project-checks.yml` is green on
+  an empty repo and checks more as the repo grows: each job skips with a
+  notice until the file it needs exists. Make its jobs required once they've
+  run on a pull request.
 
 ## Tests that protect something
 
