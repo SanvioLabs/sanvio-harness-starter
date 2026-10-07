@@ -9,6 +9,19 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape (`steering/operating.md` says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-07: Example gate catches empty sections
+
+The proposal example's gate now fails a required section that has a heading
+and nothing under it: no text, only whitespace, or only an HTML comment. Each
+one gets its own `empty section: <name>` line. An empty Fees section still
+reports `no fee rows under Fees`, and a missing heading still reports only
+`missing section: <name>`.
+
+**Files:** `examples/proposal/gates/proposal_gate.py`, `tests/test_gate.py`,
+`CHANGELOG.md`
+
+**Do:** nothing.
+
 ## 2026-10-07: What goes in the log
 
 `steering/operating.md` now says which changes get an entry here: anything

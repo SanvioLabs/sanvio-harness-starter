@@ -67,6 +67,38 @@ class ProposalGate(unittest.TestCase):
         found = self.problems(GOOD.replace("## Out of scope", "## Extras"))
         self.assertIn("missing section: Out of scope", found)
 
+    def test_an_empty_section_fails(self):
+        found = self.problems(GOOD.replace("A pre-order page.\n", ""))
+        self.assertIn("empty section: Scope", found)
+
+    def test_a_whitespace_only_section_fails(self):
+        found = self.problems(GOOD.replace("A pre-order page.\n", "   \n\t\n"))
+        self.assertIn("empty section: Scope", found)
+
+    def test_a_comment_only_section_fails(self):
+        found = self.problems(GOOD.replace("A pre-order page.", "<!-- what we will build -->"))
+        self.assertIn("empty section: Scope", found)
+
+    def test_a_multi_line_comment_only_section_fails(self):
+        found = self.problems(GOOD.replace("A pre-order page.", "<!--\nwhat we will\nbuild\n-->"))
+        self.assertIn("empty section: Scope", found)
+
+    def test_each_empty_section_gets_its_own_line(self):
+        found = self.problems(GOOD.replace("Orders go missing.\n", "").replace("A pre-order page.\n", ""))
+        self.assertEqual([p for p in found if p.startswith("empty section:")],
+                         ["empty section: Problem", "empty section: Scope"])
+
+    def test_an_empty_fees_section_is_reported_once_as_no_fee_rows(self):
+        text = GOOD[:GOOD.index("## Fees")] + "## Fees\n\n" + GOOD[GOOD.index("## Assumptions"):]
+        found = self.problems(text)
+        self.assertIn("no fee rows under Fees", found)
+        self.assertNotIn("empty section: Fees", found)
+
+    def test_a_missing_section_is_not_also_reported_empty(self):
+        found = self.problems(GOOD.replace("## Out of scope", "## Extras"))
+        self.assertIn("missing section: Out of scope", found)
+        self.assertFalse([p for p in found if p.startswith("empty section:")])
+
     def test_an_unknown_role_fails(self):
         text = GOOD.replace("| Designer |", "| Intern |")
         self.assertTrue(any("not a role" in p for p in self.problems(text)))

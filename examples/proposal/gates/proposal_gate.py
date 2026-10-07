@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_SECTIONS = ["Problem", "Scope", "Out of scope", "Fees", "Assumptions"]
 PLACEHOLDER = re.compile(r"\{\{|\bTODO\b|\bTBD\b")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 
 
 def money(text):
@@ -40,6 +41,8 @@ def check(path, rates):
     for name in REQUIRED_SECTIONS:
         if name not in headings:
             problems.append("missing section: " + name)
+        elif name != "Fees" and not HTML_COMMENT.sub("", section(text, name)).strip():
+            problems.append("empty section: " + name)  # Fees has its own check below
 
     roles = rates["roles"]
     total = 0.0
