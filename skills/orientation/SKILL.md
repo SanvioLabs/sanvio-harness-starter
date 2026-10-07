@@ -50,8 +50,8 @@ python3 -m unittest discover -s tests
 `check_setup.py` prints one `PASS`, `WARN` or `FAIL` line per item with the fix
 under it: Python version, whether the hook is switched on, whether the
 `CLAUDE.md`, `.claude/skills` and Kiro links work, where `origin` points, and
-whether the example proposal passes its gate, and whether a company record
-exists yet. Pass its lines through as printed. For the tests, one line: passed, or the names that failed.
+whether the example proposal passes its gate, whether a company record
+exists yet, and whether a personal skill is hiding one of the repo's. Pass its lines through as printed. For the tests, one line: passed, or the names that failed.
 
 Say these out loud when they show up:
 
@@ -66,9 +66,18 @@ Say these out loud when they show up:
   `gh repo view --json visibility -q .visibility` and say what it returns.
 - **Gate or tests FAIL.** On a clean clone of `main` these pass, so suggest
   `git status` to look for local changes.
+- **Skills WARN.** A skill in their personal `~/.claude/skills` has the same
+  name as one here, and in Claude Code the personal copy wins, so the repo's
+  never runs. Offer to compare the two. If the personal one is better, the fix
+  is to bring it into `skills/` (through `skills/review-skill/` if someone else
+  wrote it) and then rename or remove the personal copy. Don't touch anything
+  in their home directory yourself.
+- **Started below the root.** If your working directory isn't the harness
+  root, say so first: the skills, agents and guards didn't load. Ask them to
+  restart at the root, and stop there.
 
 Then list any files in `skills/`, `gates/` and `agents/` beyond the ones this
-repo ships (`draft-proposal`, `review-skill`, `orientation`, `learn`,
+repo ships (`draft-proposal`, `review-skill`, `review-pr`, `review-tests`, `orientation`, `learn`,
 `proposal_gate.py`, `proposal-reviewer.md`), and whether `company/COMPANY.md`
 and `company/DATA.md` exist. Those are from an earlier run and show where the
 person left off. Read them, and skip the questions they've already answered.
@@ -89,6 +98,10 @@ In one message, ask exactly these three, then stop and wait for the answers:
 
 If an answer is missing or vague, ask again for that one. Don't guess the job,
 and don't guess where the data is.
+
+If the job works on code, say once where it goes: clone the repos into
+`projects/` and keep starting the agent from the harness root.
+`projects/README.md` has why.
 
 From the job, pick a short kebab-case name (`weekly-status`, `release-notes`)
 and use it in every path below. Say the name in the first draft so the person

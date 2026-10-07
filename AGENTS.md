@@ -11,6 +11,17 @@ company: if a section is empty or a file is missing, ask, or suggest
 `/orientation`. Both files are gitignored, so never quote them into a tracked
 file.
 
+## Where you start
+
+Sessions start at the harness root, the folder this file is in. Code repos are
+cloned into `projects/` and worked on from here. If your working directory is
+below the root, say so before any work: the harness's skills, agents and
+guards didn't load, so the rules below are unenforced. Ask the person to
+restart from the root. `projects/README.md` has why.
+
+A project's own `AGENTS.md` or `CLAUDE.md` adds to these rules for that
+project. Where the two disagree, these rules win and you say so.
+
 ## Rules
 
 - Rates come from `data/rates.json` and nowhere else. Never invent a rate and
@@ -32,6 +43,8 @@ steps in order.
 | Skill | Use when |
 |---|---|
 | `skills/draft-proposal/SKILL.md` | Asked to write, draft or price a proposal |
+| `skills/review-pr/SKILL.md` | Asked to review a pull request, a branch or a diff, or whether a change is ready to merge |
+| `skills/review-tests/SKILL.md` | Asked whether tests are any good or would catch a regression, or after tests were written by an agent |
 | `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
 | `skills/learn/SKILL.md` | The agent got something wrong and the person wants it to stick: "learn from that", "don't do that again", "make that a rule" |
 | `skills/orientation/SKILL.md` | Someone runs `/orientation`, is new here, asks how to use this, says "get me started", or wants it set up for their own job and their company's data |

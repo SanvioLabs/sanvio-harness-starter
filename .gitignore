@@ -7,3 +7,5 @@ local-data/
 company/*
 !company/README.md
 !company/*.example.md
+projects/*
+!projects/README.md

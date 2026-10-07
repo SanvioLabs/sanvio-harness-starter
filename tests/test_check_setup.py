@@ -114,6 +114,47 @@ class SetupCheck(unittest.TestCase):
         self.assertFalse(ignored("company/README.md"))
         self.assertFalse(ignored("company/COMPANY.example.md"))
 
+    def write_skill(self, folder, name):
+        path = Path(folder) / name / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("---\nname: {}\ndescription: x\n---\n".format(name))
+
+    def test_a_personal_skill_with_a_repo_skills_name_warns(self):
+        home = self.root / "home"
+        self.write_skill(self.root / "skills", "review-pr")
+        self.write_skill(home / ".claude" / "skills", "review-pr")
+        status, line, _ = check_setup.check_shadowed_skills(self.root, home)
+        self.assertEqual(status, "WARN")
+        self.assertIn("review-pr", line)
+
+    def test_a_personal_skill_renamed_by_frontmatter_still_counts(self):
+        home = self.root / "home"
+        self.write_skill(self.root / "skills", "review-pr")
+        folder = home / ".claude" / "skills" / "my-pr-review"
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text("---\nname: review-pr\ndescription: x\n---\n")
+        self.assertEqual(check_setup.check_shadowed_skills(self.root, home)[0], "WARN")
+
+    def test_different_personal_skills_pass(self):
+        home = self.root / "home"
+        self.write_skill(self.root / "skills", "review-pr")
+        self.write_skill(home / ".claude" / "skills", "archify")
+        self.assertEqual(check_setup.check_shadowed_skills(self.root, home)[0], "PASS")
+
+    def test_no_personal_skills_folder_passes(self):
+        self.write_skill(self.root / "skills", "review-pr")
+        self.assertEqual(check_setup.check_shadowed_skills(self.root, self.root / "nohome")[0], "PASS")
+
+    def test_projects_are_never_committed_but_stay_searchable(self):
+        def ignored(path):
+            return subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", path],
+                                  env=ISOLATED).returncode == 0
+        self.assertTrue(ignored("projects/billing/app.py"))
+        self.assertFalse(ignored("projects/README.md"))
+        searchable = (ROOT / ".ignore").read_text()
+        self.assertIn("!/projects/", searchable)
+        self.assertIn("!/company/", searchable)
+
 
 if __name__ == "__main__":
     unittest.main()
