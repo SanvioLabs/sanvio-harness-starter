@@ -92,3 +92,45 @@ fewer. Same harness, same skills, different strictness per project.
 One person owns the harness and merges changes to it. Everyone else pulls.
 That's what keeps ten developers' agents behaving like one team instead of ten
 people's personal setups.
+
+### Strictness follows risk
+
+The same harness runs a read-only report and a service that writes to
+production. What changes is how much each project's own `AGENTS.md`, gates
+and branch protection ask for:
+
+| | Reads only | Writes to something people use |
+|---|---|---|
+| Connectors | Read tools are fine | Every write asks first. The guard already asks for send, edit, delete and share |
+| Gates | The harness's own | Plus the project's, in its hook and its CI, required before merge |
+| Agents working alone | Fine on a ready ticket | Never against production. Staging only, with that permission written in `AGENTS.md` |
+| Merging | Anyone the owner trusts | The project's owner, after `review-pr` |
+| Deploying | Nothing to deploy | A human yes for each production deploy. `steering/deploying.md` has the rest |
+
+Start a new project on the right-hand column and loosen it once you've seen
+what it does. Going the other way, you learn the risk from an incident.
+
+### How the harness changes
+
+Someone's agent gets something wrong. They say "learn from that", and
+`skills/learn/` drafts the rule in the file that governs it. That goes to the
+owner as a pull request with a `CHANGELOG.md` entry. Once it's merged,
+everyone's `/whats-new` shows it and says what to do to take it.
+
+Nobody edits a shared rule in their own copy. A local edit is a quiet fork,
+and the next update collides with it. A rule only one project needs goes in
+that project's `AGENTS.md`.
+
+### Who owns what
+
+- **The harness owner**: steering, skills, gates, hooks and the release log.
+  Merges every change to them.
+- **Each project's lead**: that project's `AGENTS.md`, its gates and its CI.
+- **Whoever runs production**: the release step, meaning
+  `steering/deploying.md` and the deploy workflow.
+
+To make that hold rather than just be written down, add a
+`.github/CODEOWNERS` naming the owner for `steering/`, `skills/`, `gates/`,
+`.githooks/` and `.github/`, and turn on "require review from code owners" in
+branch protection. A code owner can't approve their own pull request, so this
+needs at least two people.

@@ -28,6 +28,31 @@ place to catch a problem before it reaches someone.
   undo: data written in between, emails sent, a migration that dropped a
   column.
 
+## The deploy workflow
+
+- **One deploy workflow, one caller per environment.** The steps (get
+  credentials, apply, migrate, smoke test) live in one reusable workflow.
+  Staging and production each call it, and differ only in which account they
+  reach, who may start them and what has to be true first. Three copies
+  drift, and the one that drifts is production.
+- **Staging deploys on merge. Production starts by hand.** A merge to main
+  is a decision to release, not a decision to deploy this minute. Make the
+  person starting it type what they're doing ("deploy to production"), so it
+  can't be a misclick. Once a second person exists, a GitHub environment with
+  a required reviewer is the stronger gate.
+- **Plan on the pull request, apply in the deploy.** An infrastructure
+  change shows its plan where it's reviewed, and only the deploy workflow
+  applies it. Never an apply from someone's terminal.
+- **Short-lived credentials.** CI reaches the cloud account through OIDC
+  federation, with a role that trusts this repo only. Never a stored access
+  key.
+- **One deploy at a time per environment.** Set `concurrency` with
+  `cancel-in-progress: false`. Two applies against one state file is a lock
+  error at best.
+- **Honest before it's wired up.** Until the role and the account exist, each
+  step says what's missing and skips. A workflow that's red from day one
+  teaches people to ignore red.
+
 ## Every deploy
 
 - **Production is a one-way door.** Whatever people did on it in between stays
