@@ -108,9 +108,32 @@ def check_company(root):
             "Run /orientation, or say \"get me started\", and it interviews you for it.")
 
 
-def run(root):
+def skill_names(folder):
+    """{name: path} for every skill in a skills folder, by folder name and frontmatter name."""
+    names = {}
+    for skill in sorted(Path(folder).glob("*/SKILL.md")):
+        names[skill.parent.name] = skill
+        match = re.search(r"^name:\s*(\S+)", skill.read_text(errors="replace"), re.M)
+        if match:
+            names[match.group(1)] = skill
+    return names
+
+
+def check_shadowed_skills(root, home=None):
+    """A personal skill with the same name as one of this repo's wins, so the repo's never runs."""
+    personal = Path(home or Path.home()) / ".claude" / "skills"
+    clashes = sorted(set(skill_names(root / "skills")) & set(skill_names(personal)))
+    if not clashes:
+        return ("PASS", "skills: no personal skill hides one of this repo's", None)
+    return ("WARN", "skills: your personal ~/.claude/skills has {} too, and in Claude Code the personal "
+            "copy wins, so this repo's never runs".format(", ".join(clashes)),
+            "Keep one copy. Move what you want into skills/ here, then rename or remove the personal "
+            "one, so everyone using this harness runs the same skill.")
+
+
+def run(root, home=None):
     return [check_python(), check_hooks(root), check_links(root), check_gate(root),
-            check_company(root), check_remote(root)]
+            check_company(root), check_shadowed_skills(root, home), check_remote(root)]
 
 
 def main():
