@@ -41,8 +41,8 @@ which, ask. Also note which project under `projects/` it belongs to, if any.
    - Tests: is the new behaviour tested, and would the test fail if it broke?
      `skills/review-tests/` goes deeper
    - Standards: where it departs from a written standard, quote the standard
-   - The harness itself: a change to steering, skills, gates, agents, hooks
-     or `AGENTS.md` with no new entry in `CHANGELOG.md`
+   - The harness itself: a noticeable change with no new entry in
+     `CHANGELOG.md`. `steering/operating.md` says what counts
 5. **Decide.** **Ready**, **ready with nits**, or **changes needed**. Changes
    needed means at least one finding that would cost something real if it
    merged.
