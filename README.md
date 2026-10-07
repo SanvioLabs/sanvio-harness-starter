@@ -17,7 +17,7 @@ It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 ## Set up
 
 ```bash
-git clone <this repo> && cd harness-starter
+git clone <this repo> my-harness && cd my-harness
 git config core.hooksPath .githooks
 python3 scripts/check_setup.py
 ```
@@ -34,6 +34,10 @@ Working through this on your own? Open the repo in your agent and run
 `skills/orientation/` checks your setup, asks where your company's data lives
 and how the agent should reach it, then walks you through the five layers
 around your own job.
+
+Copied it a while ago? Ask your agent "what's new", or run `/whats-new` in
+Claude Code. It compares your `CHANGELOG.md` with this repo's and tells you
+what you don't have yet and what to do to take it.
 
 `python3 scripts/check_setup.py` runs the setup check on its own: Python, the
 hook, the links below, and whether `origin` is still this public repo. Make
@@ -95,12 +99,12 @@ wrong belongs in the second one.
 
 ## Beyond the five layers
 
-Four more pieces, each one the small version of something a working harness
-runs on every day.
+Each piece below is the small version of something a working harness runs on
+every day.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Steering | `steering/` | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
+| Steering | `steering/` | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, building and testing, deploying, gates, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
 | A company record | `company/` | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
 | Guards inside the agent | `.claude/settings.json`, `.claude/hooks/` | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
 | Your repos, inside it | `projects/` | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. `projects/README.md` has the catch we measured: start inside a project and the hooks and skills don't load |
@@ -169,7 +173,7 @@ in your own conventions, with the source and licence noted. Your harness stays
 yours, and it gets better every time you read someone else's.
 
 When you want more than this starter carries,
-[Stelliad](https://github.com/Stelliad/stelliad-skills) has 25 open skills
+[Stelliad](https://github.com/Stelliad/stelliad-skills) has 28 open skills
 built the same way: each one ends in a verdict backed by evidence, and ships a
 `CUSTOMIZE.md` so you adapt it rather than install it as-is. The full
 `review-skill`, `run-gates` and `review-ticket` live there. Review them like
