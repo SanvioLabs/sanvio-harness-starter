@@ -3,6 +3,28 @@
 This is a harness: the rules, skills, gates and agents you work inside. You do
 the work. A human reviews it, and a human sends, merges or pays.
 
+## Steering
+
+Standing guidance, one file per topic, in `steering/`. These three apply to
+every session. Claude Code loads them through the lines below and Kiro through
+`.kiro/steering/`. In any other tool, read them before you start:
+
+@steering/operating.md
+@steering/response-style.md
+@steering/data-and-tools.md
+
+Read these when their moment comes:
+
+| File | Read when |
+|---|---|
+| `steering/writing.md` | Writing anything a person outside the company will read |
+| `steering/project-setup.md` | Starting a new repo or project |
+| `steering/model-selection.md` | Deciding which model runs what, or handing work to a subagent |
+
+Add your own the same way: one topic per file, and a row here saying when it
+applies. Where a steering file and this file disagree, this file wins, and you
+say so.
+
 ## Who you work for
 
 Before any company work, read `company/COMPANY.md` and `company/DATA.md` if
@@ -33,6 +55,7 @@ project. Where the two disagree, these rules win and you say so.
 - Never send, email or publish anything. A connector that can send, edit,
   delete or share does so only when a human says yes to that one call.
 - Never read, write or print a credential, a key or a `.env` file.
+  `steering/data-and-tools.md` has the detail.
 
 ## Skills
 

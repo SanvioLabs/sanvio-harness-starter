@@ -78,7 +78,7 @@ file and the others point at it:
 |---|---|---|
 | Codex | `AGENTS.md` | The real file |
 | Claude Code | `CLAUDE.md` | `@AGENTS.md`, plus one warning for a session started in the wrong folder |
-| Kiro | `.kiro/steering/` | A symlink to `AGENTS.md` |
+| Kiro | `.kiro/steering/` | Symlinks to `AGENTS.md` and the steering files it loads every session |
 
 Skills and agents work the same way: the real file lives in `skills/` or
 `agents/`, and `AGENTS.md` names it so every tool can find it. Claude Code also
@@ -100,6 +100,7 @@ runs on every day.
 
 | Piece | Where | What it does |
 |---|---|---|
+| Steering | `steering/` | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
 | A company record | `company/` | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
 | Guards inside the agent | `.claude/settings.json`, `.claude/hooks/` | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
 | Your repos, inside it | `projects/` | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. `projects/README.md` has the catch we measured: start inside a project and the hooks and skills don't load |
