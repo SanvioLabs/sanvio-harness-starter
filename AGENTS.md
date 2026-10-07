@@ -72,6 +72,7 @@ steps in order.
 | `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
 | `skills/learn/SKILL.md` | The agent got something wrong and the person wants it to stick: "learn from that", "don't do that again", "make that a rule" |
 | `skills/orientation/SKILL.md` | Someone runs `/orientation`, is new here, asks how to use this, says "get me started", or wants it set up for their own job and their company's data |
+| `skills/whats-new/SKILL.md` | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
 
 ## Done means the gate passes
 
@@ -87,6 +88,14 @@ In Claude Code, `.claude/hooks/guard.py` also runs before every tool call: it
 refuses credential files and asks the human before any connector changes
 something. If it refuses, don't look for another way to do the same thing. Say
 what you needed and ask.
+
+## Changing the harness
+
+A change to `steering/`, `skills/`, `gates/`, `agents/`, the hooks or
+`AGENTS.md` adds an entry at the top of `CHANGELOG.md`: a dated heading with a
+name that won't change, what it adds, the files it touched, and a **Do:** line
+saying what someone needs to do to take it. "Nothing" is a valid Do. That's how
+the next person finds out with "what's new".
 
 ## Agents
 
