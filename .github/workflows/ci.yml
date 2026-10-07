@@ -1,0 +1,32 @@
+# The same checks as the pre-commit hook, run on every push and pull request,
+# so a check that someone skipped locally still runs before anything merges.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Every proposal passes the gate
+        run: python3 gates/proposal_gate.py
+      - name: Setup check
+        run: |
+          git config core.hooksPath .githooks
+          python3 scripts/check_setup.py

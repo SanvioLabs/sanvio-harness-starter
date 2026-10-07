@@ -3,3 +3,7 @@
 __pycache__/
 .DS_Store
 incoming/
+local-data/
+company/*
+!company/README.md
+!company/*.example.md
