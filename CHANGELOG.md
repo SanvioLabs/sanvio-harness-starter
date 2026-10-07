@@ -9,6 +9,22 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape (`steering/operating.md` says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-07: CI should block, not just report
+
+Nothing in your copy changes. CI runs the tests, the gate and the setup check
+on every push, but until branch protection requires its checks, a red run
+still lets the merge through. A check that blocks nothing is decoration.
+
+**Files:** none. It's a setting on GitHub. `steering/project-setup.md` has the
+steps.
+
+**Do:** protect `main` and require CI's checks. Take the names from a run that
+actually happened, not from the workflow file: unrenamed, they're
+`checks (python 3.9)` and `checks (python 3.13)`. A wrong name waits forever
+and blocks every pull request. Read the protection back to confirm it took.
+Branch protection on a private repo needs a paid GitHub plan; on the free plan,
+read every CI run before you merge.
+
 ## 2026-10-07: Example gate catches empty sections
 
 The proposal example's gate now fails a required section that has a heading
