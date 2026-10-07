@@ -80,8 +80,8 @@ Say these out loud when they show up:
   restart at the root, and stop there.
 
 Then list any files in `skills/`, `gates/` and `agents/` beyond the ones this
-repo ships (the skills `orientation`, `learn`, `review-pr`, `review-tests` and
-`review-skill`, `gates/README.md`, and `agents/reviewer.md`), and whether
+repo ships (the skills `orientation`, `learn`, `review-pr`, `review-tests`,
+`review-skill` and `whats-new`, `gates/README.md`, and `agents/reviewer.md`), and whether
 `company/COMPANY.md`
 and `company/DATA.md` exist. Those are from an earlier run and show where the
 person left off. Read them, and skip the questions they've already answered.
@@ -272,6 +272,10 @@ check. In the same draft, add a line to the last step of their skill, if Layer
 Claude Code that's the `reviewer` subagent. In Codex or Kiro, tell them to run
 a separate session with `agents/reviewer.md` as its instructions and point it
 at the brief.
+
+**Last: the release log.** If any layer was written, draft one entry for the
+top of `CHANGELOG.md` in the shape of the ones there: today's date, the job's
+name, the files written, and a **Do:** line. Write it on a yes.
 
 ## Output
 

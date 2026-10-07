@@ -106,6 +106,7 @@ runs on every day.
 | Your repos, inside it | `projects/` | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. `projects/README.md` has the catch we measured: start inside a project and the hooks and skills don't load |
 | Review skills | `skills/review-pr/`, `skills/review-tests/` | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
 | A way to learn | `skills/learn/` | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
+| A release log | `CHANGELOG.md`, `skills/whats-new/` | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
 | CI | `.github/workflows/ci.yml` | The tests, the gate and the setup check run on every push, so a check someone skipped locally still runs before anything merges. Make it a required check in your branch protection, or it only reports |
 
 `HOW-IT-WORKS.md` explains what's running underneath: where the loops are, how

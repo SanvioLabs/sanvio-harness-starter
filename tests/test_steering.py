@@ -35,6 +35,7 @@ class Steering(unittest.TestCase):
 # aren't held to the house style: an agent's em dash shouldn't fail your suite.
 SHIPPED = ["steering/*.md", "examples/**/*", "skills/orientation/*", "skills/learn/*",
            "skills/review-pr/*", "skills/review-tests/*", "skills/review-skill/*",
+           "skills/whats-new/*", "CHANGELOG.md",
            "agents/reviewer.md", "gates/README.md", "company/README.md",
            "company/COMPANY.example.md", "projects/README.md", "README.md", "HOW-IT-WORKS.md",
            "EXERCISES.md", "STARTER-SKILLS.md", "scripts/*", "tests/*", ".claude/**/*",
