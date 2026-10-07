@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gates"))
-from proposal_gate import check  # noqa: E402 (the import needs gates/ on the path first)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "examples" / "proposal" / "gates"))
+from proposal_gate import check  # noqa: E402 (the import needs the example's gates/ on the path first)
 
 RATES = {"roles": {"Engineer": 175, "Designer": 150}, "minimum_fee": 1000}
 

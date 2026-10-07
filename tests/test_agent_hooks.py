@@ -35,7 +35,7 @@ class Guard(unittest.TestCase):
         self.assertDenied(call("Read", file_path="/home/me/.aws/credentials"))
 
     def test_ordinary_files_are_allowed(self):
-        for path in ("AGENTS.md", "gates/proposal_gate.py", "docs/environment.md", "keys.py"):
+        for path in ("AGENTS.md", "examples/proposal/gates/proposal_gate.py", "docs/environment.md", "keys.py"):
             self.assertIsNone(call("Read", file_path=path), path)
 
     def test_shell_reads_of_credentials_are_denied(self):

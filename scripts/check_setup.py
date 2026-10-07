@@ -87,16 +87,18 @@ def check_remote(root):
 
 
 def check_gate(root):
-    example = root / "proposals" / "juniper-bakery.md"
+    example_dir = root / "examples" / "proposal"
+    example = example_dir / "proposals" / "juniper-bakery.md"
     if not example.is_file():
-        return ("WARN", "gate: proposals/juniper-bakery.md is gone, so the example gate wasn't run",
-                "Fine if you've replaced the proposal job with your own.")
-    result = subprocess.run([sys.executable, str(root / "gates" / "proposal_gate.py"), str(example)],
+        return ("WARN", "gate: examples/proposal/ is gone, so the example gate wasn't run",
+                "Fine if you've removed the example on purpose.")
+    result = subprocess.run([sys.executable, str(example_dir / "gates" / "proposal_gate.py"), str(example)],
                             capture_output=True, text=True)
     if result.returncode == 0:
         return ("PASS", "gate: the example proposal passes", None)
     return ("FAIL", "gate: the example proposal fails on a clone where it should pass",
-            "Run python3 gates/proposal_gate.py proposals/juniper-bakery.md and "
+            "Run python3 examples/proposal/gates/proposal_gate.py "
+            "examples/proposal/proposals/juniper-bakery.md and "
             "git status to see what changed.")
 
 

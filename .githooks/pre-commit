@@ -20,11 +20,13 @@ for f in $staged; do
   fi
 done
 
-# 2. A proposal only gets committed if the gate passes.
-proposals=$(printf '%s\n' $staged | grep '^proposals/.*\.md$')
+# 2. A proposal only gets committed if the gate passes (examples/proposal/).
+proposals=$(printf '%s\n' $staged | grep '^examples/proposal/proposals/.*\.md$')
 if [ -n "$proposals" ]; then
-  python3 gates/proposal_gate.py $proposals || status=1
+  python3 examples/proposal/gates/proposal_gate.py $proposals || status=1
 fi
+
+# Your own gates go here, one block each, in the same shape as block 2.
 
 if [ "$status" -ne 0 ]; then
   echo "Commit blocked. Fix what's named above. Don't reach for --no-verify."
