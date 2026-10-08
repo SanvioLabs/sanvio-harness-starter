@@ -25,11 +25,14 @@ GENERIC = re.compile(r"(project's( own)?|its( own)?|their own)\s+(`[^`]+`\s+or\s
 
 def resolve(md, ref, files, dirs):
     """The link target for `ref` written in `md`, or None when it isn't a tracked path."""
-    if not PATHY.match(ref) or ref.startswith(("/", "-", "..")) or ("/" not in ref and "." not in ref):
+    if not PATHY.match(ref) or ref.startswith(("/", "-", "..")):
         return None
+    # A bare word with no dot or slash links only to a file of that name, like LICENSE:
+    # `tests` or `skills` in a sentence is usually the idea, not the folder.
+    bare = "/" not in ref and "." not in ref
     for base in (os.path.dirname(md), ""):
         cand = os.path.normpath(os.path.join(base, ref.rstrip("/")))
-        if cand in files or cand in dirs:
+        if cand in files or (cand in dirs and not bare):
             if cand == md:
                 return None
             rel = os.path.relpath(cand, os.path.dirname(md) or ".")

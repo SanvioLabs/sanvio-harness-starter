@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from link_files import link_text  # noqa: E402 (the import needs scripts/ on the path first)
 
-FILES = {"AGENTS.md", "steering/gates.md", "steering/operating.md", "skills/learn/SKILL.md"}
+FILES = {"LICENSE", "AGENTS.md", "steering/gates.md", "steering/operating.md", "skills/learn/SKILL.md"}
 DIRS = {"steering", "skills", "skills/learn"}
 
 
@@ -27,6 +27,12 @@ class LinkFiles(unittest.TestCase):
 
     def test_a_folder_keeps_its_slash(self):
         self.assertEqual(link("README.md", "`skills/learn/`")[0], "[`skills/learn/`](skills/learn/)")
+
+    def test_a_file_with_no_extension_becomes_a_link(self):
+        self.assertEqual(link("README.md", "See `LICENSE`.")[0], "See [`LICENSE`](LICENSE).")
+
+    def test_a_bare_folder_name_stays_plain(self):
+        self.assertEqual(link("README.md", "the `steering` idea"), ("the `steering` idea", 0))
 
     def test_an_untracked_name_stays_plain(self):
         self.assertEqual(link("README.md", "`company/COMPANY.md` and `.env`"), ("`company/COMPANY.md` and `.env`", 0))

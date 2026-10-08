@@ -225,4 +225,4 @@ same five layers around it that [`examples/proposal/`](examples/proposal/) has.
 
 ## Licence
 
-MIT. Take it, change it, ship it. See `LICENSE`.
+MIT. Take it, change it, ship it. See [`LICENSE`](LICENSE).
