@@ -137,16 +137,22 @@ file you edited this morning. That's why the gate runs in the hook on every
 commit, not once when someone remembers. In your job, anything that was
 reviewed and then changed gets reviewed again.
 
+![One edit lands on a pull request that had passed. Every check and the review go grey, the merge button waits, and they run again until it's green.](docs/pass-goes-stale.gif)
+
 **3. The flywheel.** Every stage ends at a gate, and the output of one turn is
 the input to the next. A proposal becomes a signed scope, the scope becomes the
 build, and the build's lessons change the next proposal. Keep each turn small
 enough to finish.
+
+![Five phases on a wheel: Discover, Shape, Build, Validate, Scale. Each gate between them lights as the work passes and shows the question it asks, and the last gate starts turn two.](docs/flywheel.gif)
 
 **4. Mistake to rule.** When the agent gets something wrong, don't just fix the
 output. Write the rule that stops it happening again, in the file that governs
 it: `AGENTS.md`, a skill, or a gate if it has to hold. Mitchell Hashimoto calls
 this harness engineering. A correction you only said out loud hasn't happened,
 because the next session never heard it.
+
+![In session 1 the agent pushes to main. You say "learn from that", and the rule is written into AGENTS.md with the date. Session 2 starts with fresh context, reads AGENTS.md, and opens a pull request instead.](docs/mistake-to-rule.gif)
 
 The fourth loop is the one that makes the others better. Every other file in
 this repo exists because of it.
