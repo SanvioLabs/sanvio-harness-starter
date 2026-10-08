@@ -4,6 +4,8 @@ A harness is everything around the model: the rules it reads, the procedures it
 follows, the checks that stop it, and the other agents it hands work to. The
 model is the engine. The harness is what makes it safe to leave running.
 
+![You ask a coding agent to fix a bug. On its own it commits a .env file and the mistake lands in your repo. Then the harness appears around it: instructions it reads, steps it follows, a second reader, and checks that stop it. The same request again: the hook blocks the .env, the agent fixes it, the reader and the checks agree, and only then does it land.](docs/what-is-a-harness.gif)
+
 This repo is the smallest harness that still does the job. The root is
 generic: rules, skills, a reviewer, the checks, and a place for your company
 and your code. One worked job sits in `examples/proposal/`, drafting client
@@ -97,6 +99,10 @@ reads as the rule.
 enforcement. It runs whatever the agent decided. Anything you'd hate to get
 wrong belongs in the second one.
 
+Here's which is which, in the order a session meets them:
+
+![Two columns. What the agent reads, and can skip: the rules for the repo, how you work every session, guidance on one topic when it comes up, and step-by-step procedures. What checks the agent: a warning when the checks are off, the guard refusing a risky action, the hook blocking a bad commit, and CI blocking a bad merge.](docs/what-shapes-a-session.gif)
+
 ## Beyond the five layers
 
 Each piece below is the small version of something a working harness runs on
@@ -118,6 +124,13 @@ context is kept separate, and how little of it is code.
 
 The in-agent guards are Claude Code only. Codex and Kiro have their own hook
 systems; the git hook is the check all three share.
+
+**Where something new goes.** A rule, a fact about your company, a check:
+each has one home, and a second copy drifts. `skills/learn/` picks the home
+in this order, starting with the places the agent can't skip, and stops at the
+first that fits.
+
+![Something new drops down seven questions, hardest for the agent to skip first: code goes to your code repo in projects/, a check a script can make goes to gates/ and runs in the hook and CI, a step in a job goes in that job's skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
 
 ## Four loops that keep it working
 
