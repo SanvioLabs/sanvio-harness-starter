@@ -130,7 +130,7 @@ each has one home, and a second copy drifts. [`skills/learn/`](skills/learn/) pi
 in this order, starting with the places the agent can't skip, and stops at the
 first that fits.
 
-![Something new drops down seven questions, hardest for the agent to skip first: code goes to your code repo in projects/, a check a script can make goes to gates/ and runs in the hook and CI, a step in a job goes in that job's skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
+![Seven examples drop down seven questions, one stopping at each, hardest for the agent to skip first: code goes to your code repo in projects/, a check a script can make goes to gates/ and runs in the hook and CI, a step in a job goes in that job's skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
 
 ## Four loops that keep it working
 
