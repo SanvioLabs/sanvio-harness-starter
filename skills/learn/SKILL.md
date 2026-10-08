@@ -1,6 +1,7 @@
 ---
 name: learn
 description: Turn a mistake the agent just made into a written rule, in the file that governs it, so the next session doesn't repeat it. Use when someone says "learn from that", "don't do that again", "remember this", "write that down", "make that a rule", or corrects the agent and wants the correction to stick.
+license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
 # Learn from a mistake

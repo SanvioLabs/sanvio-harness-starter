@@ -9,6 +9,20 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-09: Where it came from
+
+The README now says who makes the starter and asks one thing beyond the MIT
+licence: keep the line that says where a file came from. Each skill carries
+that line as a `license:` field in its frontmatter, and the gate, the guard
+and the git hook carry it as a comment. [`CITATION.cff`](CITATION.cff) turns on GitHub's
+"Cite this repository" button.
+
+**Files:** [`README.md`](README.md), [`CITATION.cff`](CITATION.cff), every `SKILL.md`,
+[`examples/proposal/gates/proposal_gate.py`](examples/proposal/gates/proposal_gate.py), [`.claude/hooks/guard.py`](.claude/hooks/guard.py),
+[`.githooks/pre-commit`](.githooks/pre-commit)
+
+**Do:** nothing. If you copy a file into your own harness, keep its credit line.
+
 ## 2026-10-09: Usage log and sprint report
 
 A new hook logs which skills, agents and slash commands ran, and when the guard

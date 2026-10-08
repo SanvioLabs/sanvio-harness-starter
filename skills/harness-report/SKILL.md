@@ -1,6 +1,7 @@
 ---
 name: harness-report
 description: Turn your harness usage for a sprint into a short report you share with the harness owner, with what you'd add, change or drop. Reads only your own local usage log, and you read the report before it goes anywhere. Use at the end of a sprint, or when someone asks for "my harness report", "what did I use this sprint", "sprint follow-up", or "what should we add to the harness".
+license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
 # Harness report

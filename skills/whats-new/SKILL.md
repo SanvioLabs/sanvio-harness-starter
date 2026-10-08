@@ -1,6 +1,7 @@
 ---
 name: whats-new
 description: Say what's changed in this harness, and what the public starter has that this copy doesn't yet, from CHANGELOG.md, with what to do to take each one. Reports only, never pulls, merges or copies files. Use when someone asks "what's new", "what changed", "anything new in the starter", "am I up to date", "what did I miss", or "what's changed since <date>".
+license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
 # What's new

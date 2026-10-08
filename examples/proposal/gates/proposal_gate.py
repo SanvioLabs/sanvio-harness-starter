@@ -6,6 +6,8 @@ Usage:
 
 With no arguments it checks every file in proposals/. Exits 0 when every file
 passes and 1 when any fails, so a hook or CI can block on it.
+
+From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 """
 import json
 import re
