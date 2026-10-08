@@ -9,6 +9,18 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape (`steering/operating.md` says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-08: Two sessions, one clone
+
+`building-and-testing.md` now says to give a second agent session its own git
+worktree, so two sessions never share a branch or a checkout. The README also
+opens with what shapes a session (what the agent reads, and what runs whatever
+it decided), and shows where something new goes, in the order `learn` uses.
+
+**Files:** `steering/building-and-testing.md`, `README.md`,
+`docs/what-shapes-a-session.gif`, `docs/where-it-goes.gif`
+
+**Do:** if you run two agents at once, start the second in a worktree.
+
 ## 2026-10-07: Running one harness across teams
 
 `HOW-IT-WORKS.md` now says how strictness follows risk (a read-only project

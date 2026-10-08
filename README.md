@@ -14,6 +14,11 @@ the example, then build your own job the same way at the root.
 
 It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 
+Some of a harness the agent reads, and can reason past. The rest runs whatever
+the agent decided. Here's which is which, in the order a session meets them:
+
+![Two columns. Context: AGENTS.md, three steering files every session, six more when their topic comes up, and skills. Enforcement: the session-start check, the guard before every tool call, the git hook at every commit, and CI as a required check before a merge. Each lights as the session reaches it.](docs/what-shapes-a-session.gif)
+
 ## Set up
 
 ```bash
@@ -118,6 +123,12 @@ context is kept separate, and how little of it is code.
 
 The in-agent guards are Claude Code only. Codex and Kiro have their own hook
 systems; the git hook is the check all three share.
+
+**Where something new goes.** A rule, a fact about your company, a check:
+each has one home, and a second copy drifts. `skills/learn/` picks the home
+in this order, strongest first, and stops at the first that fits.
+
+![Something new drops down seven questions, strongest first: code goes to projects/, a check a script can make goes to gates/ and the hook or CI, a procedure step to its skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
 
 ## Four loops that keep it working
 

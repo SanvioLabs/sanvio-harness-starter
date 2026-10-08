@@ -24,6 +24,11 @@ language, the habits are the same.
   that fails on the bug, then the fix that makes it pass.
 - **Run it the way a user would.** A build that passes isn't a feature that
   works. Click it, call it, read what comes back.
+- **Two sessions, one clone: give each its own worktree.** Two agents in one
+  checkout share the branch and every file on disk, so one commits onto the
+  other's branch or switches it mid-task. `git worktree add -b <branch>
+  ../<name> origin/main` gives the second its own folder and branch, with the
+  same hook setting. Remove it once the branch merges.
 - **Add a dependency only when it earns its place.** Pin it, and commit the
   lockfile.
 - **CI from the first commit.** `examples/ci/project-checks.yml` is green on
