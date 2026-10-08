@@ -130,6 +130,8 @@ and nothing moves until it passes. Here that's the skill's last two steps and
 the hook refusing a commit. The rule that makes it a loop: never edit the check
 to make the work pass.
 
+![A change goes edit, test, hook. The hook blocks a committed .env, the change goes back to edit, and on the second pass it clears the hook, CI, review and a human merge.](docs/fix-and-recheck.gif)
+
 **2. A pass goes stale.** A check that passed yesterday says nothing about the
 file you edited this morning. That's why the gate runs in the hook on every
 commit, not once when someone remembers. In your job, anything that was
