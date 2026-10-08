@@ -5,19 +5,19 @@ cheap to check and expensive to miss: an empty section, a placeholder left in,
 a number that doesn't match its source.
 
 Your gates go here, one per job: `gates/<job>_gate.py`. The pattern to copy is
-`examples/proposal/gates/proposal_gate.py`:
+[`examples/proposal/gates/proposal_gate.py`](../examples/proposal/gates/proposal_gate.py):
 
 - Standard library only, so it runs anywhere Python 3.9 does
 - One `PASS` or `FAIL` line per file, and each problem named on its own line
 - Exit 1 when anything fails, so the hook and CI can block on it
 - With file paths, check those. With none, check every output the job has,
   which is how CI runs it
-- A test in `tests/` for each thing it checks
+- A test in [`tests/`](../tests/) for each thing it checks
 
-Then add a block to `.githooks/pre-commit` that runs it on the staged files it
-covers, after the ones already there, and a step to `.github/workflows/ci.yml`.
+Then add a block to [`.githooks/pre-commit`](../.githooks/pre-commit) that runs it on the staged files it
+covers, after the ones already there, and a step to [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
 Whether a check earns a gate, which of those places it runs in, and what to
-check between phases: `steering/gates.md`.
+check between phases: [`steering/gates.md`](../steering/gates.md).
 
 Never edit a gate to make work pass. Fix the work.

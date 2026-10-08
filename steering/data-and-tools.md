@@ -16,7 +16,7 @@ certificate or connection string. That includes:
 - asking a person to paste a secret into the session
 
 Refer to secrets by name and let the runtime load them. Check that a secret
-exists without showing its value. In Claude Code, `.claude/hooks/guard.py`
+exists without showing its value. In Claude Code, [`.claude/hooks/guard.py`](../.claude/hooks/guard.py)
 blocks the common cases of the first two: credential files by name and a few
 commands that print secrets.
 

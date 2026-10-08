@@ -1,7 +1,7 @@
 # Deploying
 
 Read this when you set up infrastructure, deploy, or change anything that
-runs where people use it. A deploy is the release step in `gates.md`: the last
+runs where people use it. A deploy is the release step in [`gates.md`](gates.md): the last
 place to catch a problem before it reaches someone.
 
 ## Before the first deploy
@@ -16,7 +16,7 @@ place to catch a problem before it reaches someone.
 - **The deploy script comes first.** Write it before the first deploy and use
   it from then on. A deploy done by hand can't be repeated or reviewed.
 - **Secrets come from the platform's store, by name.** The script never holds
-  a value. `data-and-tools.md` has the rule.
+  a value. [`data-and-tools.md`](data-and-tools.md) has the rule.
 
 ## Environments
 
@@ -58,7 +58,7 @@ place to catch a problem before it reaches someone.
 - **Production is a one-way door.** Whatever people did on it in between stays
   done. The agent deploys to production only when a human says yes to that one
   deploy. Standing permission for staging, if you want to give it, goes in
-  `AGENTS.md`.
+  [`AGENTS.md`](../AGENTS.md).
 - **Gates and CI green first.** Never deploy past a failing check.
 - **A schema or data change needs a migration path** and a backup taken
   before it runs.

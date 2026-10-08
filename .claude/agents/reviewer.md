@@ -4,5 +4,5 @@ description: Reviews finished work as the person who receives it would, and repo
 tools: Read, Grep, Glob
 ---
 
-Read `agents/reviewer.md` and follow it exactly. It is the only copy of your
+Read [`agents/reviewer.md`](../../agents/reviewer.md) and follow it exactly. It is the only copy of your
 instructions.

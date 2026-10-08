@@ -35,23 +35,23 @@ is cheaper than the problem it prevents.
   runs and blocks nothing is decoration. Take the check names from a real run,
   not from the workflow file, and never require a check behind a `paths:`
   filter: on a PR it doesn't run for, it never reports, and the PR can't merge.
-- Copy this harness's `.githooks/` and run `git config core.hooksPath .githooks`
+- Copy this harness's [`.githooks/`](../.githooks/) and run `git config core.hooksPath .githooks`
   in every clone. The setting doesn't travel with a clone.
 
 ## 2. Spec before code (30 to 60 min)
 
 Write the spec before the code, in the repo it describes.
-`building-and-testing.md` has the order and where it lives.
+[`building-and-testing.md`](building-and-testing.md) has the order and where it lives.
 
 ## 3. Scaffold by hand (15 min)
 
 Write the config and folders directly, check a build passes, and write one
-test straight away. `building-and-testing.md` has why.
+test straight away. [`building-and-testing.md`](building-and-testing.md) has why.
 
 ## 4. Infrastructure and the deploy script (20 min)
 
 Infrastructure as code, a separate account for sensitive data, and the deploy
-script written before the first deploy. `deploying.md` has the full list.
+script written before the first deploy. [`deploying.md`](deploying.md) has the full list.
 
 ## 5. Tickets, once you know the work (10 min)
 
@@ -65,4 +65,4 @@ order that makes it testable end to end soonest.
 - Sensitive data in a shared account.
 - A deploy script written after the manual deploys.
 
-The detail behind each is in `building-and-testing.md` and `deploying.md`.
+The detail behind each is in [`building-and-testing.md`](building-and-testing.md) and [`deploying.md`](deploying.md).

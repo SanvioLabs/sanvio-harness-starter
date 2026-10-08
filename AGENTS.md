@@ -5,9 +5,9 @@ the work. A human reviews it, and a human sends, merges or pays.
 
 ## Steering
 
-Standing guidance, one file per topic, in `steering/`. These three apply to
+Standing guidance, one file per topic, in [`steering/`](steering/). These three apply to
 every session. Claude Code loads them through the lines below and Kiro through
-`.kiro/steering/`. In any other tool, read them before you start:
+[`.kiro/steering/`](.kiro/steering/). In any other tool, read them before you start:
 
 @steering/operating.md
 @steering/response-style.md
@@ -17,12 +17,12 @@ Read these when their moment comes:
 
 | File | Read when |
 |---|---|
-| `steering/writing.md` | Writing anything a person outside the company will read |
-| `steering/project-setup.md` | Starting a new repo or project |
-| `steering/building-and-testing.md` | Writing or changing code, or writing tests for it |
-| `steering/deploying.md` | Setting up infrastructure, deploying, or changing anything people use |
-| `steering/model-selection.md` | Deciding which model runs what, or handing work to a subagent |
-| `steering/gates.md` | Adding, moving or strengthening a check, or deciding whether a rule needs one |
+| [`steering/writing.md`](steering/writing.md) | Writing anything a person outside the company will read |
+| [`steering/project-setup.md`](steering/project-setup.md) | Starting a new repo or project |
+| [`steering/building-and-testing.md`](steering/building-and-testing.md) | Writing or changing code, or writing tests for it |
+| [`steering/deploying.md`](steering/deploying.md) | Setting up infrastructure, deploying, or changing anything people use |
+| [`steering/model-selection.md`](steering/model-selection.md) | Deciding which model runs what, or handing work to a subagent |
+| [`steering/gates.md`](steering/gates.md) | Adding, moving or strengthening a check, or deciding whether a rule needs one |
 
 Add your own the same way: one topic per file, and a row here saying when it
 applies. Where a steering file and this file disagree, this file wins, and you
@@ -40,10 +40,10 @@ file.
 ## Where you start
 
 Sessions start at the harness root, the folder this file is in. Code repos are
-cloned into `projects/` and worked on from here. If your working directory is
+cloned into [`projects/`](projects/) and worked on from here. If your working directory is
 below the root, say so before any work: the harness's skills, agents and
 guards didn't load, so the rules below are unenforced. Ask the person to
-restart from the root. `projects/README.md` has why.
+restart from the root. [`projects/README.md`](projects/README.md) has why.
 
 A project's own `AGENTS.md` or `CLAUDE.md` adds to these rules for that
 project. Where the two disagree, these rules win and you say so.
@@ -58,7 +58,7 @@ project. Where the two disagree, these rules win and you say so.
 - Never send, email or publish anything. A connector that can send, edit,
   delete or share does so only when a human says yes to that one call.
 - Never read, write or print a credential, a key or a `.env` file.
-  `steering/data-and-tools.md` has the detail.
+  [`steering/data-and-tools.md`](steering/data-and-tools.md) has the detail.
 
 ## Skills
 
@@ -67,12 +67,12 @@ steps in order.
 
 | Skill | Use when |
 |---|---|
-| `skills/review-pr/SKILL.md` | Asked to review a pull request, a branch or a diff, or whether a change is ready to merge |
-| `skills/review-tests/SKILL.md` | Asked whether tests are any good or would catch a regression, or after tests were written by an agent |
-| `skills/review-skill/SKILL.md` | Asked to install, add, try or review a skill from outside this repo |
-| `skills/learn/SKILL.md` | The agent got something wrong and the person wants it to stick: "learn from that", "don't do that again", "make that a rule" |
-| `skills/orientation/SKILL.md` | Someone runs `/orientation`, is new here, asks how to use this, says "get me started", or wants it set up for their own job and their company's data |
-| `skills/whats-new/SKILL.md` | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
+| [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md) | Asked to review a pull request, a branch or a diff, or whether a change is ready to merge |
+| [`skills/review-tests/SKILL.md`](skills/review-tests/SKILL.md) | Asked whether tests are any good or would catch a regression, or after tests were written by an agent |
+| [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md) | Asked to install, add, try or review a skill from outside this repo |
+| [`skills/learn/SKILL.md`](skills/learn/SKILL.md) | The agent got something wrong and the person wants it to stick: "learn from that", "don't do that again", "make that a rule" |
+| [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md) | Someone runs `/orientation`, is new here, asks how to use this, says "get me started", or wants it set up for their own job and their company's data |
+| [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
 
 ## Done means the gate passes
 
@@ -81,10 +81,10 @@ gate and the command that runs it. Run it and show the output. Never say work
 is done, ready or finished while its gate fails, and never edit a gate to make
 work pass.
 
-The gates also run in `.githooks/pre-commit`, along with a check for secrets.
+The gates also run in [`.githooks/pre-commit`](.githooks/pre-commit), along with a check for secrets.
 If a commit is blocked, fix what it names. Never commit with `--no-verify`.
 
-In Claude Code, `.claude/hooks/guard.py` also runs before every tool call: it
+In Claude Code, [`.claude/hooks/guard.py`](.claude/hooks/guard.py) also runs before every tool call: it
 refuses credential files and asks the human before any connector changes
 something. If it refuses, don't look for another way to do the same thing. Say
 what you needed and ask.
@@ -93,7 +93,7 @@ what you needed and ask.
 
 A noticeable change (something new, something that works differently,
 something that moved, or anything someone has to act on) adds an entry at the
-top of `CHANGELOG.md` in the same change. `steering/operating.md` has what
+top of [`CHANGELOG.md`](CHANGELOG.md) in the same change. [`steering/operating.md`](steering/operating.md) has what
 counts and the shape of an entry. That's how the next person finds out with
 "what's new".
 
@@ -103,16 +103,16 @@ After the gate passes, hand the work to a reviewer before a human sees it.
 
 | Agent | Does |
 |---|---|
-| `agents/reviewer.md` | Reads finished work as the person who receives it would and reports what's unclear or over-promised, using the job's brief if it has one. Never edits |
+| [`agents/reviewer.md`](agents/reviewer.md) | Reads finished work as the person who receives it would and reports what's unclear or over-promised, using the job's brief if it has one. Never edits |
 
 In Claude Code it runs as the `reviewer` subagent. In other tools, run it as a
 separate session with that file as its instructions.
 
 ## Examples
 
-`examples/` holds worked jobs to read and copy. Before working in one, read its
+[`examples/`](examples/) holds worked jobs to read and copy. Before working in one, read its
 `README.md`: it carries that job's rules, and they apply on top of these.
 
 | Example | Shows |
 |---|---|
-| `examples/proposal/` | Drafting a client proposal: inputs, rules, a skill (`skills/draft-proposal/SKILL.md` inside it), a gate, the hook block and a review brief |
+| [`examples/proposal/`](examples/proposal/) | Drafting a client proposal: inputs, rules, a skill (`skills/draft-proposal/SKILL.md` inside it), a gate, the hook block and a review brief |

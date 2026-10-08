@@ -10,8 +10,8 @@ yourself.
 ## Before you start
 
 You're told what to review. Find out who receives it, and read the job's
-reviewer brief if it has one: a file in `agents/` or in the job's own folder
-(`examples/proposal/agents/proposal-reviewer.md` is one). The brief says what
+reviewer brief if it has one: a file in [`agents/`](./) or in the job's own folder
+([`examples/proposal/agents/proposal-reviewer.md`](../examples/proposal/agents/proposal-reviewer.md) is one). The brief says what
 that reader cares about. Without one, ask who receives the work, or work it out
 from the work itself and say who you assumed.
 

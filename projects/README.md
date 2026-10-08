@@ -15,10 +15,10 @@ cd ..                         # then start your agent from the harness root
 Then point it at the project: "in projects/billing, fix the failing test".
 
 This matters more than it looks. We tested Claude Code started inside
-`projects/<repo>`: it reads the harness's `CLAUDE.md` from the folder above,
-but not the `AGENTS.md` that file imports, and **none of the harness's
+`projects/<repo>`: it reads the harness's [`CLAUDE.md`](../CLAUDE.md) from the folder above,
+but not the [`AGENTS.md`](../AGENTS.md) that file imports, and **none of the harness's
 skills, agents or hooks**. No rules, no `/orientation`, no `review-pr`, no
-credential guard, and nothing tells you so. `CLAUDE.md` carries one warning
+credential guard, and nothing tells you so. [`CLAUDE.md`](../CLAUDE.md) carries one warning
 outside the import for exactly this, so the agent says so out loud.
 
 In Kiro, open the harness root as the workspace, for the same reason.
@@ -27,7 +27,7 @@ In Kiro, open the harness root as the workspace, for the same reason.
 
 This folder is gitignored so the harness never commits your code. Search
 tools skip gitignored folders, and Claude Code's Grep did: started at the
-root, it found nothing under `projects/` until `.ignore` said to look. Leave
+root, it found nothing under [`projects/`](./) until [`.ignore`](../.ignore) said to look. Leave
 that file in place.
 
 ## What each project keeps for itself
@@ -36,9 +36,9 @@ that file in place.
   what's specific to it: how to run it, its architecture, its quirks. It adds
   to the harness's rules and never loosens one.
 - **Its own git hooks and CI.** Each project is a separate repo, so the
-  harness's `.githooks/pre-commit` doesn't run on its commits. Wire the
+  harness's [`.githooks/pre-commit`](../.githooks/pre-commit) doesn't run on its commits. Wire the
   project's own checks there, and in its own pipeline.
-  `examples/ci/project-checks.yml` is a CI file to start from.
+  [`examples/ci/project-checks.yml`](../examples/ci/project-checks.yml) is a CI file to start from.
 - **Its own history.** Commit and push inside the project folder. The harness
   repo never sees the project's files.
 

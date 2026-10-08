@@ -14,7 +14,7 @@ bad. Review it, then have your harness write its own version.
 **1. Review it.** Ask your agent: "Review this skill: <link>." The
 `review-skill` skill in this repo does the following:
 
-- Copies the skill into `incoming/`, never into `skills/`, and doesn't run or
+- Copies the skill into `incoming/`, never into [`skills/`](skills/), and doesn't run or
   load anything in it.
 - Reads every file, scripts included, and lists what it would make an agent do:
   commands, URLs, files read or written, anything installed.

@@ -14,7 +14,7 @@ number or a fact to fill a gap. Ask.
 ## The phases, and how to act in each
 
 Work moves through five phases. Each one ends at a gate: a check that has to
-pass before the next phase starts. `gates.md` has what each one asks.
+pass before the next phase starts. [`gates.md`](gates.md) has what each one asks.
 
 | Phase | What happens | How you act |
 |---|---|---|
@@ -55,7 +55,7 @@ editing whichever file is in front of you is the mistake.
 
 **A decision agreed in conversation hasn't happened.** The next session reads
 the files, not this conversation. A decision exists once it's written, dated,
-into the file that governs what it changes. `skills/learn/` does that for
+into the file that governs what it changes. [`skills/learn/`](../skills/learn/) does that for
 mistakes.
 
 ## Words the gates turn on
@@ -68,7 +68,7 @@ mistakes.
 
 ## Telling people what changed
 
-`CHANGELOG.md` is how the next person finds out what's different, by asking
+[`CHANGELOG.md`](../CHANGELOG.md) is how the next person finds out what's different, by asking
 "what's new". Any noticeable change gets an entry at the top, in the same
 change, not later:
 
@@ -95,5 +95,9 @@ fine).
 - Flag risks, gaps and unclear requirements when you see them, not when asked.
 - Be direct and practical. No theatre.
 - Use a skill when one fits. Don't do by hand what a skill already does.
+- Link a file when a Markdown file here names it, so someone reading on
+  GitHub clicks through instead of searching. `python3 scripts/link_files.py`
+  links every one it can find; a gitignored file stays plain, because the link
+  would be broken for everyone else.
 - Update whatever tracks the work's state after anything that changes a
   decision, a blocker, a next step or money.
