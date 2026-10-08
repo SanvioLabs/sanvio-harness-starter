@@ -5,12 +5,12 @@ review, an invoice, a support reply, a release note. Then build the five layers
 around it, in this repo or a copy of it.
 
 On your own? Run `/orientation` in Claude Code, or say "get me started" to
-any agent, and `skills/orientation/` walks you through the same five layers,
+any agent, and [`skills/orientation/`](skills/orientation/) walks you through the same five layers,
 one at a time.
 
 ## 1. Write the instructions file (10 min)
 
-Rewrite `AGENTS.md` for your job. Three things only:
+Rewrite [`AGENTS.md`](AGENTS.md) for your job. Three things only:
 
 - Where the inputs come from, and that the agent never invents them
 - Where the output goes, and what it's called
@@ -21,7 +21,7 @@ mistake is a line you're missing.
 
 ## 2. Turn the job into a skill (10 min)
 
-Copy `examples/proposal/skills/draft-proposal/` to `skills/<your-job>/` and
+Copy [`examples/proposal/skills/draft-proposal/`](examples/proposal/skills/draft-proposal/) to `skills/<your-job>/` and
 rewrite it for your job. A skill has a name, a description that says when to
 use it, numbered steps, and a defined output.
 If you can't say what the output is, it isn't a skill yet.
@@ -30,28 +30,28 @@ If you can't say what the output is, it isn't a skill yet.
 
 Write a script that exits non-zero when the output isn't ready. Check the things
 that are cheap to check and expensive to miss: an empty section, a placeholder,
-a number that doesn't match its source. `examples/proposal/gates/proposal_gate.py`
-is the pattern, and `gates/README.md` has the rules. Yours goes in `gates/`.
+a number that doesn't match its source. [`examples/proposal/gates/proposal_gate.py`](examples/proposal/gates/proposal_gate.py)
+is the pattern, and [`gates/README.md`](gates/README.md) has the rules. Yours goes in [`gates/`](gates/).
 
 Then try to break it. Ask the agent to mark the job done with the gate failing.
 
 ## 4. Wire it into the hook (5 min)
 
-Add your gate to `.githooks/pre-commit`. Run `git config core.hooksPath .githooks`
+Add your gate to [`.githooks/pre-commit`](.githooks/pre-commit). Run `git config core.hooksPath .githooks`
 if you haven't. Commit something that should fail and watch it refuse.
 
 ## 5. Add one agent (if you have time)
 
-The harness already has a reviewer, `agents/reviewer.md`. Write it a brief
-for your output in `agents/`, shaped like
-`examples/proposal/agents/proposal-reviewer.md`: who receives the output, and
+The harness already has a reviewer, [`agents/reviewer.md`](agents/reviewer.md). Write it a brief
+for your output in [`agents/`](agents/), shaped like
+[`examples/proposal/agents/proposal-reviewer.md`](examples/proposal/agents/proposal-reviewer.md): who receives the output, and
 what they'd hold you to. The reviewer reads as that person, reports, and never
 edits.
 
 ## Bonus: borrow a skill safely
 
 Pick one skill from `mattpocock/skills` or `obra/superpowers` and ask your agent
-to review it with `skills/review-skill/`. What did it find that you already had?
+to review it with [`skills/review-skill/`](skills/review-skill/). What did it find that you already had?
 What gap did it fill? Did anything get flagged?
 
 ## Bonus: a hook inside the agent loop

@@ -1,6 +1,6 @@
 # Proposal reviewer brief
 
-The brief the root `reviewer` agent (`agents/reviewer.md`) reads for this job.
+The brief the root `reviewer` agent ([`agents/reviewer.md`](../../../agents/reviewer.md)) reads for this job.
 
 You review a client proposal before a human sends it. You did not write it, and
 you read it as the client's finance lead would: someone who will hold the

@@ -5,13 +5,13 @@ description: Say what's changed in this harness, and what the public starter has
 
 # What's new
 
-`CHANGELOG.md` is the release log: newest first, one entry per change, each
+[`CHANGELOG.md`](../../CHANGELOG.md) is the release log: newest first, one entry per change, each
 with a dated heading, the files it touched and a **Do:** line. This skill reads
 it, and the starter's copy, and tells the person what's new for them.
 
 ## Steps
 
-1. **Read `CHANGELOG.md` here.** If it's missing, this copy predates it, and
+1. **Read [`CHANGELOG.md`](../../CHANGELOG.md) here.** If it's missing, this copy predates it, and
    everything in the starter's log is new to them.
 2. **Read the starter's.** Say first that this reads the public starter and
    changes nothing in their files. Then:

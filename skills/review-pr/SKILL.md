@@ -12,7 +12,7 @@ only: a human decides what happens to the PR.
 ## Inputs
 
 One of: a PR number, a branch name, or "my current changes". If it's unclear
-which, ask. Also note which project under `projects/` it belongs to, if any.
+which, ask. Also note which project under [`projects/`](../../projects/) it belongs to, if any.
 
 ## Steps
 
@@ -25,7 +25,7 @@ which, ask. Also note which project under `projects/` it belongs to, if any.
    If the diff is too big to read properly (roughly over 800 changed lines),
    say so and suggest how it splits. Then review the riskiest part rather than
    skimming all of it.
-2. **Read what it's held to.** `AGENTS.md` here, the project's own
+2. **Read what it's held to.** [`AGENTS.md`](../../AGENTS.md) here, the project's own
    `AGENTS.md` or `CLAUDE.md` if it has one, and the standards they point at.
    If the PR links a ticket, read what the ticket asked for.
 3. **Run what checks it.** The project's tests and any gate that covers the
@@ -39,10 +39,10 @@ which, ask. Also note which project under `projects/` it belongs to, if any.
    - Error paths: what happens when the call fails, times out or returns
      nothing
    - Tests: is the new behaviour tested, and would the test fail if it broke?
-     `skills/review-tests/` goes deeper
+     [`skills/review-tests/`](../review-tests/) goes deeper
    - Standards: where it departs from a written standard, quote the standard
    - The harness itself: a noticeable change with no new entry in
-     `CHANGELOG.md`. `steering/operating.md` says what counts
+     [`CHANGELOG.md`](../../CHANGELOG.md). [`steering/operating.md`](../../steering/operating.md) says what counts
 5. **Decide.** **Ready**, **ready with nits**, or **changes needed**. Changes
    needed means at least one finding that would cost something real if it
    merged.

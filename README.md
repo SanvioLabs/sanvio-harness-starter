@@ -8,7 +8,7 @@ model is the engine. The harness is what makes it safe to leave running.
 
 This repo is the smallest harness that still does the job. The root is
 generic: rules, skills, a reviewer, the checks, and a place for your company
-and your code. One worked job sits in `examples/proposal/`, drafting client
+and your code. One worked job sits in [`examples/proposal/`](examples/proposal/), drafting client
 proposals, because a proposal is where the cheap mistakes live: a placeholder
 left in, a rate somebody made up, a total that doesn't add up. None of those are
 hard. All of them ship anyway when the process lives in your head. You read
@@ -24,7 +24,7 @@ git config core.hooksPath .githooks
 python3 scripts/check_setup.py
 ```
 
-**Don't skip the middle line.** Git won't run the hook in `.githooks/` unless
+**Don't skip the middle line.** Git won't run the hook in [`.githooks/`](.githooks/) unless
 you point it there, and the setting doesn't travel with a clone. Skip it and
 every check in the hook silently does nothing. That exact line was missing from
 a real harness for months, and nobody noticed because nothing failed.
@@ -33,12 +33,12 @@ You need Python 3.9 or newer and no packages.
 
 Working through this on your own? Open the repo in your agent and run
 `/orientation` in Claude Code, or say "get me started" in any of them.
-`skills/orientation/` checks your setup, asks where your company's data lives
+[`skills/orientation/`](skills/orientation/) checks your setup, asks where your company's data lives
 and how the agent should reach it, then walks you through the five layers
 around your own job.
 
 Copied it a while ago? Ask your agent "what's new", or run `/whats-new` in
-Claude Code. It compares your `CHANGELOG.md` with this repo's and tells you
+Claude Code. It compares your [`CHANGELOG.md`](CHANGELOG.md) with this repo's and tells you
 what you don't have yet and what to do to take it.
 
 `python3 scripts/check_setup.py` runs the setup check on its own: Python, the
@@ -47,7 +47,7 @@ your own private copy before any company material goes in.
 
 On Windows, clone with `git clone -c core.symlinks=true` from a terminal with
 Developer Mode on, or the two links below arrive as plain text files. If they
-do, `AGENTS.md` still works for every tool.
+do, [`AGENTS.md`](AGENTS.md) still works for every tool.
 
 ## The five layers, one step at a time
 
@@ -57,10 +57,10 @@ or diff two to see exactly what a layer adds.
 | Tag | Adds | What it fixes |
 |---|---|---|
 | `step-0` | A rate card, a template, one finished proposal | Nothing yet. The agent guesses |
-| `step-1` | `AGENTS.md`, the instructions file | The agent stops inventing rates and knows where things go |
+| `step-1` | [`AGENTS.md`](AGENTS.md), the instructions file | The agent stops inventing rates and knows where things go |
 | `step-2` | `skills/draft-proposal/`, a skill | Drafting becomes the same procedure every time, with a defined output |
 | `step-3` | `gates/proposal_gate.py`, a gate | "Done" becomes something a script checks, not something the agent claims |
-| `step-4` | `.githooks/pre-commit`, a hook | The gate runs whether anyone remembers it or not, and secrets can't be committed |
+| `step-4` | [`.githooks/pre-commit`](.githooks/pre-commit), a hook | The gate runs whether anyone remembers it or not, and secrets can't be committed |
 | `step-5` | `agents/proposal-reviewer.md`, a review agent | A second reader who reads like the client, and reports without editing |
 
 ```bash
@@ -70,8 +70,8 @@ git checkout main            # everything
 ```
 
 The tags build the proposal job at the root, one layer at a time, which is
-how the talk builds it. On `main` the same files live in `examples/proposal/`,
-the reviewer is generic (`agents/reviewer.md`, with the proposal brief in the
+how the talk builds it. On `main` the same files live in [`examples/proposal/`](examples/proposal/),
+the reviewer is generic ([`agents/reviewer.md`](agents/reviewer.md), with the proposal brief in the
 example), and the root is left for your own job. Check out `step-0` to start
 where the talk started.
 
@@ -82,20 +82,20 @@ file and the others point at it:
 
 | Tool | Reads | Here |
 |---|---|---|
-| Codex | `AGENTS.md` | The real file |
-| Claude Code | `CLAUDE.md` | `@AGENTS.md`, plus one warning for a session started in the wrong folder |
-| Kiro | `.kiro/steering/` | Symlinks to `AGENTS.md` and the steering files it loads every session |
+| Codex | [`AGENTS.md`](AGENTS.md) | The real file |
+| Claude Code | [`CLAUDE.md`](CLAUDE.md) | `@AGENTS.md`, plus one warning for a session started in the wrong folder |
+| Kiro | [`.kiro/steering/`](.kiro/steering/) | Symlinks to [`AGENTS.md`](AGENTS.md) and the steering files it loads every session |
 
-Skills and agents work the same way: the real file lives in `skills/` or
-`agents/`, and `AGENTS.md` names it so every tool can find it. Claude Code also
-picks them up natively through `.claude/`.
+Skills and agents work the same way: the real file lives in [`skills/`](skills/) or
+[`agents/`](agents/), and [`AGENTS.md`](AGENTS.md) names it so every tool can find it. Claude Code also
+picks them up natively through [`.claude/`](.claude/).
 
 A second copy of an instruction is worse than none. It drifts, and it still
 reads as the rule.
 
 ## Rules versus enforcement
 
-`AGENTS.md` is context. The agent reads it and usually follows it. The hook is
+[`AGENTS.md`](AGENTS.md) is context. The agent reads it and usually follows it. The hook is
 enforcement. It runs whatever the agent decided. Anything you'd hate to get
 wrong belongs in the second one.
 
@@ -110,23 +110,23 @@ every day.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Steering | `steering/` | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, building and testing, deploying, gates, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
-| A company record | `company/` | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
-| Guards inside the agent | `.claude/settings.json`, `.claude/hooks/` | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
-| Your repos, inside it | `projects/` | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. `projects/README.md` has the catch we measured: start inside a project and the hooks and skills don't load |
-| Review skills | `skills/review-pr/`, `skills/review-tests/` | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
-| A way to learn | `skills/learn/` | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
-| A release log | `CHANGELOG.md`, `skills/whats-new/` | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
-| CI | `.github/workflows/` | The tests, the gate, the setup check and a secret scan of the whole history run on every push, so a check someone skipped locally still runs before anything merges. Make it a required check in your branch protection, or it only reports |
+| Steering | [`steering/`](steering/) | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, building and testing, deploying, gates, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
+| A company record | [`company/`](company/) | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
+| Guards inside the agent | [`.claude/settings.json`](.claude/settings.json), [`.claude/hooks/`](.claude/hooks/) | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
+| Your repos, inside it | [`projects/`](projects/) | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. [`projects/README.md`](projects/README.md) has the catch we measured: start inside a project and the hooks and skills don't load |
+| Review skills | [`skills/review-pr/`](skills/review-pr/), [`skills/review-tests/`](skills/review-tests/) | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
+| A way to learn | [`skills/learn/`](skills/learn/) | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
+| A release log | [`CHANGELOG.md`](CHANGELOG.md), [`skills/whats-new/`](skills/whats-new/) | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
+| CI | [`.github/workflows/`](.github/workflows/) | The tests, the gate, the setup check and a secret scan of the whole history run on every push, so a check someone skipped locally still runs before anything merges. Make it a required check in your branch protection, or it only reports |
 
-`HOW-IT-WORKS.md` explains what's running underneath: where the loops are, how
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) explains what's running underneath: where the loops are, how
 context is kept separate, and how little of it is code.
 
 The in-agent guards are Claude Code only. Codex and Kiro have their own hook
 systems; the git hook is the check all three share.
 
 **Where something new goes.** A rule, a fact about your company, a check:
-each has one home, and a second copy drifts. `skills/learn/` picks the home
+each has one home, and a second copy drifts. [`skills/learn/`](skills/learn/) picks the home
 in this order, starting with the places the agent can't skip, and stops at the
 first that fits.
 
@@ -161,7 +161,7 @@ enough to finish.
 
 **4. Mistake to rule.** When the agent gets something wrong, don't just fix the
 output. Write the rule that stops it happening again, in the file that governs
-it: `AGENTS.md`, a skill, or a gate if it has to hold. Mitchell Hashimoto calls
+it: [`AGENTS.md`](AGENTS.md), a skill, or a gate if it has to hold. Mitchell Hashimoto calls
 this harness engineering. A correction you only said out loud hasn't happened,
 because the next session never heard it.
 
@@ -187,7 +187,7 @@ So don't install a skill. Have your harness review it:
 review the skill at https://github.com/<someone>/<skills>/tree/main/<skill>
 ```
 
-`skills/review-skill/` quarantines it in `incoming/`, reads every file, flags
+[`skills/review-skill/`](skills/review-skill/) quarantines it in `incoming/`, reads every file, flags
 anything that reaches for credentials or tells the agent to skip your rules,
 then compares it with what you already have. You adopt only the gaps, rewritten
 in your own conventions, with the source and licence noted. Your harness stays
@@ -220,9 +220,9 @@ anyone else's.
 
 ## Your turn
 
-`EXERCISES.md` has the hands-on: pick a job you actually do, and build the
-same five layers around it that `examples/proposal/` has.
+[`EXERCISES.md`](EXERCISES.md) has the hands-on: pick a job you actually do, and build the
+same five layers around it that [`examples/proposal/`](examples/proposal/) has.
 
 ## Licence
 
-MIT. Take it, change it, ship it. See `LICENSE`.
+MIT. Take it, change it, ship it. See [`LICENSE`](LICENSE).

@@ -31,7 +31,7 @@ language, the habits are the same.
   same hook setting. Remove it once the branch merges.
 - **Add a dependency only when it earns its place.** Pin it, and commit the
   lockfile.
-- **CI from the first commit.** `examples/ci/project-checks.yml` is green on
+- **CI from the first commit.** [`examples/ci/project-checks.yml`](../examples/ci/project-checks.yml) is green on
   an empty repo and checks more as the repo grows: each job skips with a
   notice until the file it needs exists. Make its jobs required once they've
   run on a pull request.
@@ -49,15 +49,15 @@ breaks. One that passes whatever the code does is decoration.
 - **Synthetic data in fixtures.** Never real customer data, never a real
   secret.
 - **Check the tests an agent wrote.** They tend to assert what the code does
-  rather than what it should. `skills/review-tests/` breaks the code on purpose
+  rather than what it should. [`skills/review-tests/`](../skills/review-tests/) breaks the code on purpose
   and reports which tests notice.
-- **Keep the fast ones fast.** Slow tests go to CI. `gates.md` has where each
+- **Keep the fast ones fast.** Slow tests go to CI. [`gates.md`](gates.md) has where each
   check runs.
 
 ## Done
 
 - The full suite passes, not just the new test. Show the output.
-- `skills/review-pr/` has read the change before a human does.
+- [`skills/review-pr/`](../skills/review-pr/) has read the change before a human does.
 - A human merges.
 
 ## Never

@@ -10,15 +10,15 @@ read, plus a few short scripts that run whatever the agent decides.
 
 | Piece | Is | Who runs it |
 |---|---|---|
-| `AGENTS.md` | Standing rules | The agent reads it at the start of every session |
-| `steering/` | Standing guidance, one topic per file. Three load every session, the rest when needed | The agent, through `AGENTS.md` |
-| `skills/` | Named procedures with inputs, steps and an output | The agent, when a request matches one |
-| `agents/` | Instructions for a second reader with one job | A separate agent session, started by the first |
-| `gates/` | Scripts that exit non-zero when work isn't ready | The agent, the git hook and CI |
-| `.githooks/` | The check at commit | Git, whatever the agent decided |
-| `.claude/hooks/` | Checks before each tool call and at session start | Claude Code, whatever the agent decided |
-| `company/`, `projects/` | Who you are, where your data is, your code | Read by the agent, never committed here |
-| `examples/` | One worked job with all five layers, to read and copy | You, and the agent when you point it there |
+| [`AGENTS.md`](AGENTS.md) | Standing rules | The agent reads it at the start of every session |
+| [`steering/`](steering/) | Standing guidance, one topic per file. Three load every session, the rest when needed | The agent, through [`AGENTS.md`](AGENTS.md) |
+| [`skills/`](skills/) | Named procedures with inputs, steps and an output | The agent, when a request matches one |
+| [`agents/`](agents/) | Instructions for a second reader with one job | A separate agent session, started by the first |
+| [`gates/`](gates/) | Scripts that exit non-zero when work isn't ready | The agent, the git hook and CI |
+| [`.githooks/`](.githooks/) | The check at commit | Git, whatever the agent decided |
+| [`.claude/hooks/`](.claude/hooks/) | Checks before each tool call and at session start | Claude Code, whatever the agent decided |
+| [`company/`](company/), [`projects/`](projects/) | Who you are, where your data is, your code | Read by the agent, never committed here |
+| [`examples/`](examples/) | One worked job with all five layers, to read and copy | You, and the agent when you point it there |
 
 The tool (Claude Code, Codex or Kiro) does the model calls, the tool calls, the
 MCP connections and the context handling. The harness writes none of that. It
@@ -26,7 +26,7 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
 
 ## A request, start to finish
 
-1. You ask for something. The tool has already loaded `AGENTS.md`, and in
+1. You ask for something. The tool has already loaded [`AGENTS.md`](AGENTS.md), and in
    Claude Code the name and description of every skill. A skill's full steps
    load only when a request matches it, so twenty skills cost little until one
    is used.
@@ -46,7 +46,7 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
 - **At commit and at push**: the same checks, run by git and CI rather than
   by the agent's good intentions.
 - **Mistake to rule**, across sessions: when the agent gets something wrong,
-  `skills/learn/` writes the rule into the file that governs it.
+  [`skills/learn/`](skills/learn/) writes the rule into the file that governs it.
 
 A bigger harness adds a fourth: a runner that picks up a ticket, starts a fresh
 agent session to build it, runs the tests and a review, and repeats until the
@@ -65,7 +65,7 @@ growing transcript. That's the same shape as this starter, run headless with
   context, Claude Code compacts it automatically. The harness doesn't write
   summarisation code.
 - **What must survive goes in a file.** A session ends and its context is
-  gone. Rules, decisions and lessons live in `AGENTS.md`, a skill or a gate,
+  gone. Rules, decisions and lessons live in [`AGENTS.md`](AGENTS.md), a skill or a gate,
   where the next session reads them. A correction you only said out loud
   hasn't happened.
 
@@ -78,13 +78,13 @@ tests.
 
 You'd write SDK code when a loop has to run without a person: in CI, on a
 schedule, or across many tickets at once. Even then, the harness files stay
-the same. The runner reads `AGENTS.md`, the skills and the gates exactly as you
+the same. The runner reads [`AGENTS.md`](AGENTS.md), the skills and the gates exactly as you
 do.
 
 ## One harness, many teams
 
 One harness carries the rules every team shares. Each project under
-`projects/` adds its own `AGENTS.md` for what's specific to it, and can only
+[`projects/`](projects/) adds its own `AGENTS.md` for what's specific to it, and can only
 add rules, never loosen them. A risky project (one that writes to a
 production system) tightens its own rules and gates. A read-only one needs
 fewer. Same harness, same skills, different strictness per project.
@@ -103,9 +103,9 @@ and branch protection ask for:
 |---|---|---|
 | Connectors | Read tools are fine | Every write asks first. The guard already asks for send, edit, delete and share |
 | Gates | The harness's own | Plus the project's, in its hook and its CI, required before merge |
-| Agents working alone | Fine on a ready ticket | Never against production. Staging only, with that permission written in `AGENTS.md` |
+| Agents working alone | Fine on a ready ticket | Never against production. Staging only, with that permission written in [`AGENTS.md`](AGENTS.md) |
 | Merging | Anyone the owner trusts | The project's owner, after `review-pr` |
-| Deploying | Nothing to deploy | A human yes for each production deploy. `steering/deploying.md` has the rest |
+| Deploying | Nothing to deploy | A human yes for each production deploy. [`steering/deploying.md`](steering/deploying.md) has the rest |
 
 Start a new project on the right-hand column and loosen it once you've seen
 what it does. Going the other way, you learn the risk from an incident.
@@ -113,8 +113,8 @@ what it does. Going the other way, you learn the risk from an incident.
 ### How the harness changes
 
 Someone's agent gets something wrong. They say "learn from that", and
-`skills/learn/` drafts the rule in the file that governs it. That goes to the
-owner as a pull request with a `CHANGELOG.md` entry. Once it's merged,
+[`skills/learn/`](skills/learn/) drafts the rule in the file that governs it. That goes to the
+owner as a pull request with a [`CHANGELOG.md`](CHANGELOG.md) entry. Once it's merged,
 everyone's `/whats-new` shows it and says what to do to take it.
 
 Nobody edits a shared rule in their own copy. A local edit is a quiet fork,
@@ -127,10 +127,10 @@ that project's `AGENTS.md`.
   Merges every change to them.
 - **Each project's lead**: that project's `AGENTS.md`, its gates and its CI.
 - **Whoever runs production**: the release step, meaning
-  `steering/deploying.md` and the deploy workflow.
+  [`steering/deploying.md`](steering/deploying.md) and the deploy workflow.
 
 To make that hold rather than just be written down, add a
-`.github/CODEOWNERS` naming the owner for `steering/`, `skills/`, `gates/`,
-`.githooks/` and `.github/`, and turn on "require review from code owners" in
+`.github/CODEOWNERS` naming the owner for [`steering/`](steering/), [`skills/`](skills/), [`gates/`](gates/),
+[`.githooks/`](.githooks/) and [`.github/`](.github/), and turn on "require review from code owners" in
 branch protection. A code owner can't approve their own pull request, so this
 needs at least two people.
