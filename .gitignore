@@ -3,6 +3,7 @@
 __pycache__/
 .DS_Store
 incoming/
+.loop/
 local-data/
 company/*
 !company/README.md

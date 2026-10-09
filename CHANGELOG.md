@@ -26,6 +26,25 @@ the harness reads them together and decides what goes in.
 yours, and add `.harness/` to your [`.gitignore`](.gitignore). Tell your team it's on, and
 that `HARNESS_USAGE_LOG=off` turns it off for them.
 
+## 2026-10-09: A loop that runs without you
+
+[`scripts/loop.py`](scripts/loop.py) takes an open issue labelled `loop-ready`
+through the flywheel: a fresh agent plans it, another builds it in a worktree,
+the script runs your tests itself, a third fresh session reviews the diff, and
+a pull request opens when both pass. Five rounds, then the issue is labelled
+`loop:blocked`. It writes one plain log, `.loop/loop.log`, to watch with
+`tail -f`, and a `.loop/lessons.md` in the shape [`skills/learn/`](skills/learn/)
+reads. It never merges. Standard library only.
+
+**Files:** [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/learn/SKILL.md`](skills/learn/SKILL.md),
+[`.gitignore`](.gitignore)
+
+**Do:** take [`scripts/loop.py`](scripts/loop.py) and its test, and add `.loop/` to your
+`.gitignore`. Set `test_command` in a `loop.json` at your repo root to the
+command that proves a change works, then try `python3 scripts/loop.py run --dry-run`.
+It needs `git` and a signed-in `gh`.
+
 ## 2026-10-09: The harness lens is on by default
 
 The lens now loads by itself in Claude Code: [`.claude/settings.json`](.claude/settings.json) names

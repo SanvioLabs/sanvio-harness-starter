@@ -48,12 +48,63 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
 - **Mistake to rule**, across sessions: when the agent gets something wrong,
   [`skills/learn/`](skills/learn/) writes the rule into the file that governs it.
 
-A bigger harness adds a fourth: a runner that picks up a ticket, starts a fresh
-agent session to build it, runs the tests and a review, and repeats until the
-checks pass or it gives up and asks a person. Each round starts clean and
+**The runner**, across tickets, is the fourth, and [`scripts/loop.py`](scripts/loop.py)
+is the small version of it. It picks up an issue labelled `loop-ready`, starts
+a fresh agent session to build it, runs your tests and a review, and repeats
+until both pass or it gives up and asks a person. Each round starts clean and
 reads its state from files (the ticket, the diff, the test output), not from a
 growing transcript. That's the same shape as this starter, run headless with
-`claude -p` or the Claude Agent SDK instead of you at the keyboard.
+`claude -p` instead of you at the keyboard. [The loop](#the-loop) below has
+the rest.
+
+## The loop
+
+`python3 scripts/loop.py run` takes one issue through the flywheel and then
+the next. Nothing runs until you start it, and it never merges.
+
+| Step | What happens | Left behind in `.loop/issue-N/` |
+|---|---|---|
+| Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else | `ticket.md` |
+| Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
+| Build | A fresh agent makes the change in a git worktree | the commit |
+| Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
+| Scale | On PASS it opens a pull request. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
+
+Build and Validate repeat up to five rounds. After that the issue is labelled
+`loop:blocked` and the loop moves on without it. A pass needs the tests to exit 0
+**and** the review to say PASS: the script runs the tests, so the agent never
+grades its own work.
+
+**Watch it** with `tail -f .loop/loop.log`. One line per event, the issue
+first, nothing secret in it:
+
+    2026-10-09T20:14:52 #12 VALIDATE round 1 tests failed (2) review FIX
+    2026-10-09T20:19:30 #12 VALIDATE round 2 tests passed review PASS
+    2026-10-09T20:19:44 #12 SCALE PR opened https://github.com/you/repo/pull/31
+
+Point a dashboard or a Slack post at that file and you have a monitor.
+
+**Make it yours** with a `loop.json` at the repo root. Any key you leave out
+keeps its default:
+
+| Key | Default | Is |
+|---|---|---|
+| `agent` | `claude -p --permission-mode acceptEdits` | The command that builds. The prompt arrives on stdin, so Codex or Kiro work the same way |
+| `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away |
+| `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
+| `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
+| `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
+
+**Rules it keeps.** To take an issue off the loop, the label comes off first and
+then the run stops, because stopping alone lets the queue pick it straight back
+up. `python3 scripts/loop.py stop` ends a running loop at its next step. A lock
+file stops two loops running in one clone. It uses your own agent sign-in and
+holds no credentials. A ticket is an instruction to an agent, so label only
+issues you wrote or have read.
+
+**Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
+a dashboard, model-tier routing. Each can be added by whoever needs it, reading
+the log.
 
 ## Context: who remembers what
 
