@@ -16,7 +16,7 @@ This spec was written after the first build, from what [`scripts/loop.py`](../..
 
 ## Summary
 
-`scripts/loop.py` takes an open GitHub issue labelled `loop-ready` through the flywheel: plan it, build it, check it, open a pull request. It is the small version of a runner for a team with one repo, one agent tool and a person who wants to watch a plain log. It never merges.
+[`scripts/loop.py`](../../scripts/loop.py) takes an open GitHub issue labelled `loop-ready` through the flywheel: plan it, build it, check it, open a pull request. It is the small version of a runner for a team with one repo, one agent tool and a person who wants to watch a plain log. It never merges.
 
 ## Problem
 
@@ -69,7 +69,7 @@ Affected:
 | REQ-007 | Unwanted | If a round fails `max_rounds` times, or an agent exits non-zero, then the loop shall remove `ready_label` from the issue, then add `blocked_label`, append a lesson, log BLOCKED, and go on to the next issue. |
 | REQ-008 | Event-Driven | When a round passes, the loop shall push the branch, open a pull request against `base` without merging it, remove `ready_label`, and append a lesson if it took more than one round. |
 | REQ-009 | Ubiquitous | The loop shall append one line per event to `.loop/loop.log` as `time #issue STEP detail`, with steps DISCOVER, SHAPE, BUILD, VALIDATE, SCALE, REVIEW, BLOCKED, STOPPED, IDLE and ERROR, and shall write no agent output or credential to it. |
-| REQ-010 | Ubiquitous | The loop shall write each lesson to `.loop/lessons.md` as a heading, **What went wrong** and **What should have happened**, the shape `skills/learn` reads. |
+| REQ-010 | Ubiquitous | The loop shall write each lesson to `.loop/lessons.md` as a heading, **What went wrong** and **What should have happened**, the shape [`skills/learn`](../../skills/learn) reads. |
 | REQ-011 | Unwanted | If another live process holds `.loop/lock`, then `run` shall refuse and exit 1. A lock whose process is gone is replaced. |
 | REQ-012 | Event-Driven | When `stop` is run, a running loop shall end at its next step and log STOPPED. |
 | REQ-013 | Optional | Where `--dry-run`, `--once` or `--issue N` is given, the loop shall only name the issue it would take, take one issue, or take only that issue. |
@@ -140,7 +140,7 @@ None identified for this spec. The reviewer is an agent, and its noise is an Ope
 ## Constraints
 
 - Agents in a worktree cannot read the loop's own folder, so everything an agent needs goes in its prompt.
-- A worktree nested inside the clone makes an agent load the clone's `CLAUDE.md` as well, which tells it to stop. Checkouts live in `~/.harness-loop/`.
+- A worktree nested inside the clone makes an agent load the clone's [`CLAUDE.md`](../../CLAUDE.md) as well, which tells it to stop. Checkouts live in `~/.harness-loop/`.
 
 ## Dependencies
 
@@ -163,6 +163,6 @@ None identified for this spec. The reviewer is an agent, and its noise is an Ope
 
 Pat, 2026-10-09:
 
-- **A setup warning in the plan:** document it, don't strip it. `HOW-IT-WORKS.md` tells the reader to run `scripts/check_setup.py` and fix any FAIL before the first run.
+- **A setup warning in the plan:** document it, don't strip it. [`HOW-IT-WORKS.md`](../../HOW-IT-WORKS.md) tells the reader to run [`scripts/check_setup.py`](../../scripts/check_setup.py) and fix any FAIL before the first run.
 - **Shape stays its own session.** It costs one more agent call per issue and gives the builder and the reviewer the same plan.
 - **A closed issue gets no pull request.** REQ-015.

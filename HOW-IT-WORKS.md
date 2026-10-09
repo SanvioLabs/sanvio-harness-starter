@@ -97,7 +97,7 @@ keeps its default:
 | `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
-| `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's `CLAUDE.md` twice and stops to ask you to restart from the root |
+| `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
 
 **Before the first run,** run `python3 scripts/check_setup.py` and fix any FAIL. A
