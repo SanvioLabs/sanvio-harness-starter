@@ -8,8 +8,8 @@ naming the layer that just acted:
 ◆ harness  steering: 3 always on + gates  skill: review-tests  gate: ✗ proposal  guard: ✗ refused Bash  review: reviewer
 ```
 
-It's a Claude Code mod, so it works in Claude Code only. Codex and Kiro don't
-have mods.
+It's a Claude Code mod, so it works in Claude Code only, and it was built and
+tested on Claude Code 2.1.295. Codex and Kiro don't have mods.
 
 ## Load it
 
@@ -56,7 +56,10 @@ Load it, then:
    watch **steering** pick it up.
 2. Run the example's gate on a proposal with a `{{placeholder}}` in it, and
    watch **gate** go red.
-3. Ask the agent to print `.env`. **guard** goes red with the tool it refused.
+3. Ask the agent to print `.env`. Usually it refuses on its own, because the
+   steering says so, and the band can't show a refusal that never became a
+   tool call. **guard** goes red only when a call actually reaches the guard
+   and the guard says no.
 4. Type `/review-tests`, then hand the work to the `reviewer` agent.
 5. Type `/lens`.
 
