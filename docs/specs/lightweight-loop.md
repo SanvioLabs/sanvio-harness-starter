@@ -10,7 +10,7 @@ owner: Pat
 
 ## Status
 
-`Draft`. Open Questions below are unresolved, and the real-repo run has not happened.
+`Draft`. Four Open Questions are unresolved, and the real-repo run has not happened.
 
 This spec was written after the first build, from what [`scripts/loop.py`](../../scripts/loop.py) does and what [`tests/test_loop.py`](../../tests/test_loop.py) proves. The requirements describe built behavior. The Open Questions are where it is still a guess.
 
@@ -74,6 +74,7 @@ Affected:
 | REQ-012 | Event-Driven | When `stop` is run, a running loop shall end at its next step and log STOPPED. |
 | REQ-013 | Optional | Where `--dry-run`, `--once` or `--issue N` is given, the loop shall only name the issue it would take, take one issue, or take only that issue. |
 | REQ-014 | Ubiquitous | The loop shall read its settings from `loop.json` at the repo root, each key defaulting when absent. |
+| REQ-015 | Unwanted | If the issue is no longer open when a round passes, then the loop shall not push or open a pull request, and shall log that it skipped. |
 
 ## Acceptance Criteria
 
@@ -90,6 +91,7 @@ Affected:
 | AC-009 | REQ-012 | A stop file ends the loop between steps | `test_a_stop_file_ends_the_loop_between_steps` |
 | AC-010 | REQ-013 | Dry run names an issue and starts no agent; nothing ready logs IDLE once | `test_dry_run_names_the_issue_and_starts_no_agent`, `test_nothing_ready_logs_idle_once` |
 | AC-011 | REQ-014 | Defaults overlay from `loop.json` | `test_config_overlays_defaults_from_loop_json` |
+| AC-012 | REQ-015 | A change for an issue closed meanwhile pushes nothing and opens no pull request | `test_a_change_for_an_issue_closed_meanwhile_opens_no_pull_request` |
 
 All run with `python3 -m unittest discover -s tests`. The tests use a temporary git repo, a stand-in agent and a stand-in `gh`.
 
@@ -156,7 +158,12 @@ None identified for this spec. The reviewer is an agent, and its noise is an Ope
 1. **A real run.** The loop has not opened a real pull request from a real issue. The first one should be a small issue with `--once`.
 2. **Other agent tools.** The defaults are `claude -p` flags. Codex and Kiro flags for "may edit" and "read only" are not tested.
 3. **Reviewer noise.** In the live run the reviewer listed five problems and still said PASS. Should a PASS need an empty problem list, or is the verdict enough?
-4. **Session-start output in the plan.** A harness hook that prints a warning (an unset `core.hooksPath`) ends up at the top of `plan.md`. Strip it, or document that the clone must pass `check_setup.py` first?
-5. **Shape as its own session.** It costs one more agent call per issue and gives a plan the builder and reviewer both read. Worth keeping for a one-line ticket?
-6. **When the ready label comes off.** It comes off when the pull request opens, so a closed or abandoned PR needs a person to relabel. Leave it on until merge instead?
-7. **Issue closed mid-run.** Nothing checks that the issue is still open before the pull request opens.
+4. **When the ready label comes off.** It comes off when the pull request opens, so a closed or abandoned PR needs a person to relabel. Leave it on until merge instead?
+
+## Decisions
+
+Pat, 2026-10-09:
+
+- **A setup warning in the plan:** document it, don't strip it. `HOW-IT-WORKS.md` tells the reader to run `scripts/check_setup.py` and fix any FAIL before the first run.
+- **Shape stays its own session.** It costs one more agent call per issue and gives the builder and the reviewer the same plan.
+- **A closed issue gets no pull request.** REQ-015.

@@ -68,7 +68,7 @@ the next. Nothing runs until you start it, and it never merges.
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
 | Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`) | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
-| Scale | On PASS it opens a pull request. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
+| Scale | On PASS, and if the issue is still open, it opens a pull request. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
 
 Build and Validate repeat up to five rounds. After that the issue is labelled
 `loop:blocked` and the loop moves on without it. A pass needs the tests to exit 0
@@ -95,6 +95,11 @@ keeps its default:
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's `CLAUDE.md` twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
+
+**Before the first run,** run `python3 scripts/check_setup.py` and fix any FAIL. A
+warning the harness's session-start hook prints (an unset `core.hooksPath`, for
+instance) is the first thing every agent session says, and it ends up at the top of
+`plan.md` and the review.
 
 **Rules it keeps.** To take an issue off the loop, the label comes off first and
 then the run stops, because stopping alone lets the queue pick it straight back

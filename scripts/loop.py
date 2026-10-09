@@ -302,6 +302,9 @@ class Loop:
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
+        code, state = self.gh("issue", "view", str(number), "--json", "state", "-q", ".state")
+        if code == 0 and state.strip() != "OPEN":
+            return self.log("SCALE", "skipped: issue is {}, no pull request opened".format(state.strip().lower()), number)
         code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
             return self.block(number, "push failed: " + out.strip()[:200])

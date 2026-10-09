@@ -34,7 +34,8 @@ the script runs your tests itself, a third fresh session reviews the diff, and
 a pull request opens when both pass. Five rounds, then the issue is labelled
 `loop:blocked`. It writes one plain log, `.loop/loop.log`, to watch with
 `tail -f`, and a `.loop/lessons.md` in the shape [`skills/learn/`](skills/learn/)
-reads. It never merges. Standard library only.
+reads. It checks the issue is still open before it opens a pull request, and
+it never merges. Standard library only.
 
 **Files:** [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
 [`docs/specs/lightweight-loop.md`](docs/specs/lightweight-loop.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/learn/SKILL.md`](skills/learn/SKILL.md),

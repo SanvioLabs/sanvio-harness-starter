@@ -102,6 +102,9 @@ if args[:2] == ["api", "user"]:
     print("pat")
 elif args[:2] == ["issue", "list"]:
     print(open(os.path.join(state, "issues.json")).read())
+elif args[:2] == ["issue", "view"]:
+    path = os.path.join(state, "issue-state")
+    print(open(path).read().strip() if os.path.exists(path) else "OPEN")
 elif args[:2] == ["pr", "create"]:
     print("https://example.test/pull/1")
 """
@@ -188,6 +191,17 @@ class TestAPass(unittest.TestCase):
         self.assertIn("**What went wrong:**", lesson)
         self.assertIn("feature.txt is wrong.", lesson)
         self.assertIn("**What should have happened:** unknown", lesson)
+
+    def test_a_change_for_an_issue_closed_meanwhile_opens_no_pull_request(self):
+        (self.state / "issue-state").write_text("CLOSED")
+        self.go()
+        self.assertEqual(self.lines()[-1].split()[2], "SCALE")
+        self.assertIn("skipped: issue is closed", self.lines()[-1])
+        calls = self.calls()
+        self.assertFalse(any(c.startswith("pr create") for c in calls))
+        self.assertNotIn("issue edit 12 --remove-label loop-ready", calls)
+        remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
+        self.assertEqual(remote, "")
 
     def test_failing_tests_block_even_when_the_reviewer_says_pass(self):
         self.cfg["test_command"] = "test -f never-exists.txt"
