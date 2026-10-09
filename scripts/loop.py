@@ -109,27 +109,38 @@ def shape_prompt(issue):
     )
 
 
-def build_prompt(number, folder):
-    return (
+def tail(text, size=20_000):
+    """The end of a long text, which is where a test failure is."""
+    text = text or ""
+    return text if len(text) <= size else "...\n" + text[-size:]
+
+
+def build_prompt(number, plan, review="", tests=""):
+    """Everything goes in the prompt: an agent in a worktree can't read the loop's own folder."""
+    prompt = (
         "Make the change for issue #{n} in this git worktree.\n"
-        "Read the plan at {plan}. If {review} and {tests} exist, an earlier round failed: "
-        "read them and fix exactly what they say. Keep to the plan.\n"
-        "Don't commit, push or use git for anything but reading. Don't run the test suite: "
-        "the loop runs it. When the change is in place, say in two lines what you changed.\n"
-    ).format(n=number, plan=folder / "plan.md", review=folder / "review.md",
-             tests=folder / "test-output.txt")
+        "Keep to the plan below. Don't commit, push or use git for anything but reading. "
+        "Don't run the test suite: the loop runs it. When the change is in place, say in "
+        "two lines what you changed.\n\nPLAN:\n{plan}\n"
+    ).format(n=number, plan=plan)
+    if review or tests:
+        prompt += (
+            "\nAn earlier round failed. Fix exactly what it says.\n\n"
+            "REVIEW OF THE LAST ROUND:\n{review}\n\nTEST OUTPUT OF THE LAST ROUND:\n{tests}\n"
+        ).format(review=review.strip(), tests=tail(tests))
+    return prompt
 
 
-def review_prompt(folder, code):
+def review_prompt(plan, diff, tests, code):
     return (
         "You are the reviewer, in a fresh context. Do not edit any file.\n"
-        "Read the plan at {plan}, the diff at {diff} and the test output at {tests} "
-        "(the tests exited {code}). Say whether the change does what the plan asks, and "
-        "list the problems that matter, most important first, one line each.\n"
+        "Below are the plan, the diff, and the test output (the tests exited {code}). Say "
+        "whether the change does what the plan asks, and list the problems that matter, "
+        "most important first, one line each.\n"
         "Your last line must be exactly VERDICT: PASS or VERDICT: FIX. PASS only if the "
-        "tests exited 0 and the diff matches the plan.\n"
-    ).format(plan=folder / "plan.md", diff=folder / "diff.patch",
-             tests=folder / "test-output.txt", code=code)
+        "tests exited 0 and the diff matches the plan.\n\n"
+        "PLAN:\n{plan}\n\nDIFF:\n{diff}\n\nTEST OUTPUT:\n{tests}\n"
+    ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests))
 
 
 class Loop:
@@ -251,7 +262,9 @@ class Loop:
             if self.stopped():
                 return self.log("STOPPED", "before round {}".format(round_no), number)
 
-            code, said = self.agent("agent", build_prompt(number, folder), tree)
+            last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
+            last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
+            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests), tree)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
             self.git("add", "-A", cwd=tree)
@@ -267,7 +280,7 @@ class Loop:
             diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)[1]
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
-            rcode, review = self.agent("reader_agent", review_prompt(folder, tcode), tree)
+            rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode), tree)
             if self.git("status", "--porcelain", cwd=tree)[1].strip():
                 self.git("checkout", "--", ".", cwd=tree)
                 self.git("clean", "-fdq", cwd=tree)

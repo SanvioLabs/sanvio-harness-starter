@@ -51,17 +51,27 @@ class TestPureParts(unittest.TestCase):
             self.assertEqual(cfg["max_rounds"], 2)
             self.assertEqual(cfg["base"], "main")
 
-    def test_prompts_name_the_files_and_the_rules(self):
-        folder = Path("/x/.loop/issue-4")
-        build = loop.build_prompt(4, folder)
-        self.assertIn("/x/.loop/issue-4/plan.md", build)
+    def test_prompts_carry_their_inputs_so_the_agent_needs_no_file_access(self):
+        build = loop.build_prompt(4, "Plan: add feature.txt.")
+        self.assertIn("Plan: add feature.txt.", build)
         self.assertIn("Don't run the test suite", build)
-        review = loop.review_prompt(folder, 1)
-        self.assertIn("diff.patch", review)
-        self.assertIn("VERDICT: PASS or VERDICT: FIX", review)
+        self.assertNotIn("earlier round failed", build)
+        again = loop.build_prompt(4, "Plan.", "feature.txt is wrong.", "FAILED test_x")
+        self.assertIn("feature.txt is wrong.", again)
+        self.assertIn("FAILED test_x", again)
+        review = loop.review_prompt("Plan.", "+++ feature.txt", "ok", 0)
+        for part in ("Plan.", "+++ feature.txt", "the tests exited 0", "VERDICT: PASS or VERDICT: FIX"):
+            self.assertIn(part, review)
         self.assertIn("Do not edit", loop.shape_prompt(issue(4)))
-        for text in (build, review, loop.shape_prompt(issue(4))):
+        for text in (build, again, review, loop.shape_prompt(issue(4))):
             self.assertNotIn(EM_DASH, text)
+
+    def test_a_long_test_output_keeps_its_end(self):
+        long = "a" * 50_000 + "THE FAILURE"
+        cut = loop.tail(long, 1000)
+        self.assertTrue(cut.endswith("THE FAILURE"))
+        self.assertLess(len(cut), 1100)
+        self.assertEqual(loop.tail("short"), "short")
 
 
 # A stand-in agent and a stand-in gh, so a whole pass runs with no network and no model.
