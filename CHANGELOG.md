@@ -19,6 +19,7 @@ still has to: `test -f .env && cat .env` is refused as before.
 **Files:** [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py)
 
 **Do:** take [`.claude/hooks/guard.py`](.claude/hooks/guard.py) if you haven't changed yours.
+
 ## 2026-10-09: Harness lens
 
 A Claude Code mod that draws one line above the prompt naming which layer just
