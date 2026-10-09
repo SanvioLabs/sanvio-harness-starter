@@ -30,6 +30,12 @@ SECRET_COMMANDS = re.compile(
     r"\bsecretsmanager\s+get-secret-value\b|\bssm\s+get-parameters?\b.*--with-decryption"
     r"|\bgh\s+auth\s+token\b|\bprintenv\b|^\s*env\s*($|[|>])"
 )
+# `test -e .env`, `[ -f .env ]`: whether a file exists, which is the check the
+# steering asks for. It's taken out before the credential match, so the rest of
+# the command still has to pass: `test -f .env && cat .env` is still refused.
+EXISTENCE_CHECK = re.compile(
+    r"\btest\s+-[efs]\s+[^\s;|&]+|\[\[?\s+-[efs]\s+[^\s;|&\]]+\s+\]\]?"
+)
 WRITE_VERBS = re.compile(
     r"(^|_)(send|create|update|edit|write|delete|remove|trash|share|post|publish"
     r"|upload|move|rename|archive|invite|reply|forward|comment|label|assign|merge|close)(_|$)",
@@ -50,7 +56,8 @@ def decide(event):
 
     if tool == "Bash":
         command = data.get("command", "")
-        if CREDENTIAL.search(" " + command) or SECRET_COMMANDS.search(command):
+        named = EXISTENCE_CHECK.sub(" ", command)
+        if CREDENTIAL.search(" " + named) or SECRET_COMMANDS.search(command):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
 
