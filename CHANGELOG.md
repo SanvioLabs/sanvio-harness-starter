@@ -9,6 +9,22 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-09: The harness lens is on by default
+
+The lens now loads by itself in Claude Code: [`.claude/settings.json`](.claude/settings.json) names
+this repo as a plugin marketplace, listed in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), and
+turns the lens on. Its README says how to install it from inside a session if
+it doesn't show, and how to turn it off just for you.
+`/orientation` now points at the line rather than asking you to load it.
+
+**Files:** [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`.claude/settings.json`](.claude/settings.json),
+[`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md),
+[`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** take [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), and add the `extraKnownMarketplaces`
+and `enabledPlugins` blocks from [`.claude/settings.json`](.claude/settings.json) to yours. Then restart
+Claude Code at the root.
+
 ## 2026-10-09: The guard lets an existence check through
 
 The guard refused `test -e .env`, the very check [`steering/data-and-tools.md`](steering/data-and-tools.md)

@@ -24,5 +24,16 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "sanvio-harness-starter": {
+      "source": {
+        "source": "directory",
+        "path": "./"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "harness-lens@sanvio-harness-starter": true
   }
 }

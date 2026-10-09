@@ -116,4 +116,4 @@ separate session with that file as its instructions.
 | Example | Shows |
 |---|---|
 | [`examples/proposal/`](examples/proposal/) | Drafting a client proposal: inputs, rules, a skill (`skills/draft-proposal/SKILL.md` inside it), a gate, the hook block and a review brief |
-| [`examples/mods/harness-lens/`](examples/mods/harness-lens/) | A Claude Code mod that shows which layer just acted, above the prompt. Load it with `claude --plugin-dir examples/mods/harness-lens` |
+| [`examples/mods/harness-lens/`](examples/mods/harness-lens/) | A Claude Code mod that shows which layer just acted, above the prompt. On by default from [`.claude/settings.json`](.claude/settings.json); `/lens` lists the session |
