@@ -47,8 +47,12 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
   by the agent's good intentions.
 - **Mistake to rule**, across sessions: when the agent gets something wrong,
   [`skills/learn/`](skills/learn/) writes the rule into the file that governs it.
+- **Sprint report**, across people: each person's usage log records which
+  skills, agents and guards fired. At sprint end, `harness-report` turns it into
+  a short report with their proposals, shared as a pull request. The owner reads
+  the sprint's reports together and takes what earns a place.
 
-**The runner**, across tickets, is the fourth, and [`scripts/loop.py`](scripts/loop.py)
+**The runner**, across tickets, is the fifth, and [`scripts/loop.py`](scripts/loop.py)
 is the small version of it. It picks up an issue labelled `loop-ready`, starts
 a fresh agent session to build it, runs your tests and a review, and repeats
 until both pass or it gives up and asks a person. Each round starts clean and
@@ -130,7 +134,7 @@ the log.
 
 Very little. The agents are the tool's own agents, defined in Markdown. The
 skills are Markdown. The code is the gate, the git hook, the setup check and
-two small Claude Code hooks, all standard-library Python or shell, all with
+three small Claude Code hooks, all standard-library Python or shell, all with
 tests.
 
 You'd write SDK code when a loop has to run without a person: in CI, on a
@@ -173,6 +177,11 @@ Someone's agent gets something wrong. They say "learn from that", and
 [`skills/learn/`](skills/learn/) drafts the rule in the file that governs it. That goes to the
 owner as a pull request with a [`CHANGELOG.md`](CHANGELOG.md) entry. Once it's merged,
 everyone's `/whats-new` shows it and says what to do to take it.
+
+The sprint report catches what nobody said out loud: a skill nobody uses, an
+ask that always gets a yes, a step everyone does by hand. Each person's log
+stays on their own machine, holding names and counts, never prompts or code.
+Only the report they've read reaches the team ([`reports/usage/`](reports/usage/)).
 
 Nobody edits a shared rule in their own copy. A local edit is a quiet fork,
 and the next update collides with it. A rule only one project needs goes in
