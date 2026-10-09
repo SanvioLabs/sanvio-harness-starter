@@ -10,7 +10,7 @@ owner: Pat
 
 ## Status
 
-`Draft`. Four Open Questions are unresolved, and the real-repo run has not happened.
+`Draft`. Three Open Questions are unresolved.
 
 This spec was written after the first build, from what [`scripts/loop.py`](../../scripts/loop.py) does and what [`tests/test_loop.py`](../../tests/test_loop.py) proves. The requirements describe built behavior. The Open Questions are where it is still a guess.
 
@@ -95,7 +95,7 @@ Affected:
 
 All run with `python3 -m unittest discover -s tests`. The tests use a temporary git repo, a stand-in agent and a stand-in `gh`.
 
-Run by hand, not in CI: one ticket through a real `claude -p` (Haiku) in a scratch clone with a stand-in `gh`, 2026-10-09. It ended PASS in about 80 seconds.
+Run by hand, not in CI, 2026-10-09: a real issue in a private scratch repo ("create hello.txt"), real `gh`, real `claude -p` (Haiku), the starter's full test suite plus a one-line check as `test_command`. It went Discover to Scale in about 45 seconds in one round, opened a real pull request against `main` with a one-line diff, took `loop-ready` off the issue, and merged nothing.
 
 ## Security Requirements
 
@@ -155,10 +155,9 @@ None identified for this spec. The reviewer is an agent, and its noise is an Ope
 
 ## Open Questions
 
-1. **A real run.** The loop has not opened a real pull request from a real issue. The first one should be a small issue with `--once`.
-2. **Other agent tools.** The defaults are `claude -p` flags. Codex and Kiro flags for "may edit" and "read only" are not tested.
-3. **Reviewer noise.** In the live run the reviewer listed five problems and still said PASS. Should a PASS need an empty problem list, or is the verdict enough?
-4. **When the ready label comes off.** It comes off when the pull request opens, so a closed or abandoned PR needs a person to relabel. Leave it on until merge instead?
+1. **Other agent tools.** The defaults are `claude -p` flags. Codex and Kiro flags for "may edit" and "read only" are not tested.
+2. **Reviewer noise.** In the live run the reviewer listed five problems and still said PASS. Should a PASS need an empty problem list, or is the verdict enough?
+3. **When the ready label comes off.** It comes off when the pull request opens, so a closed or abandoned PR needs a person to relabel. Leave it on until merge instead?
 
 ## Decisions
 
