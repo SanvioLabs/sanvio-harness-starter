@@ -9,6 +9,23 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-09: Usage log and sprint report
+
+A new hook logs which skills, agents and slash commands ran, and when the guard
+refused or asked and whether you said yes. Names and counts only, never
+prompts, paths or code, in `.harness/usage/<you>.jsonl`, which is gitignored.
+At the end of a sprint, `harness-report` turns your log into a short report with
+your own proposals, shared as a pull request into [`reports/usage/`](reports/usage/). Whoever owns
+the harness reads them together and decides what goes in.
+
+**Files:** [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`.claude/settings.json`](.claude/settings.json), [`scripts/usage_report.py`](scripts/usage_report.py),
+[`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`reports/usage/README.md`](reports/usage/README.md), [`.gitignore`](.gitignore),
+[`tests/test_usage.py`](tests/test_usage.py), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** take the files above, add the usage-log entries from [`.claude/settings.json`](.claude/settings.json) to
+yours, and add `.harness/` to your [`.gitignore`](.gitignore). Tell your team it's on, and
+that `HARNESS_USAGE_LOG=off` turns it off for them.
+
 ## 2026-10-09: The harness lens is on by default
 
 The lens now loads by itself in Claude Code: [`.claude/settings.json`](.claude/settings.json) names

@@ -9,3 +9,4 @@ company/*
 !company/*.example.md
 projects/*
 !projects/README.md
+.harness/
