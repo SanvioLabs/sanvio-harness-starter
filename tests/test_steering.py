@@ -1,5 +1,6 @@
 """Run with: python3 -m unittest discover -s tests"""
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -42,13 +43,25 @@ SHIPPED = ["steering/*.md", "examples/**/*", "skills/orientation/*", "skills/lea
            ".githooks/*", ".github/**/*"]
 
 
+def ignored_by_git(paths):
+    """The paths git ignores: not shipped, whatever lands there. Claude Code lays a
+    mod's types into examples/mods/*/.claude-plugin/types/ when it loads one."""
+    try:
+        out = subprocess.run(["git", "check-ignore", "--stdin"], cwd=ROOT, capture_output=True, text=True,
+                             input="\n".join(str(p.relative_to(ROOT)) for p in paths)).stdout
+    except OSError:
+        return set()
+    return {ROOT / line for line in out.splitlines() if line}
+
+
 class HouseStyle(unittest.TestCase):
     def test_no_em_dashes_in_what_the_starter_ships(self):
         found = []
         paths = sorted({p for pattern in SHIPPED for p in ROOT.glob(pattern)})
         self.assertTrue(paths)
+        ignored = ignored_by_git(paths)
         for path in paths:
-            if not path.is_file() or path.is_symlink():
+            if not path.is_file() or path.is_symlink() or path in ignored:
                 continue
             try:
                 text = path.read_text()

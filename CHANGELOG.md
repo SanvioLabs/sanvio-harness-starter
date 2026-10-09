@@ -9,6 +9,21 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-09: Harness lens
+
+A Claude Code mod that draws one line above the prompt naming which layer just
+acted: the steering read, the skill followed, the last gate and how it went, a
+tool the guard refused, the reviewer. `/lens` lists everything the harness did
+in the session. It only looks, and it shows only this harness's own skills and
+agents. `/orientation` now offers it at the end, for Claude Code users.
+
+**Files:** [`examples/mods/harness-lens/`](examples/mods/harness-lens/), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`AGENTS.md`](AGENTS.md),
+[`README.md`](README.md), [`tests/test_steering.py`](tests/test_steering.py) (the house-style check skips what git ignores, so the
+types Claude Code lays into a loaded mod don't fail it)
+
+**Do:** nothing. To try it, start Claude Code from the harness root with
+`claude --plugin-dir examples/mods/harness-lens`.
+
 ## 2026-10-08: File names are links
 
 Every file or folder a Markdown file names is now a link to it, so you can
