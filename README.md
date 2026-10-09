@@ -31,6 +31,19 @@ a real harness for months, and nobody noticed because nothing failed.
 
 You need Python 3.9 or newer and no packages.
 
+In Claude Code, start it from the repo's root and say yes when it asks
+whether you trust the folder. A line then sits above the prompt:
+
+```
+◆ harness  steering: 3 always on  skill: none yet  gate: none run  guard: no refusals  review: none yet
+```
+
+That's the harness lens. It names each layer as it acts on your session, and
+`/lens` lists everything it did. No line? Your Claude Code may be older than
+the version it was tested on (2.1.295), or the folder isn't trusted.
+[`examples/mods/harness-lens/`](examples/mods/harness-lens/) has the two commands that install it from inside a
+session. Codex and Kiro don't show it: neither has mods.
+
 Working through this on your own? Open the repo in your agent and run
 `/orientation` in Claude Code, or say "get me started" in any of them.
 [`skills/orientation/`](skills/orientation/) checks your setup, asks where your company's data lives
