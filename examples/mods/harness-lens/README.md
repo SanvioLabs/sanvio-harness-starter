@@ -11,24 +11,29 @@ naming the layer that just acted:
 It's a Claude Code mod, so it works in Claude Code only, and it was built and
 tested on Claude Code 2.1.295. Codex and Kiro don't have mods.
 
-## Load it
+## It's on already
 
-From the harness root:
+In Claude Code, the lens loads by itself. The harness's
+[`.claude/settings.json`](../../../.claude/settings.json) names this repo as a plugin marketplace (the listing
+is [`.claude-plugin/marketplace.json`](../../../.claude-plugin/marketplace.json)) and turns the lens on, so the line
+is there the first time you start Claude Code at the root and trust the
+folder.
+
+Don't see it? Install it from inside a session, at the root:
+
+```
+/plugin marketplace add ./
+/plugin install harness-lens@sanvio-harness-starter
+```
+
+It's active as soon as the install says so, no restart. Or load it for one
+session with `claude --plugin-dir examples/mods/harness-lens`.
+
+To turn it off just for you, without changing the file everyone shares:
 
 ```bash
-claude --plugin-dir examples/mods/harness-lens
+claude plugin disable harness-lens@sanvio-harness-starter --scope local
 ```
-
-That loads it for one session. To load it in every session, put the folder's
-absolute path in `CLAUDE_CODE_PLUGIN_DIRS`, in the `env` block of your
-`~/.claude/settings.json`:
-
-```json
-"env": { "CLAUDE_CODE_PLUGIN_DIRS": "/Users/<you>/<your-harness>/examples/mods/harness-lens" }
-```
-
-The project's own [`.claude/settings.json`](../../../.claude/settings.json) can't load a mod. It has to be the
-command line or your user settings.
 
 ## Reading the band
 

@@ -273,21 +273,16 @@ Claude Code that's the `reviewer` subagent. In Codex or Kiro, tell them to run
 a separate session with [`agents/reviewer.md`](../../agents/reviewer.md) as its instructions and point it
 at the brief.
 
-**Optional: watch the layers work.** Only if they drive the agent with
-Claude Code (question 2). Say that [`examples/mods/harness-lens/`](../../examples/mods/harness-lens/) is a mod
-that draws one line above the prompt naming which layer just acted: the
+**Watch the layers work.** Only if they drive the agent with Claude Code
+(question 2). Point at the line above the prompt: it's the harness lens,
+[`examples/mods/harness-lens/`](../../examples/mods/harness-lens/), and it names which layer just acted: the
 steering read, the skill followed, the gate and how it went, a tool the guard
-refused, the reviewer. They load it themselves, from the harness root:
-
-```bash
-claude --plugin-dir examples/mods/harness-lens
-```
-
-That's one session. Its README has how to load it every time. Then say how to
-use it: run the job they just built and watch the line light up layer by
-layer, a failed gate or a refusal in red, and type `/lens` for everything the
-harness did in that session. Don't run the command or edit their settings for
-them. In Codex or Kiro, skip this: neither has mods.
+refused, the reviewer. It's on by default, from [`.claude/settings.json`](../../.claude/settings.json). Say
+how to use it: run the job they just built and watch the line light up layer
+by layer, a failed gate or a refusal in red, and type `/lens` for everything
+the harness did in the session. If they don't see the line, name the two
+commands in its README that install it from inside the session, and let them
+run them. In Codex or Kiro, skip this: neither has mods.
 
 **Last: the release log.** If any layer was written, draft one entry for the
 top of [`CHANGELOG.md`](../../CHANGELOG.md) in the shape of the ones there: today's date, the job's
@@ -306,8 +301,8 @@ Last, in one message:
   `python3 gates/<job-name>_gate.py <path to an output>`. If no gate was
   added, say so
 - Any FAIL or WARN from step 1 still open, with its fix
-- In Claude Code, the one command that loads the harness lens:
-  `claude --plugin-dir examples/mods/harness-lens`
+- In Claude Code, whether the harness lens is showing, and `/lens` for the
+  session so far
 - The steps and layers skipped, so they know what's left if they run this
   again
 - One line on what to do next time the agent gets something wrong: say "learn

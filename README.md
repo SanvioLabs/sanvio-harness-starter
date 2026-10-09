@@ -223,9 +223,8 @@ anyone else's.
 [`EXERCISES.md`](EXERCISES.md) has the hands-on: pick a job you actually do, and build the
 same five layers around it that [`examples/proposal/`](examples/proposal/) has.
 
-In Claude Code, start a session with
-`claude --plugin-dir examples/mods/harness-lens` and a line above the prompt
-names each layer as it acts, so you can watch yours work. [`examples/mods/harness-lens/`](examples/mods/harness-lens/)
+In Claude Code, the line above the prompt names each layer as it acts, so you
+can watch yours work. It's on by default. [`examples/mods/harness-lens/`](examples/mods/harness-lens/)
 has how to read it.
 
 ## Licence
