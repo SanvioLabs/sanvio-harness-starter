@@ -66,7 +66,7 @@ the next. Nothing runs until you start it, and it never merges.
 |---|---|---|
 | Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else | `ticket.md` |
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
-| Build | A fresh agent makes the change in a git worktree | the commit |
+| Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`) | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
 | Scale | On PASS it opens a pull request. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
 
@@ -93,6 +93,7 @@ keeps its default:
 | `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
+| `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's `CLAUDE.md` twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
 
 **Rules it keeps.** To take an issue off the loop, the label comes off first and

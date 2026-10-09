@@ -17,7 +17,8 @@ Build and Validate repeat up to max_rounds. Then the issue is labelled
 loop:blocked and the loop moves on without it.
 
 Watch it with:  tail -f .loop/loop.log
-Everything a round produced is in .loop/issue-N/. It never merges.
+Everything a round produced is in .loop/issue-N/. Checkouts live outside the clone, in
+~/.harness-loop/. It never merges.
 Standard library only; needs git and the gh CLI, signed in.
 """
 import argparse
@@ -48,6 +49,9 @@ DEFAULTS = {
     "agent_timeout": 1800,
     "test_timeout": 1800,
     "poll_seconds": 60,
+    # Where the build checkouts go. Empty means ~/.harness-loop/<this folder's name>. Keep it outside the
+    # clone: an agent started in a nested folder loads this repo's CLAUDE.md too, which tells it to stop.
+    "worktree_dir": "",
 }
 
 VERDICT = re.compile(r"^\s*VERDICT:\s*(PASS|FIX)\s*$", re.I | re.M)
@@ -187,8 +191,13 @@ class Loop:
             return None
         return pick(json.loads(out or "[]"), self.whoami(), self.cfg, only)
 
+    def worktrees(self):
+        if self.cfg["worktree_dir"]:
+            return Path(self.cfg["worktree_dir"]).expanduser()
+        return Path.home() / ".harness-loop" / self.root.name
+
     def worktree(self, number):
-        path = self.dir / "worktrees" / "issue-{}".format(number)
+        path = self.worktrees() / "issue-{}".format(number)
         branch = "loop/issue-{}".format(number)
         if path.exists():
             return path, branch
@@ -302,7 +311,9 @@ class Loop:
             try:
                 os.kill(int(lock.read_text()), 0)
                 return False
-            except (ValueError, ProcessLookupError, PermissionError, OSError):
+            except PermissionError:
+                return False  # the process exists and belongs to someone else
+            except (ValueError, ProcessLookupError, OSError):
                 lock.unlink()
         lock.write_text(str(os.getpid()))
         return True

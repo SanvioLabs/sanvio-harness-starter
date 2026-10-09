@@ -125,7 +125,7 @@ class TestAPass(unittest.TestCase):
         git(self.work, "push", "-q", "-u", "origin", "main")
         agent = "{} {}".format(sys.executable, bin_dir / "agent")
         self.cfg = dict(loop.DEFAULTS, agent=agent, reader_agent=agent, test_command="test -f feature.txt",
-                        max_rounds=2, poll_seconds=0)
+                        max_rounds=2, poll_seconds=0, worktree_dir=str(tmp / "trees"))
         (self.state / "issues.json").write_text(json.dumps([issue(12)]))
         (self.state / "verdict").write_text("PASS")
         os.environ["LOOP_TEST_STATE"] = str(self.state)
@@ -189,9 +189,30 @@ class TestAPass(unittest.TestCase):
         (self.state / "reviewer-edits").write_text("")
         self.go()
         self.assertIn("reviewer edited files; discarded", "\n".join(self.lines()))
-        tree = self.work / ".loop" / "worktrees" / "issue-12"
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
         self.assertFalse((tree / "sneaky.txt").exists())
         self.assertNotIn("sneaky.txt", (self.work / ".loop" / "issue-12" / "diff.patch").read_text())
+
+    def test_checkouts_live_outside_the_clone(self):
+        self.go()
+        self.assertTrue((Path(self.cfg["worktree_dir"]) / "issue-12" / "feature.txt").exists())
+        self.assertFalse((self.work / ".loop" / "worktrees").exists())
+        default = loop.Loop(self.work, dict(loop.DEFAULTS)).worktrees()
+        self.assertEqual(default, Path.home() / ".harness-loop" / "work")
+
+    def test_a_lock_held_by_another_users_process_is_respected(self):
+        original = os.kill
+
+        def kill(pid, sig):
+            raise PermissionError()
+
+        os.kill = kill
+        try:
+            (self.work / ".loop").mkdir(exist_ok=True)
+            (self.work / ".loop" / "lock").write_text("1")
+            self.assertEqual(self.go(), 1)
+        finally:
+            os.kill = original
 
     def test_dry_run_names_the_issue_and_starts_no_agent(self):
         self.go(dry_run=True)
