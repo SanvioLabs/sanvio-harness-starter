@@ -33,6 +33,8 @@ this repo as a plugin marketplace, listed in [`.claude-plugin/marketplace.json`]
 turns the lens on. Its README says how to install it from inside a session if
 it doesn't show, and how to turn it off just for you.
 `/orientation` now points at the line rather than asking you to load it.
+The Set up section of [`README.md`](README.md) covers it too: trust the folder,
+what the line looks like, and what to do when it doesn't show.
 
 **Files:** [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`.claude/settings.json`](.claude/settings.json),
 [`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md),
