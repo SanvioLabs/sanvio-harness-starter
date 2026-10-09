@@ -105,8 +105,10 @@ export function harnessSkill(name: string, known: readonly string[], config: Con
 
 export type GateRun = { name: string; ok: boolean }
 
-const FAILED = /^(FAIL|BLOCKED)\b|Commit blocked|✗/m
-const PASSED = /^PASS\b|✓/m
+// A line may open with a colour code, as a hook that prints in red does.
+const FAILED = /^(\x1b\[[0-9;]*m)*(FAIL|BLOCKED)\b|Commit blocked|✗/m
+const PASSED = /^(\x1b\[[0-9;]*m)*PASS\b|✓/m
+const REFUSED = /^(\x1b\[[0-9;]*m)*BLOCKED\b|Commit blocked/m
 
 // A shell command that ran a gate, and how it went. None when the command ran no gate, or when the output
 // can't say: a gate piped somewhere else doesn't count as a pass.
@@ -125,7 +127,7 @@ export function gateRun(command: string, output: string, isError: boolean, confi
     return null
   }
   // The pre-commit hook is silent when it passes, so only a refusal can be seen.
-  if (/\bgit\s+commit\b/.test(command) && /Commit blocked|^BLOCKED\b/m.test(output)) return { name: 'pre-commit', ok: false }
+  if (/\bgit\s+commit\b/.test(command) && REFUSED.test(output)) return { name: 'pre-commit', ok: false }
   return null
 }
 

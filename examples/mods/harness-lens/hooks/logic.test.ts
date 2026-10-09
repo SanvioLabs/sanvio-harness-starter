@@ -79,6 +79,9 @@ describe('gates', () => {
   test('the pre-commit hook refusing a commit', () => {
     expect(gateRun("git commit -m 'x'", "FAIL a.md\nCommit blocked. Fix what's named above.", false, STARTER)).toEqual({ name: 'pre-commit', ok: false })
   })
+  test('a hook that prints its refusal in colour', () => {
+    expect(gateRun('git commit -m x', '\x1b[0;31mBLOCKED: 1 violation(s) found.\x1b[0m', false, STARTER)).toEqual({ name: 'pre-commit', ok: false })
+  })
   test('a commit that went through says nothing: the hook is silent when it passes', () => {
     expect(gateRun("git commit -m 'x'", '[main 070be4f] x', false, STARTER)).toBeNull()
   })
