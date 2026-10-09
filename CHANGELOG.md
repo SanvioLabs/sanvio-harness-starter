@@ -9,6 +9,17 @@ Changing your own harness? Anything noticeable gets an entry at the top in
 the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
 works for your team too.
 
+## 2026-10-09: The guard lets an existence check through
+
+The guard refused `test -e .env`, the very check [`steering/data-and-tools.md`](steering/data-and-tools.md)
+and the guard's own message tell the agent to use. `test -e`, `-f`, `-s` and
+`[ -e … ]` on a credential file now pass. Anything else in the same command
+still has to: `test -f .env && cat .env` is refused as before.
+
+**Files:** [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py)
+
+**Do:** take [`.claude/hooks/guard.py`](.claude/hooks/guard.py) if you haven't changed yours.
+
 ## 2026-10-09: Harness lens
 
 A Claude Code mod that draws one line above the prompt naming which layer just

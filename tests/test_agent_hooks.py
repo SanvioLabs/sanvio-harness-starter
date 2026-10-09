@@ -45,6 +45,15 @@ class Guard(unittest.TestCase):
         self.assertDenied(call("Bash", command="printenv"))
         self.assertDenied(call("Bash", command="aws secretsmanager get-secret-value --secret-id x"))
 
+    def test_checking_a_credential_exists_is_allowed(self):
+        for command in ("test -e .env && echo yes", "test -f .env.local", "[ -e .env ] && echo yes",
+                        "[[ -s .env ]] || echo missing"):
+            self.assertIsNone(call("Bash", command=command), command)
+
+    def test_an_existence_check_does_not_cover_a_read(self):
+        self.assertDenied(call("Bash", command="test -f .env && cat .env"))
+        self.assertDenied(call("Bash", command="[ -e .env ] && grep KEY .env"))
+
     def test_ordinary_shell_is_allowed(self):
         for command in ("python3 -m unittest discover -s tests", "git status", "ls -la",
                         "cat .env.example", "python3 scripts/check_setup.py"):
