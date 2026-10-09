@@ -17,6 +17,11 @@ What went wrong, in one sentence, and what should have happened instead. If the
 person hasn't said both, ask, in one message. Don't guess what the right
 behaviour was.
 
+If `.loop/lessons.md` exists, its entries are already in this shape (written by
+[`scripts/loop.py`](../../scripts/loop.py)). Offer the oldest one and work from
+it. An entry that says "unknown" for what should have happened still needs the
+person's answer.
+
 ## Steps
 
 1. **Say the mistake back** in one line: what the agent did, and what it
