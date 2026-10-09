@@ -42,7 +42,7 @@ it never merges. Standard library only.
 [`.gitignore`](.gitignore)
 
 **Do:** take [`scripts/loop.py`](scripts/loop.py) and its test, and add `.loop/` to your
-`.gitignore`. Set `test_command` in a `loop.json` at your repo root to the
+[`.gitignore`](.gitignore). Set `test_command` in a `loop.json` at your repo root to the
 command that proves a change works, then try `python3 scripts/loop.py run --dry-run`.
 It needs `git` and a signed-in `gh`.
 

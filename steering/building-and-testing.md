@@ -8,7 +8,7 @@ language, the habits are the same.
 - **Spec first.** The data model, then how the core logic works, then the user
   flow. It forces the architecture decisions before there's code to defend.
   The spec lives in the repo it describes: `SPEC.md` at the root for the whole
-  system, `docs/specs/` for the parts. Kept anywhere else, it stops travelling
+  system, [`docs/specs/`](../docs/specs/) for the parts. Kept anywhere else, it stops travelling
   with the code.
 - **Read before you write.** The code you're changing, its tests, and the code
   around it. Match its naming, its structure and how much it comments.
