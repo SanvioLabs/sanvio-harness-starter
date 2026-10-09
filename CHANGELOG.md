@@ -37,7 +37,7 @@ a pull request opens when both pass. Five rounds, then the issue is labelled
 reads. It never merges. Standard library only.
 
 **Files:** [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
-[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/learn/SKILL.md`](skills/learn/SKILL.md),
+[`docs/specs/lightweight-loop.md`](docs/specs/lightweight-loop.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/learn/SKILL.md`](skills/learn/SKILL.md),
 [`.gitignore`](.gitignore)
 
 **Do:** take [`scripts/loop.py`](scripts/loop.py) and its test, and add `.loop/` to your
