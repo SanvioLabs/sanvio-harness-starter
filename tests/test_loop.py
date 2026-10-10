@@ -43,6 +43,12 @@ class TestPureParts(unittest.TestCase):
         self.assertIsNone(loop.pick(issues, "pat", CFG, only=5))
         self.assertIsNone(loop.pick([], "pat", CFG))
 
+    def test_ready_lists_every_issue_the_loop_may_take_in_order(self):
+        issues = [issue(9), issue(3, assignees=("sam",)), issue(5, labels=("loop-ready", "loop:blocked")),
+                  issue(4, labels=("bug",)), issue(7)]
+        self.assertEqual([i["number"] for i in loop.ready(issues, "pat", CFG)], [7, 9])
+        self.assertEqual([i["number"] for i in loop.ready(issues, "sam", CFG)], [3, 7, 9])
+
     def test_config_overlays_defaults_from_loop_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(loop.load_config(tmp), loop.DEFAULTS)
@@ -153,6 +159,9 @@ class TestAPass(unittest.TestCase):
     def lines(self):
         return (self.work / ".loop" / "loop.log").read_text().splitlines()
 
+    def status(self):
+        return json.loads((self.work / ".loop" / "status.json").read_text())
+
     def calls(self):
         return (self.state / "gh-calls").read_text().splitlines()
 
@@ -176,6 +185,36 @@ class TestAPass(unittest.TestCase):
         remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
         self.assertIn("refs/heads/loop/issue-12", remote)
 
+    def test_status_says_what_waited_and_where_the_issue_ended(self):
+        (self.state / "issues.json").write_text(json.dumps([issue(12), issue(15, title="Next one")]))
+        self.go()
+        status = self.status()
+        self.assertFalse(status["running"])
+        self.assertEqual(status["queue"], [{"number": 12, "title": "Add the thing"},
+                                           {"number": 15, "title": "Next one"}])
+        row = status["issues"][0]
+        self.assertEqual((row["number"], row["state"], row["step"], row["round"]), (12, "pr", "SCALE", 1))
+        self.assertEqual((row["tests"], row["review"], row["pr"]), ("passed", "PASS", "https://example.test/pull/1"))
+        self.assertFalse((self.work / ".loop" / "status.json.part").exists())
+
+    def test_status_of_a_blocked_issue_keeps_its_last_round(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["round"], row["review"]), ("blocked", 2, "FIX"))
+        self.assertIn("still failing after 2 rounds", row["note"])
+
+    def test_status_keeps_the_newest_issues_first_and_survives_a_bad_file(self):
+        (self.work / ".loop").mkdir(exist_ok=True)
+        (self.work / ".loop" / "status.json").write_text("{not json")
+        runner = loop.Loop(self.work, self.cfg)
+        for number in range(1, loop.STATUS_KEEP + 6):
+            runner.mark(number, title="t", state="pr")
+        runner.mark(3, state="blocked")
+        numbers = [r["number"] for r in self.status()["issues"]]
+        self.assertEqual(len(numbers), loop.STATUS_KEEP)
+        self.assertEqual(numbers[:2], [3, loop.STATUS_KEEP + 5])
+
     def test_a_change_that_keeps_failing_is_blocked_with_the_label_taken_off_first(self):
         (self.state / "verdict").write_text("FIX")
         self.go()
@@ -197,6 +236,7 @@ class TestAPass(unittest.TestCase):
         self.go()
         self.assertEqual(self.lines()[-1].split()[2], "SCALE")
         self.assertIn("skipped: issue is closed", self.lines()[-1])
+        self.assertEqual(self.status()["issues"][0]["state"], "skipped")
         calls = self.calls()
         self.assertFalse(any(c.startswith("pr create") for c in calls))
         self.assertNotIn("issue edit 12 --remove-label loop-ready", calls)
@@ -277,6 +317,7 @@ class TestAPass(unittest.TestCase):
             loop_obj.run(once=True)
         steps = [l.split()[2] for l in self.lines()]
         self.assertEqual(steps, ["DISCOVER", "SHAPE", "STOPPED", "STOPPED"])
+        self.assertEqual(self.status()["issues"][0]["state"], "stopped")
         self.assertFalse((loop_obj.dir / "STOP").exists())
 
 

@@ -17,6 +17,8 @@ Build and Validate repeat up to max_rounds. Then the issue is labelled
 loop:blocked and the loop moves on without it.
 
 Watch it with:  tail -f .loop/loop.log
+The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
+issue is on, and how its last round went.
 Everything a round produced is in .loop/issue-N/. Checkouts live outside the clone, in
 ~/.harness-loop/. It never merges.
 Standard library only; needs git and the gh CLI, signed in.
@@ -56,6 +58,7 @@ DEFAULTS = {
 
 VERDICT = re.compile(r"^\s*VERDICT:\s*(PASS|FIX)\s*$", re.I | re.M)
 OUTPUT_CAP = 100_000
+STATUS_KEEP = 20  # issues kept in status.json, newest first
 
 
 def load_config(root):
@@ -79,22 +82,28 @@ def findings(text, limit=3):
     return " / ".join(lines[:limit])[:300]
 
 
-def pick(issues, me, cfg, only=None):
-    """The lowest-numbered issue the loop may take, or None.
+def ready(issues, me, cfg):
+    """Every issue the loop may take, lowest number first.
 
     Skips one already labelled blocked, and one assigned to someone who isn't you.
-    With only=N, considers that issue alone.
     """
+    out = []
     for issue in sorted(issues, key=lambda i: i["number"]):
-        if only is not None and issue["number"] != only:
-            continue
         labels = {l["name"] for l in issue.get("labels", [])}
         if cfg["blocked_label"] in labels or cfg["ready_label"] not in labels:
             continue
         who = [a["login"] for a in issue.get("assignees", [])]
         if who and me not in who:
             continue
-        return issue
+        out.append(issue)
+    return out
+
+
+def pick(issues, me, cfg, only=None):
+    """The lowest-numbered issue the loop may take, or None. With only=N, that issue alone."""
+    for issue in ready(issues, me, cfg):
+        if only is None or issue["number"] == only:
+            return issue
     return None
 
 
@@ -150,6 +159,7 @@ class Loop:
         self.dir = self.root / ".loop"
         self.dir.mkdir(exist_ok=True)
         self.me = None
+        self.status = self.read_status()
 
     # -- plumbing ---------------------------------------------------------
 
@@ -160,6 +170,38 @@ class Loop:
         with open(self.dir / "loop.log", "a") as handle:
             handle.write(line + "\n")
         print(line, flush=True)
+
+    def read_status(self):
+        try:
+            found = json.loads((self.dir / "status.json").read_text())
+        except (OSError, ValueError):
+            found = {}
+        found.setdefault("queue", [])
+        found.setdefault("issues", [])
+        return found
+
+    def save_status(self, **fields):
+        """Rewrite .loop/status.json whole, so a reader never sees half a file."""
+        self.status.update(fields)
+        self.status["updated"] = datetime.now().isoformat(timespec="seconds")
+        self.status["issues"] = self.status["issues"][:STATUS_KEEP]
+        part = self.dir / "status.json.part"
+        part.write_text(json.dumps(self.status, indent=2) + "\n")
+        os.replace(part, self.dir / "status.json")
+
+    def mark(self, number, **fields):
+        """Update one issue's entry and move it to the top: it's the one the loop is on."""
+        rows = self.status["issues"]
+        row = next((r for r in rows if r["number"] == number), None)
+        if row is None:
+            row = {"number": number, "title": "", "step": "", "state": "", "round": 0,
+                   "tests": None, "review": None, "pr": None, "note": ""}
+        else:
+            rows.remove(row)
+        row.update(fields)
+        row["updated"] = datetime.now().isoformat(timespec="seconds")
+        rows.insert(0, row)
+        self.save_status()
 
     def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False):
         """(exit code, combined output). A missing command or a timeout is a code, not a crash."""
@@ -200,7 +242,9 @@ class Loop:
         if code != 0:
             self.log("ERROR", "could not list issues: " + out.strip()[:200])
             return None
-        return pick(json.loads(out or "[]"), self.whoami(), self.cfg, only)
+        waiting = ready(json.loads(out or "[]"), self.whoami(), self.cfg)
+        self.save_status(queue=[{"number": i["number"], "title": i["title"]} for i in waiting])
+        return pick(waiting, self.whoami(), self.cfg, only)
 
     def worktrees(self):
         if self.cfg["worktree_dir"]:
@@ -227,6 +271,7 @@ class Loop:
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
+        self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):
         """Append an entry in the shape the learn skill reads: what went wrong, what should have happened."""
@@ -245,6 +290,8 @@ class Loop:
         (folder / "ticket.md").write_text("# #{}: {}\n\n{}\n".format(
             number, issue["title"], issue.get("body") or ""))
         self.log("DISCOVER", 'picked "{}"'.format(issue["title"]), number)
+        self.mark(number, title=issue["title"], step="SHAPE", state="working", round=0,
+                  tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"])
 
         code, plan = self.agent("reader_agent", shape_prompt(issue), self.root)
         if code != 0 or not plan.strip():
@@ -260,7 +307,9 @@ class Loop:
         problems = []
         for round_no in range(1, self.cfg["max_rounds"] + 1):
             if self.stopped():
+                self.mark(number, state="stopped", note="stopped before round {}".format(round_no))
                 return self.log("STOPPED", "before round {}".format(round_no), number)
+            self.mark(number, step="BUILD", round=round_no)
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
@@ -273,6 +322,7 @@ class Loop:
                 self.git("commit", "-q", "-m", "loop: issue {} round {}".format(number, round_no), cwd=tree)
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
+            self.mark(number, step="VALIDATE")
 
             tcode, tout = self.sh(self.cfg["test_command"], cwd=tree, shell=True,
                                   timeout=self.cfg["test_timeout"])
@@ -291,6 +341,7 @@ class Loop:
             passed = tcode == 0 and verdict == "PASS"
             self.log("VALIDATE", "round {} tests {} review {}".format(
                 round_no, "passed" if tcode == 0 else "failed ({})".format(tcode), verdict), number)
+            self.mark(number, tests="passed" if tcode == 0 else "failed ({})".format(tcode), review=verdict)
             if passed:
                 return self.scale(issue, branch, round_no, problems)
             problems.append("round {}: {}".format(
@@ -302,8 +353,10 @@ class Loop:
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
+        self.mark(number, step="SCALE")
         code, state = self.gh("issue", "view", str(number), "--json", "state", "-q", ".state")
         if code == 0 and state.strip() != "OPEN":
+            self.mark(number, state="skipped", note="issue is {}".format(state.strip().lower()))
             return self.log("SCALE", "skipped: issue is {}, no pull request opened".format(state.strip().lower()), number)
         code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
@@ -315,7 +368,9 @@ class Loop:
         if code != 0:
             return self.block(number, "could not open the pull request: " + out.strip()[:200])
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
-        self.log("SCALE", "PR opened " + out.strip().splitlines()[-1], number)
+        url = out.strip().splitlines()[-1]
+        self.log("SCALE", "PR opened " + url, number)
+        self.mark(number, state="pr", pr=url)
         if problems:
             self.lesson(number, rounds, problems, passed=True)
 
@@ -340,6 +395,7 @@ class Loop:
             return 1
         try:
             (self.dir / "STOP").unlink(missing_ok=True)  # no other loop holds the lock, so an old stop is stale
+            self.save_status(running=True, pid=os.getpid())
             idle = False
             while not self.stopped():
                 issue = self.discover(only)
@@ -362,6 +418,7 @@ class Loop:
                 self.log("STOPPED", "stop file found")
                 (self.dir / "STOP").unlink()
         finally:
+            self.save_status(running=False, pid=None)
             (self.dir / "lock").unlink(missing_ok=True)
         return 0
 
