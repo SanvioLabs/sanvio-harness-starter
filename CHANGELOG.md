@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: The loop writes a status file
+
+[`scripts/loop.py`](scripts/loop.py) now keeps `.loop/status.json` up to date at every step:
+whether it's running, which ready issues are waiting, and for each issue the
+step it's on, the round, the last test and review results, and the pull
+request. The log stays as it was. A dashboard, a pane or a script reads the
+file instead of parsing the log.
+
+**Files:** [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** take [`scripts/loop.py`](scripts/loop.py) if you haven't changed yours. `.loop/` is already
+gitignored.
+
 ## 2026-10-09: How to try the loop
 
 [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) now shows the loop's flags (`--dry-run`, `--once`,

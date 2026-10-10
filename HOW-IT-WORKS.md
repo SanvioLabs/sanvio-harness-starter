@@ -87,6 +87,11 @@ first, nothing secret in it:
     2026-10-09T20:19:44 #12 SCALE PR opened https://github.com/you/repo/pull/31
 
 Point a dashboard or a Slack post at that file and you have a monitor.
+`.loop/status.json` holds the same state for a tool to read rather than parse:
+`running`, the `queue` of ready issues waiting, and one row per issue, newest
+first, with its `step`, `round`, `state` (`working`, `pr`, `blocked`,
+`stopped` or `skipped`), the last `tests` and `review`, and the `pr` link.
+It's rewritten whole at each step, so a reader never sees half of it.
 
 **Make it yours** with a `loop.json` at the repo root. Any key you leave out
 keeps its default:
