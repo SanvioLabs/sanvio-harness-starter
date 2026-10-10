@@ -5,9 +5,41 @@ changes, what it adds, the files it touched, and **Do:** what you need to do to
 take it. Ask the agent "what's new" and [`skills/whats-new/`](skills/whats-new/) reads this, and the
 starter's copy, and tells you what you don't have yet.
 
-Changing your own harness? Anything noticeable gets an entry at the top in
-the same shape ([`steering/operating.md`](steering/operating.md) says what counts). Then "what's new"
-works for your team too.
+Changing your own harness? Any noticeable change gets an entry at the top, in
+the same change, not later. Then "what's new" works for your team too.
+Noticeable means:
+
+- **Something new:** a skill, a steering file, a gate, a hook, an agent, a
+  check, a folder people are meant to use
+- **Something that works differently:** a skill or gate that now does more,
+  less or something else, a rule that got stricter or looser
+- **Something that moved:** a file renamed or relocated, so old paths break
+- **Anything with a Do:** if someone has to run a command or edit a file to
+  take it, it needs an entry whatever its size
+
+Typo fixes, rewording, tests on their own and tidying inside a file don't. The
+test: would someone who copied the harness last week want to know, or need to
+act? If you're unsure, write the entry.
+
+One entry per change someone would name, not per commit: three files that add
+one feature are one entry. The heading is `## YYYY-MM-DD: Name`, and the name
+never changes once it's written, because copies are compared by it. Under it:
+what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
+fine).
+
+## 2026-10-09: What counts lives in this file
+
+What gets an entry here, and the shape of one, moved from
+[`steering/operating.md`](steering/operating.md) to the top of this file, where you are when you write
+one. [`steering/operating.md`](steering/operating.md) loads into every session, and it no longer
+repeats what [`AGENTS.md`](AGENTS.md) already says about the company files. The
+always-loaded set is about 30 lines shorter.
+
+**Files:** [`CHANGELOG.md`](CHANGELOG.md), [`steering/operating.md`](steering/operating.md), [`AGENTS.md`](AGENTS.md),
+[`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md)
+
+**Do:** if you copied [`steering/operating.md`](steering/operating.md), take the new one, or delete
+its "Telling people what changed" section and take this file's header.
 
 ## 2026-10-09: Where it came from
 

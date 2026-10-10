@@ -94,9 +94,8 @@ what you needed and ask.
 
 A noticeable change (something new, something that works differently,
 something that moved, or anything someone has to act on) adds an entry at the
-top of [`CHANGELOG.md`](CHANGELOG.md) in the same change. [`steering/operating.md`](steering/operating.md) has what
-counts and the shape of an entry. That's how the next person finds out with
-"what's new".
+top of [`CHANGELOG.md`](CHANGELOG.md) in the same change. Its header has what counts and the
+shape of an entry. That's how the next person finds out with "what's new".
 
 ## Agents
 
