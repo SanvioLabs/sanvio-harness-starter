@@ -69,7 +69,7 @@ rewrites at every step, and checks `.loop/STOP` and `.loop/lock`, with
 `kill -0` on the process the lock names.
 
 It shows the loop of the harness the session started in: the nearest folder
-at or above it with `scripts/loop.py`.
+at or above it with [`scripts/loop.py`](../../../scripts/loop.py).
 
 ## Changing it
 
