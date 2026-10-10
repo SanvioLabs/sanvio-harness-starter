@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { changes, clip, describe, findRoot, headline, parseStatus, sameSeen, waiting } from './logic'
+import { changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -12,8 +12,8 @@ function status(rows: Row[], queue = [{ number: 12, title: 'a' }, { number: 15, 
   return { running, updated: '2026-10-09T18:19:55', queue, issues: rows }
 }
 
-function seen(s: Status | null, isLocked: boolean, isStopping = false): Seen {
-  return { root: '/h/starter', status: s, isLocked, isStopping }
+function seen(s: Status | null, isLocked: boolean, isStopping = false, isStaleLock = false): Seen {
+  return { root: '/h/starter', status: s, isLocked, isStaleLock, isStopping }
 }
 
 group('the status file', () => {
@@ -41,6 +41,16 @@ group('the headline', () => {
   test('a stop request while running, and a loop that never ran', () => {
     expect(headline(seen(status([ROW]), true, true)).text).toBe('Stopping after this step')
     expect(headline(seen(null, false)).text).toBe("Hasn't run here yet")
+  })
+  test('a lock whose process is gone is a killed run, in red', () => {
+    const line = headline(seen(status([ROW], undefined, true), false, false, true))
+    expect(line.tone).toBe('fail')
+    expect(line.text).toContain('killed')
+  })
+  test('the pid in the lock file', () => {
+    expect(lockPid('4242\n')).toBe(4242)
+    expect(lockPid('')).toBeNull()
+    expect(lockPid('abc')).toBeNull()
   })
 })
 
@@ -72,6 +82,7 @@ group('what to tell the person', () => {
     const after = status([{ ...ROW, state: 'pr', pr: 'u' }, { ...ROW, number: 9, state: 'blocked' }])
     expect(changes(before, after)).toEqual(['Loop: #12 has a pull request', 'Loop: #9 is blocked'])
     expect(changes(after, after)).toEqual([])
+    expect(changes(null, after)).toEqual([])
     expect(changes(before, status([{ ...ROW, round: 3 }]))).toEqual([])
   })
   test('waiting leaves out the issue being worked on', () => {

@@ -64,6 +64,7 @@ export function parseStatus(text: string | null): Status | null {
 export function headline(seen: Seen): Line {
   if (seen.isLocked && seen.isStopping) return { tone: 'now', text: 'Stopping after this step' }
   if (seen.isLocked) return { tone: 'now', text: 'Running' }
+  if (seen.isStaleLock) return { tone: 'fail', text: 'Not running. The last run was killed and left its lock behind' }
   if (!seen.status) return { tone: 'quiet', text: "Hasn't run here yet" }
   if (seen.status.running) return { tone: 'fail', text: "Not running. The last run didn't finish cleanly" }
   return { tone: 'quiet', text: 'Not running' }
@@ -95,8 +96,9 @@ export function describe(row: Row, isRunning: boolean): { head: Line; detail: st
 }
 
 // A short line for each issue that has just reached an end: a pull request, a block or a stop.
+// The first look has nothing to compare with, so it says nothing: opening the pane isn't news.
 export function changes(before: Status | null, after: Status | null): string[] {
-  if (!after) return []
+  if (!before || !after) return []
   const was = new Map((before?.issues ?? []).map(r => [r.number, r.state]))
   const out: string[] = []
   for (const row of after.issues) {
@@ -106,6 +108,12 @@ export function changes(before: Status | null, after: Status | null): string[] {
     else if (row.state === 'stopped') out.push(`Loop: #${row.number} stopped`)
   }
   return out
+}
+
+// The process id in .loop/lock, or null when it isn't a number.
+export function lockPid(text: string): number | null {
+  const pid = Number.parseInt(text.trim(), 10)
+  return Number.isInteger(pid) && pid > 0 ? pid : null
 }
 
 // Fit one line to the pane, with an ellipsis where it was cut.

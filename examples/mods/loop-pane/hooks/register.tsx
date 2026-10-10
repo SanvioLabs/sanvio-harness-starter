@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, STATUS_FILE, STOP_FILE, changes, clip, describe, findRoot, headline, parseStatus, sameSeen, waiting } from './logic'
+import { LOCK_FILE, STATUS_FILE, STOP_FILE, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
 import type { Tone } from './logic'
 import type { Seen } from '../types'
 
@@ -27,13 +27,26 @@ async function rootOf($: EngineInterface): Promise<string | null> {
   return launch ? findRoot(launch, path => $.fs.exists(path)) : null
 }
 
+// Whether the process named in the lock is alive. A killed run leaves its lock behind.
+async function lockHolderAlive($: EngineInterface, root: string): Promise<boolean | null> {
+  const text = await $.fs.read(`${root}/${LOCK_FILE}`).catch(() => null)
+  if (text === null) return null
+  const pid = lockPid(text)
+  if (pid === null) return true
+  const ran = await $.process.run({ argv: ['kill', '-0', String(pid)] }).catch(() => null)
+  // kill -0 also fails on another user's process; count only "no such process" as gone.
+  return !ran || ran.exitCode === 0 || !/no such process/i.test(ran.stderr)
+}
+
 // One look at the loop's files. It only reads: the loop is the only writer.
 async function look($: EngineInterface, root: string): Promise<Seen> {
   const text = await $.fs.read(`${root}/${STATUS_FILE}`).catch(() => null)
+  const alive = await lockHolderAlive($, root)
   return {
     root,
     status: parseStatus(text),
-    isLocked: await $.fs.exists(`${root}/${LOCK_FILE}`),
+    isLocked: alive === true,
+    isStaleLock: alive === false,
     isStopping: await $.fs.exists(`${root}/${STOP_FILE}`),
   }
 }

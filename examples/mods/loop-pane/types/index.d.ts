@@ -27,7 +27,10 @@ export type Status = {
 export type Seen = {
   root: string
   status: Status | null
+  // A lock whose process is alive: the loop is running.
   isLocked: boolean
+  // A lock left by a process that's gone: the last run was killed. The next run replaces it.
+  isStaleLock: boolean
   isStopping: boolean
 }
 

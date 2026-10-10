@@ -47,20 +47,21 @@ Or load it for one session with `claude --plugin-dir examples/mods/loop-pane`.
 
 | Line | Shows |
 |---|---|
-| The first line | **Running** while the loop holds its lock, **Stopping after this step** after `loop.py stop`, **Not running** otherwise. Red if the last run was killed before it could finish |
+| The first line | **Running** while a live loop holds its lock, **Stopping after this step** after `loop.py stop`, **Not running** otherwise. Red when the last run was killed: its lock is still there but its process isn't, and the next run replaces it |
 | **waiting** | Ready issues the loop will take next, lowest first |
 | An issue | Its title, then what it's on (planning, building, checking, opening the pull request) with the round, or how it ended: a pull request, blocked, stopped or skipped |
 | Under it | The last round's test and review results, and why it was blocked |
 
-An issue that reaches an end also pops up a short notice, so you can leave the
-pane closed and still hear about it.
+While the pane is open, an issue that reaches an end also pops up a short
+notice, so you hear about it without reading the pane.
 
 ## What it doesn't do
 
 It only reads. It never starts, stops or changes the loop: run
-`python3 scripts/loop.py` for that. It reads `.loop/status.json`, which the loop
-rewrites at every step, and checks for `.loop/lock` and `.loop/STOP`, every two
-seconds while the pane is open and not at all while it's closed.
+`python3 scripts/loop.py` for that. Every two seconds while the pane is open,
+and not at all while it's closed, it reads `.loop/status.json`, which the loop
+rewrites at every step, and checks `.loop/STOP` and `.loop/lock`, with
+`kill -0` on the process the lock names.
 
 It shows the loop of the harness the session started in: the nearest folder
 at or above it with `scripts/loop.py`.
