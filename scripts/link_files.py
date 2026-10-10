@@ -43,14 +43,15 @@ def resolve(md, ref, files, dirs):
 def link_text(md, text, files, dirs):
     """`text` with its file names linked, and how many it linked."""
     lines = text.split("\n")
-    out, fence, front, count = [], False, lines[:1] == ["---"], 0
+    out, fence, front, count = [], None, lines[:1] == ["---"], 0
     for i, line in enumerate(lines):
         if front:
             out.append(line)
             front = not (i > 0 and line == "---")
             continue
-        if line.lstrip().startswith("```"):
-            fence = not fence
+        marker = line.lstrip()[:3]
+        if marker in ("```", "~~~") and fence in (None, marker):
+            fence = None if fence else marker
             out.append(line)
             continue
         if fence or line.startswith("#"):

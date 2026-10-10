@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: Tilde code fences stay plain
+
+[`scripts/link_files.py`](scripts/link_files.py) now leaves code blocks fenced with `~~~` alone, as it
+already did for blocks fenced with backticks.
+
+**Files:** [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files.py`](tests/test_link_files.py)
+
+**Do:** take [`scripts/link_files.py`](scripts/link_files.py). In a copy that has `~~~` blocks, undo by hand
+any links the script added inside them: running it again doesn't remove them.
+
 ## 2026-10-09: Loop control skill
 
 [`skills/loop-control/`](skills/loop-control/) drives the loop from a conversation. "Put #12 on the

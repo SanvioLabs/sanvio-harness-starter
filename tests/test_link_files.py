@@ -45,6 +45,14 @@ class LinkFiles(unittest.TestCase):
         text = "---\ndescription: reads `AGENTS.md`\n---\n# `AGENTS.md`\n```\ncat `AGENTS.md`\n```"
         self.assertEqual(link("skills/learn/SKILL.md", text), (text, 0))
 
+    def test_a_tilde_fence_stays_plain(self):
+        text = "~~~\ncat `AGENTS.md`\n~~~"
+        self.assertEqual(link("README.md", text), (text, 0))
+
+    def test_a_backtick_fence_inside_a_tilde_block_does_not_close_it(self):
+        text = "~~~\n```\ncat `AGENTS.md`\n~~~"
+        self.assertEqual(link("README.md", text), (text, 0))
+
     def test_running_twice_changes_nothing(self):
         once, _ = link("README.md", "Read `AGENTS.md` and `steering/`.")
         self.assertEqual(link("README.md", once), (once, 0))
