@@ -33,7 +33,7 @@ async function lockHolderAlive($: EngineInterface, root: string): Promise<boolea
   if (text === null) return null
   const pid = lockPid(text)
   if (pid === null) return true
-  const ran = await $.process.run({ argv: ['kill', '-0', String(pid)] }).catch(() => null)
+  const ran = await $.process.run(['kill', '-0', String(pid)]).catch(() => null)
   // kill -0 also fails on another user's process; count only "no such process" as gone.
   return !ran || ran.exitCode === 0 || !/no such process/i.test(ran.stderr)
 }

@@ -43,6 +43,11 @@ inside a session, at the root:
 
 Or load it for one session with `claude --plugin-dir examples/mods/loop-pane`.
 
+On a machine that already knew this marketplace from another copy of the
+harness, the first session in a new copy can miss it: Claude Code installs
+the enabled mods before it re-reads the marketplace. The second session has
+it.
+
 ## Reading it
 
 | Line | Shows |
