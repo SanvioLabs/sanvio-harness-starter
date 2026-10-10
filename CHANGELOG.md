@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: What a ticket holds, and how one ends
+
+[`steering/tickets.md`](steering/tickets.md) says what goes in an issue (what and why, a "done
+means" a check can prove, what's out of scope, pointers), when one is ready
+for the loop, what a comment on one is for, and how one ends. New issues on
+GitHub start from [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md). The loop's pull
+request now says `Closes #N`, so merging it closes the issue, and the loop
+comments on the issue when it opens the pull request or blocks.
+
+**Files:** [`steering/tickets.md`](steering/tickets.md), [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), [`scripts/loop.py`](scripts/loop.py),
+[`tests/test_loop.py`](tests/test_loop.py), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`AGENTS.md`](AGENTS.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md),
+[`docs/specs/lightweight-loop.md`](docs/specs/lightweight-loop.md)
+
+**Do:** take the steering file, its row in [`AGENTS.md`](AGENTS.md), the issue template and
+[`scripts/loop.py`](scripts/loop.py). The loop's `gh` sign-in now needs permission to comment on
+issues, which a normal sign-in has.
+
 ## 2026-10-09: Loop control skill
 
 [`skills/loop-control/`](skills/loop-control/) drives the loop from a conversation. "Put #12 on the

@@ -152,6 +152,26 @@ def review_prompt(plan, diff, tests, code):
     ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests))
 
 
+def pr_body(number):
+    """Closes the issue when the pull request merges into the default branch."""
+    return ("Closes #{n}.\n\nOpened by the loop. Plan, test output and review are in "
+            ".loop/issue-{n}/ on the machine that ran it.\n").format(n=number)
+
+
+def pr_comment(url, rounds):
+    return "The loop opened {} after {} round{}: the tests and the review passed. It doesn't merge; a person does.".format(
+        url, rounds, "" if rounds == 1 else "s")
+
+
+def block_comment(number, why, rounds, cfg):
+    """Why it stopped and how to put it back. The reason is the loop's own words, never agent output."""
+    took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
+    return ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
+            ".loop/issue-{n}/ on the machine that ran it. To try again, fix the ticket (usually the "
+            "Done means), take {blocked} off and put {ready} back.").format(
+        took=took, why=why, n=number, blocked=cfg["blocked_label"], ready=cfg["ready_label"])
+
+
 class Loop:
     def __init__(self, root=ROOT, cfg=None):
         self.root = Path(root)
@@ -269,11 +289,18 @@ class Loop:
             raise RuntimeError("could not make the worktree: " + out.strip()[:200])
         return path, branch
 
-    def block(self, number, why):
+    def comment(self, number, text):
+        """One comment on the issue, so it tells its story without this machine. A failure is logged, not fatal."""
+        code, out = self.gh("issue", "comment", str(number), "--body", text)
+        if code != 0:
+            self.log("ERROR", "could not comment on the issue: " + out.strip()[:200], number)
+
+    def block(self, number, why, rounds=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked."""
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
+        self.comment(number, block_comment(number, why, rounds, self.cfg))
         self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):
@@ -352,7 +379,7 @@ class Loop:
 
         self.lesson(number, self.cfg["max_rounds"], problems, passed=False)
         self.block(number, "still failing after {} rounds, see .loop/issue-{}/".format(
-            self.cfg["max_rounds"], number))
+            self.cfg["max_rounds"], number), rounds=self.cfg["max_rounds"])
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
@@ -364,8 +391,7 @@ class Loop:
         code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
             return self.block(number, "push failed: " + out.strip()[:200])
-        body = "Refs #{}.\n\nPlan, test output and review are in .loop/issue-{}/ on the machine that ran the loop.\n".format(
-            number, number)
+        body = pr_body(number)
         code, out = self.gh("pr", "create", "--base", self.cfg["base"], "--head", branch,
                             "--title", "{} (#{})".format(issue["title"], number), "--body", body)
         if code != 0:
@@ -374,6 +400,7 @@ class Loop:
         url = out.strip().splitlines()[-1]
         self.log("SCALE", "PR opened " + url, number)
         self.mark(number, state="pr", pr=url)
+        self.comment(number, pr_comment(url, rounds))
         if problems:
             self.lesson(number, rounds, problems, passed=True)
 
