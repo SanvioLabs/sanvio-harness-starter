@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: Loop pane
+
+A Claude Code mod: `/loop-pane` opens a pane beside the conversation showing
+the loop. Whether it's running, which ready issues are waiting, and for each
+issue the step it's on and its round, the last test and review results, and
+its pull request, with a button that copies the link. An issue that reaches
+an end pops up a notice. It reads `.loop/status.json` every two seconds while
+the pane is open and only reads. It's on by default, like the lens.
+
+**Files:** [`examples/mods/loop-pane/`](examples/mods/loop-pane/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json),
+[`.claude/settings.json`](.claude/settings.json), [`AGENTS.md`](AGENTS.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** take [`examples/mods/loop-pane/`](examples/mods/loop-pane/) and the `loop-pane` entry in
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), and add
+`"loop-pane@sanvio-harness-starter": true` to `enabledPlugins` in your
+[`.claude/settings.json`](.claude/settings.json). Needs the status file entry below.
+
 ## 2026-10-09: The loop writes a status file
 
 [`scripts/loop.py`](scripts/loop.py) now keeps `.loop/status.json` up to date at every step:

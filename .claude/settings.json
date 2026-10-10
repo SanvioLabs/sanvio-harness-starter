@@ -83,6 +83,7 @@
     }
   },
   "enabledPlugins": {
-    "harness-lens@sanvio-harness-starter": true
+    "harness-lens@sanvio-harness-starter": true,
+    "loop-pane@sanvio-harness-starter": true
   }
 }
