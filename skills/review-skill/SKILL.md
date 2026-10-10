@@ -1,6 +1,7 @@
 ---
 name: review-skill
 description: Review someone else's skill before it enters this harness, and adopt only what fills a gap. Use when asked to install, add, try, import or review a skill from outside this repo.
+license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
 # Review an outside skill

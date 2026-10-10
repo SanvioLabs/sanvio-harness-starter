@@ -1,5 +1,7 @@
 # Harness starter
 
+Built and maintained by [Sanvio Labs](https://sanviolabs.com). Free under MIT.
+
 A harness is everything around the model: the rules it reads, the procedures it
 follows, the checks that stop it, and the other agents it hands work to. The
 model is the engine. The harness is what makes it safe to leave running.
@@ -242,6 +244,20 @@ In Claude Code, the line above the prompt names each layer as it acts, so you
 can watch yours work. It's on by default. [`examples/mods/harness-lens/`](examples/mods/harness-lens/)
 has how to read it.
 
-## Licence
+## Licence and credit
 
 MIT. Take it, change it, ship it. See [`LICENSE`](LICENSE).
+
+The licence asks one thing: keep the copyright notice. I'm asking one more.
+If you build on this, keep the line that says where a file came from, and
+link back here when you write about it. GitHub's "Cite this repository"
+button gives you the wording ([`CITATION.cff`](CITATION.cff)).
+
+Tell me what you built. I'd like to see it.
+
+## Who made this
+
+[Sanvio Labs](https://sanviolabs.com). I build AI products from idea to
+production, and I build harnesses like this one inside engineering teams that
+already have coding agents and want a method around them. If that's your
+team, write to [contact@sanviolabs.com](mailto:contact@sanviolabs.com).
