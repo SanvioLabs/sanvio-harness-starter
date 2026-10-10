@@ -1,12 +1,19 @@
 {
   "name": "sanvio-harness-starter",
-  "owner": { "name": "Sanvio Labs" },
+  "owner": {
+    "name": "Sanvio Labs"
+  },
   "description": "Mods that ship with the harness starter",
   "plugins": [
     {
       "name": "harness-lens",
       "source": "./examples/mods/harness-lens",
       "description": "A line above the prompt showing which part of the harness just acted"
+    },
+    {
+      "name": "loop-pane",
+      "source": "./examples/mods/loop-pane",
+      "description": "A pane beside the conversation showing the loop: what's waiting, what each issue is on, and its pull request"
     }
   ]
 }

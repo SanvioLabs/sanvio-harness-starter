@@ -92,6 +92,8 @@ Point a dashboard or a Slack post at that file and you have a monitor.
 first, with its `step`, `round`, `state` (`working`, `pr`, `blocked`,
 `stopped` or `skipped`), the last `tests` and `review`, and the `pr` link.
 It's rewritten whole at each step, so a reader never sees half of it.
+In Claude Code, `/loop-pane` draws it in a pane beside the conversation
+([`examples/mods/loop-pane/`](examples/mods/loop-pane/)).
 
 **Make it yours** with a `loop.json` at the repo root. Any key you leave out
 keeps its default:
