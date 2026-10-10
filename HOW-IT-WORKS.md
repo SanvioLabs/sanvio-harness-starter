@@ -128,6 +128,10 @@ script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put
 that command in `test_command`, which the script runs itself.
 
+**From a conversation,** the [`skills/loop-control/`](skills/loop-control/) skill does the same jobs:
+it checks an issue is ready before labelling it, starts the loop, says what
+it did, and stops it with the label off first.
+
 **Rules it keeps.** To take an issue off the loop, the label comes off first and
 then the run stops, because stopping alone lets the queue pick it straight back
 up. `python3 scripts/loop.py stop` ends a running loop at its next step. A lock

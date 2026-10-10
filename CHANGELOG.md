@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: Loop control skill
+
+[`skills/loop-control/`](skills/loop-control/) drives the loop from a conversation. "Put #12 on the
+loop" reads the issue, checks it's one change with a check that proves it and
+nothing outside the repo, says if the pull request would be public, and asks
+before labelling. It also starts the loop (setup check and dry run first),
+says what the loop did (outcome, rounds, review findings, what the review
+couldn't check), and stops it with the label taken off first.
+
+**Files:** [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`AGENTS.md`](AGENTS.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** take [`skills/loop-control/`](skills/loop-control/) and its row in [`AGENTS.md`](AGENTS.md).
+
 ## 2026-10-09: Loop pane
 
 A Claude Code mod: `/loop-pane` opens a pane beside the conversation showing

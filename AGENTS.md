@@ -71,6 +71,7 @@ steps in order.
 | [`skills/review-tests/SKILL.md`](skills/review-tests/SKILL.md) | Asked whether tests are any good or would catch a regression, or after tests were written by an agent |
 | [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md) | Asked to install, add, try or review a skill from outside this repo |
 | [`skills/learn/SKILL.md`](skills/learn/SKILL.md) | The agent got something wrong and the person wants it to stick: "learn from that", "don't do that again", "make that a rule" |
+| [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md) | Putting an issue on the loop, starting or stopping [`scripts/loop.py`](scripts/loop.py), or asked what the loop did or why an issue is blocked |
 | [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md) | Someone runs `/orientation`, is new here, asks how to use this, says "get me started", or wants it set up for their own job and their company's data |
 | [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md) | At the end of a sprint, or asked for a harness report, a sprint follow-up, or what to add to the harness |
 | [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
