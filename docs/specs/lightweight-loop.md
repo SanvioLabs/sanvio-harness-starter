@@ -75,6 +75,7 @@ Affected:
 | REQ-013 | Optional | Where `--dry-run`, `--once` or `--issue N` is given, the loop shall only name the issue it would take, take one issue, or take only that issue. |
 | REQ-014 | Ubiquitous | The loop shall read its settings from `loop.json` at the repo root, each key defaulting when absent. |
 | REQ-015 | Unwanted | If the issue is no longer open when a round passes, then the loop shall not push or open a pull request, and shall log that it skipped. |
+| REQ-016 | Event-Driven | When the loop opens a pull request, its body shall say `Closes #N`, and the loop shall comment the link and the round count on the issue. When it blocks an issue, it shall comment the reason, the round count where there is one, and how to put it back. A comment that fails is logged as ERROR and changes nothing else. Added 2026-10-09. |
 
 ## Acceptance Criteria
 
@@ -92,6 +93,7 @@ Affected:
 | AC-010 | REQ-013 | Dry run names an issue and starts no agent; nothing ready logs IDLE once | `test_dry_run_names_the_issue_and_starts_no_agent`, `test_nothing_ready_logs_idle_once` |
 | AC-011 | REQ-014 | Defaults overlay from `loop.json` | `test_config_overlays_defaults_from_loop_json` |
 | AC-012 | REQ-015 | A change for an issue closed meanwhile pushes nothing and opens no pull request | `test_a_change_for_an_issue_closed_meanwhile_opens_no_pull_request` |
+| AC-013 | REQ-016 | The pull request closes the issue and the issue gets the link; a blocked issue gets why and how to retry; a failed comment leaves the pull request standing | `test_a_pull_request_closes_the_issue_and_the_issue_hears_about_it`, `test_a_blocked_issue_says_why_and_how_to_retry`, `test_a_comment_that_fails_is_logged_and_the_pull_request_stands` |
 
 All run with `python3 -m unittest discover -s tests`. The tests use a temporary git repo, a stand-in agent and a stand-in `gh`.
 

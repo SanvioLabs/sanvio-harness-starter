@@ -23,6 +23,7 @@ Read these when their moment comes:
 | [`steering/deploying.md`](steering/deploying.md) | Setting up infrastructure, deploying, or changing anything people use |
 | [`steering/model-selection.md`](steering/model-selection.md) | Deciding which model runs what, or handing work to a subagent |
 | [`steering/gates.md`](steering/gates.md) | Adding, moving or strengthening a check, or deciding whether a rule needs one |
+| [`steering/tickets.md`](steering/tickets.md) | Writing an issue, putting one on the loop, commenting on one, or closing one |
 
 Add your own the same way: one topic per file, and a row here saying when it
 applies. Where a steering file and this file disagree, this file wins, and you

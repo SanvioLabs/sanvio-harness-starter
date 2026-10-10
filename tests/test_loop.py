@@ -113,6 +113,9 @@ elif args[:2] == ["issue", "view"]:
     print(open(path).read().strip() if os.path.exists(path) else "OPEN")
 elif args[:2] == ["pr", "create"]:
     print("https://example.test/pull/1")
+elif args[:2] == ["issue", "comment"] and os.path.exists(os.path.join(state, "comment-fails")):
+    print("HTTP 403: comments are locked", file=sys.stderr)
+    sys.exit(1)
 """
 
 
@@ -165,6 +168,11 @@ class TestAPass(unittest.TestCase):
     def calls(self):
         return (self.state / "gh-calls").read_text().splitlines()
 
+    def comments(self):
+        """The text of each issue comment the loop posted (a body can run over several lines)."""
+        text = (self.state / "gh-calls").read_text()
+        return [chunk.split("--body ", 1)[1] for chunk in text.split("issue comment ")[1:]]
+
     def go(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=True, **kwargs)
@@ -216,6 +224,35 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(numbers), loop.STATUS_KEEP)
         self.assertEqual(numbers[:2], [3, loop.STATUS_KEEP + 5])
 
+    def test_a_pull_request_closes_the_issue_and_the_issue_hears_about_it(self):
+        self.go()
+        text = (self.state / "gh-calls").read_text()
+        self.assertIn("Closes #12.", text)
+        self.assertNotIn("Refs #12", text)
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("The loop opened https://example.test/pull/1 after 1 round:", comments[0])
+        self.assertIn("doesn't merge", comments[0])
+
+    def test_a_blocked_issue_says_why_and_how_to_retry(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("after 2 rounds: still failing after 2 rounds", comments[0])
+        self.assertIn("take loop:blocked off and put loop-ready back", comments[0])
+        calls = self.calls()
+        self.assertLess(calls.index("issue edit 12 --add-label loop:blocked"),
+                        next(i for i, c in enumerate(calls) if c.startswith("issue comment 12")))
+
+    def test_a_comment_that_fails_is_logged_and_the_pull_request_stands(self):
+        (self.state / "comment-fails").write_text("")
+        self.assertEqual(self.go(), 0)
+        log = "\n".join(self.lines())
+        self.assertIn("SCALE PR opened", log)
+        self.assertIn("could not comment on the issue: HTTP 403", log)
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+
     def test_a_change_that_keeps_failing_is_blocked_with_the_label_taken_off_first(self):
         (self.state / "verdict").write_text("FIX")
         self.go()
@@ -241,6 +278,7 @@ class TestAPass(unittest.TestCase):
         calls = self.calls()
         self.assertFalse(any(c.startswith("pr create") for c in calls))
         self.assertNotIn("issue edit 12 --remove-label loop-ready", calls)
+        self.assertFalse(any(c.startswith("issue comment") for c in calls))
         remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
         self.assertEqual(remote, "")
 

@@ -18,7 +18,7 @@ A ticket is an instruction to an agent that runs without anyone watching, so
 it gets read before it's labelled.
 
 1. **Read it:** `gh issue view <N>`. Read the comments too.
-2. **Check it's ready.** All of these, or it isn't:
+2. **Check it's ready** against [`steering/tickets.md`](../../steering/tickets.md). All of these, or it isn't:
    - **One change**, small enough for one pull request.
    - **A "done means"** that a check can prove: a test that should fail now
      and pass after, or a command and what it should print. "Make it better"
@@ -27,7 +27,7 @@ it gets read before it's labelled.
      credentials, or anything the guard would refuse.
    - **Not assigned to someone else.** The loop skips those anyway.
 3. **If something's missing,** draft the missing part (usually the "done
-   means") and show it. The person adds it to the issue, or tells you to.
+   means") in the shape of [`.github/ISSUE_TEMPLATE/loop-task.md`](../../.github/ISSUE_TEMPLATE/loop-task.md), and show it. The person adds it to the issue, or tells you to.
 4. **Check where the pull request would go:** `gh repo view --json visibility
    -q .visibility`. If it's `PUBLIC`, say the pull request will be public and
    ask whether that's meant. A copy of the public starter is public until
