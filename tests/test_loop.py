@@ -190,8 +190,7 @@ class TestAPass(unittest.TestCase):
         self.go()
         status = self.status()
         self.assertFalse(status["running"])
-        self.assertEqual(status["queue"], [{"number": 12, "title": "Add the thing"},
-                                           {"number": 15, "title": "Next one"}])
+        self.assertEqual(status["queue"], [{"number": 15, "title": "Next one"}])
         row = status["issues"][0]
         self.assertEqual((row["number"], row["state"], row["step"], row["round"]), (12, "pr", "SCALE", 1))
         self.assertEqual((row["tests"], row["review"], row["pr"]), ("passed", "PASS", "https://example.test/pull/1"))
@@ -200,8 +199,10 @@ class TestAPass(unittest.TestCase):
     def test_status_of_a_blocked_issue_keeps_its_last_round(self):
         (self.state / "verdict").write_text("FIX")
         self.go()
-        row = self.status()["issues"][0]
+        status = self.status()
+        row = status["issues"][0]
         self.assertEqual((row["state"], row["round"], row["review"]), ("blocked", 2, "FIX"))
+        self.assertEqual(status["queue"], [])
         self.assertIn("still failing after 2 rounds", row["note"])
 
     def test_status_keeps_the_newest_issues_first_and_survives_a_bad_file(self):

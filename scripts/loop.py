@@ -201,6 +201,9 @@ class Loop:
         row.update(fields)
         row["updated"] = datetime.now().isoformat(timespec="seconds")
         rows.insert(0, row)
+        if row["state"] in ("pr", "blocked", "skipped"):
+            # Off the queue the moment it ends, as its label is: the next look at GitHub agrees.
+            self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
         self.save_status()
 
     def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False):
