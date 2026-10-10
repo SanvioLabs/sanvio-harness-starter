@@ -105,6 +105,22 @@ warning the harness's session-start hook prints (an unset `core.hooksPath`, for
 instance) is the first thing every agent session says, and it ends up at the top of
 `plan.md` and the review.
 
+**Try it** on a private copy first. On a clone of the public starter, the
+first real run opens a public pull request. Label one small issue
+`loop-ready`, then:
+
+    python3 scripts/loop.py run --dry-run    # which issue it would take, then stop
+    python3 scripts/loop.py run --once       # one issue, then stop
+    python3 scripts/loop.py run --issue 12   # only issue #12
+    python3 scripts/loop.py run              # every ready issue, until none are left
+
+Then read `.loop/issue-N/` and the pull request it opened.
+
+**What the review can see.** The reviewer gets the plan, the diff and the
+script's test output. With the default `reader_agent` it can't run commands,
+so it checks the rest by reading the code. If the proof is a command, put
+that command in `test_command`, which the script runs itself.
+
 **Rules it keeps.** To take an issue off the loop, the label comes off first and
 then the run stops, because stopping alone lets the queue pick it straight back
 up. `python3 scripts/loop.py stop` ends a running loop at its next step. A lock

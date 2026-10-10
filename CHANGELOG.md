@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-09: How to try the loop
+
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) now shows the loop's flags (`--dry-run`, `--once`,
+`--issue`), says to try it on a private copy because a real run opens a pull
+request, and says what the review agent can and can't check.
+
+**Files:** [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-09: What counts lives in this file
 
 What gets an entry here, and the shape of one, moved from
