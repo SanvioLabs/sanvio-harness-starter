@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, record, relative, remember, skillFromPath, steeringName } from './logic'
+import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, steeringName } from './logic'
 import type { Config, Tone } from './logic'
-import type { Lens } from '../types'
+import type { Lens, Scope } from '../types'
 
 const launchAtom = atom({ plugin: 'harness-lens', key: 'launch' } as const, null)
 const lensAtom = atom({ plugin: 'harness-lens', key: 'lens' } as const, null)
@@ -88,6 +88,23 @@ async function load($: EngineInterface): Promise<void> {
   await update($, lensAtom, prev => (prev && prev.root === root ? { ...prev, always } : emptyLens(root, always)))
 }
 
+// This session's scope, from the first file `scope` lists that names one. A file can change from a Bash
+// call or another mod's command, so this runs after each Bash call, each turn, and every few seconds.
+async function refreshScope($: EngineInterface): Promise<void> {
+  if (!config.scope.length) return
+  const lens = await read($, lensAtom)
+  if (!lens) return
+  const sessionId = await $.session.id().catch(() => null)
+  let scope: Scope | null = null
+  for (const rel of scopeFiles(config, sessionId)) {
+    const text = await readOr($, `${lens.root}/${rel}`)
+    scope = text === null ? null : parseScope(text)
+    if (scope) break
+  }
+  const same = (a: Scope | null, b: Scope | null) => a?.kind === b?.kind && a?.name === b?.name
+  if (!same(scope, lens.scope ?? null)) await update($, lensAtom, prev => (prev ? { ...prev, scope } : prev))
+}
+
 async function change($: EngineInterface, edit: (lens: Lens) => Lens): Promise<void> {
   await update($, lensAtom, prev => (prev ? edit(prev) : prev))
 }
@@ -101,16 +118,19 @@ export const register: Register = on => {
       description: 'Show what the harness did this session: steering, skills, gates, guard refusals and reviewers',
     })
     await load($).catch(() => {})
+    await refreshScope($).catch(() => {})
+    $.clock.every(3_000, () => void refreshScope($).catch(() => {}))
     return next(e)
   })
 
   on('command.run', { command: 'lens' }, async $ => {
     const lens = await read($, lensAtom)
-    return { text: lens ? lensReport(lens) : "This session didn't start inside a harness, so there's nothing to show." }
+    return { text: lens ? lensReport(lens, config.scope.length > 0) : "This session didn't start inside a harness, so there's nothing to show." }
   })
 
   on('turn.start', async ($, e, next) => {
     await change($, lens => ({ ...lens, turn: lens.turn + 1 }))
+    await refreshScope($).catch(() => {})
     return next(e)
   })
 
@@ -152,6 +172,7 @@ export const register: Register = on => {
         }
         if (skill) await change($, l => ({ ...l, skills: remember(l.skills, { name: skill, turn: l.turn }) }))
       } else if (tool === 'Bash' && typeof input.command === 'string') {
+        await refreshScope($)
         const run = gateRun(input.command, String(result.text ?? ''), Boolean(result.isError), config)
         if (run) {
           await change($, l => ({ ...l, gates: record(l.gates, { ...run, turn: l.turn }) }))
@@ -175,7 +196,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Box flexWrap="wrap" columnGap={2}>
           <Text bold>◆ harness</Text>
-          {bandSegments(lens).map(segment => (
+          {bandSegments(lens, config.scope.length > 0).map(segment => (
             <Text key={segment.label}>
               <Text dimColor>{segment.label}: </Text>
               <Text {...COLORS[segment.tone]}>{segment.text}</Text>
