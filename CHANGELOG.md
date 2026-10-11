@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-11: usage_report refuses a date it can't read
+
+[`scripts/usage_report.py`](scripts/usage_report.py) now stops with an error naming `--since` and the
+`YYYY-MM-DD` format when given a date it can't read, instead of printing a
+report that silently counts the wrong lines.
+
+Files: [`scripts/usage_report.py`](scripts/usage_report.py), [`tests/test_usage.py`](tests/test_usage.py)
+
+**Do:** nothing.
+
 ## 2026-10-11: link_files stops on --help or an unknown flag
 
 [`scripts/link_files.py`](scripts/link_files.py) now reads its arguments with argparse, so `--help`
