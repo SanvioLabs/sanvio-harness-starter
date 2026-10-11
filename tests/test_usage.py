@@ -134,6 +134,28 @@ class Report(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("HARNESS_USAGE_LOG", result.stderr)
 
+    def run_report(self, since):
+        with tempfile.TemporaryDirectory() as tmp:
+            return subprocess.run([sys.executable, str(ROOT / "scripts" / "usage_report.py"),
+                                   "--log", str(self.write_log(tmp)), "--since", since],
+                                  capture_output=True, text=True, timeout=30)
+
+    def assert_refused(self, result):
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
+        self.assertIn("--since", result.stderr)
+        self.assertIn("YYYY-MM-DD", result.stderr)
+
+    def test_an_unreadable_since_is_refused(self):
+        self.assert_refused(self.run_report("garbage"))
+
+    def test_an_impossible_date_is_refused(self):
+        self.assert_refused(self.run_report("2026-13-45"))
+
+    def test_a_real_since_still_reports(self):
+        result = self.run_report("2026-10-01")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("# Harness usage, 2026-10-01 to", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

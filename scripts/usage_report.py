@@ -82,10 +82,18 @@ def report(lines, since, until, available):
     return "\n".join(out)
 
 
+def since_date(text):
+    """A --since value as YYYY-MM-DD, or an argparse error that says what to type."""
+    try:
+        return datetime.date.fromisoformat(text).isoformat()
+    except ValueError:
+        raise argparse.ArgumentTypeError("use YYYY-MM-DD, e.g. 2026-10-01")
+
+
 def main(argv=None):
     today = datetime.date.today()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--since", default=(today - datetime.timedelta(days=14)).isoformat())
+    parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat())
     parser.add_argument("--log", help="a log file other than your own")
     args = parser.parse_args(argv)
     path = Path(args.log) if args.log else log_path(ROOT)
