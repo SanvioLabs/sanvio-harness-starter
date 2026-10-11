@@ -34,8 +34,8 @@ scope on the lens line, first: `scope: partner fabrikam`. List the files that
 hold it under a new `scope` key in `.claude/harness-lens.json`; `/lens` prints
 it too. The starter declares no scope, so its band doesn't change.
 
-Files: `examples/mods/harness-lens/` (`hooks/logic.ts`, `hooks/register.tsx`,
-`types/index.d.ts`, `README.md`, the tests), version 0.2.0.
+Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
+`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.2.0.
 
 **Do:** nothing, unless your harness has a scope file. Then add its path to
 `scope` in `.claude/harness-lens.json`.
