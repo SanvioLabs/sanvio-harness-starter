@@ -1,5 +1,8 @@
 """Run with: python3 -m unittest discover -s tests"""
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -48,6 +51,38 @@ class LinkFiles(unittest.TestCase):
     def test_running_twice_changes_nothing(self):
         once, _ = link("README.md", "Read `AGENTS.md` and `steering/`.")
         self.assertEqual(link("README.md", once), (once, 0))
+
+
+class TheScript(unittest.TestCase):
+    """Runs a copy of the script in a throwaway repo, so the real one is never touched."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.repo = Path(tmp.name)
+        (self.repo / "scripts").mkdir()
+        shutil.copy(ROOT / "scripts" / "link_files.py", self.repo / "scripts" / "link_files.py")
+        (self.repo / "a.md").write_text("A.\n")
+        self.readme = self.repo / "README.md"
+        self.readme.write_text("Read `a.md`.\n")
+        subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
+        subprocess.run(["git", "add", "."], cwd=self.repo, check=True)
+        self.before = self.readme.read_bytes()
+
+    def run_script(self, *args):
+        return subprocess.run([sys.executable, str(self.repo / "scripts" / "link_files.py"), *args],
+                              cwd=self.repo, capture_output=True, text=True)
+
+    def test_help_prints_usage_and_changes_nothing(self):
+        result = self.run_script("--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--check", result.stdout)
+        self.assertEqual(self.readme.read_bytes(), self.before)
+
+    def test_an_unknown_flag_stops_and_changes_nothing(self):
+        result = self.run_script("--chek")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.readme.read_bytes(), self.before)
 
 
 if __name__ == "__main__":

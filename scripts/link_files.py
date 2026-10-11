@@ -11,6 +11,7 @@ generic mention like "a project's own `AGENTS.md`", which means some other
 project's file. A gitignored file, such as `company/COMPANY.md`, stays plain
 because the link would be broken for everyone else. Safe to run twice.
 """
+import argparse
 import os
 import re
 import subprocess
@@ -87,8 +88,10 @@ def tracked(root):
 
 
 def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true", help="change nothing, exit 1 if anything would change")
+    check = parser.parse_args(argv).check
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    check = "--check" in argv
     files, dirs = tracked(root)
     total = 0
     for md in sorted(f for f in files if f.endswith(".md")):

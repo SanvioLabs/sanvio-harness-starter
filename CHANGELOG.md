@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-11: link_files stops on --help or an unknown flag
+
+[`scripts/link_files.py`](scripts/link_files.py) now reads its arguments with argparse, so `--help`
+prints usage and a mistyped flag such as `--chek` stops with an error, instead
+of either one linking every file name in the repo.
+
+Files: [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files.py`](tests/test_link_files.py)
+
+**Do:** nothing.
+
 ## 2026-10-11: The lens can show the session's scope
 
 A harness that scopes a session to one client or project can now see that
