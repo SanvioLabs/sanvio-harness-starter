@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, record, relative, remember, skillFromPath, steeringName } from './logic'
+import { STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, scopeText, skillFromPath, steeringName } from './logic'
 
 const ROOT = '/h/my-harness'
 
@@ -141,5 +141,44 @@ describe('lists and the report', () => {
     const report = lensReport(lens)
     expect(report).toContain('Gates: passed proposal; failed proposal')
     expect(report).toContain('Guard refusals: Bash ×2 (the reasons are in the transcript)')
+  })
+})
+
+describe('scope', () => {
+  const config = parseConfig(JSON.stringify({
+    scope: ['.studio/hooks/.client-scope.{session}.json', '.studio/hooks/.client-scope.shared.json', '.studio/hooks/.focus.{session}.json'],
+  }))
+  test('the starter declares no scope, so its band and report are unchanged', () => {
+    expect(STARTER.scope).toEqual([])
+    const lens = emptyLens(ROOT, [])
+    expect(bandSegments(lens).map(s => s.label)).not.toContain('scope')
+    expect(lensReport(lens)).not.toContain('Scope')
+  })
+  test('the session id fills {session}, in the order given', () => {
+    expect(scopeFiles(config, '0a1d3a7a-eccd')).toEqual([
+      '.studio/hooks/.client-scope.0a1d3a7a-eccd.json',
+      '.studio/hooks/.client-scope.shared.json',
+      '.studio/hooks/.focus.0a1d3a7a-eccd.json',
+    ])
+  })
+  test('without a usable session id, a pattern that needs one is skipped', () => {
+    expect(scopeFiles(config, null)).toEqual(['.studio/hooks/.client-scope.shared.json'])
+    expect(scopeFiles(config, '../../etc')).toEqual(['.studio/hooks/.client-scope.shared.json'])
+  })
+  test('a pattern climbing out of the root is never read', () => {
+    expect(scopeFiles(parseConfig('{"scope": ["../outside.json"]}'), null)).toEqual([])
+  })
+  test('a client guard file and a focus file both read', () => {
+    expect(parseScope('{"client": " Acme "}')).toEqual({ kind: 'client', name: 'acme' })
+    expect(parseScope('{"kind": "partner", "name": "fabrikam", "path": "partners/fabrikam"}')).toEqual({ kind: 'partner', name: 'fabrikam' })
+    expect(parseScope('{"client": ""}')).toBeNull()
+    expect(parseScope('not json')).toBeNull()
+  })
+  test('the segment comes first, names the kind, and says none when nothing is set', () => {
+    const lens = { ...emptyLens(ROOT, []), scope: { kind: 'partner', name: 'fabrikam' } }
+    expect(bandSegments(lens, true)[0]).toEqual({ label: 'scope', text: 'partner fabrikam', tone: 'earlier' })
+    expect(bandSegments(emptyLens(ROOT, []), true)[0]).toEqual({ label: 'scope', text: 'none', tone: 'quiet' })
+    expect(scopeText({ kind: 'harness', name: 'harness' })).toBe('harness')
+    expect(lensReport(lens, true)).toContain('Scope: partner fabrikam')
   })
 })

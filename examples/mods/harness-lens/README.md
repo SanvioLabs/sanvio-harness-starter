@@ -44,6 +44,7 @@ claude plugin disable harness-lens@sanvio-harness-starter --scope local
 | **gate** | The last gate run and how it went. A commit the pre-commit hook refused shows as `✗ pre-commit`. A commit that got through shows nothing, because the hook is silent when it passes |
 | **guard** | The last tool a guard refused. Never the reason: that's in the transcript, and it can name a file |
 | **review** | The last reviewer agent the work went to |
+| **scope** | Only in a harness that declares one (see [Another layout](#another-layout)): the client, project or area this session is scoped to, first on the line. `none` when nothing is set |
 
 Cyan means it happened this turn. A gate or guard result this turn is green or
 red. Plain text happened earlier in the session, and dim means nothing yet. A
@@ -93,12 +94,20 @@ out keeps the starter's value:
   "skills": [".studio/skills"],
   "skillPrefixes": ["studio:"],
   "agents": [".claude/agents"],
-  "gates": ["check-gates\\.sh\\s+(\\S+)"]
+  "gates": ["check-gates\\.sh\\s+(\\S+)"],
+  "scope": [".studio/hooks/.client-scope.{session}.json", ".studio/hooks/.focus.{session}.json"]
 }
 ```
 
 `gates` are patterns for the shell command that runs a gate. The first group
 in the pattern is the gate's name.
+
+`scope` lists the files that hold the session's scope, if your harness has
+one. `{session}` stands for the session id. The lens reads them in order and
+shows the first that names a scope: `{"client": "acme"}`, or `{"kind":
+"partner", "name": "fabrikam"}`. Put the file a guard enforces first, so a
+looser one never shows over it. The starter has no scope, so its band has no
+`scope` segment.
 
 ## Changing it
 

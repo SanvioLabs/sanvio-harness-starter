@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-11: The lens can show the session's scope
+
+A harness that scopes a session to one client or project can now see that
+scope on the lens line, first: `scope: partner fabrikam`. List the files that
+hold it under a new `scope` key in `.claude/harness-lens.json`; `/lens` prints
+it too. The starter declares no scope, so its band doesn't change.
+
+Files: `examples/mods/harness-lens/` (`hooks/logic.ts`, `hooks/register.tsx`,
+`types/index.d.ts`, `README.md`, the tests), version 0.2.0.
+
+**Do:** nothing, unless your harness has a scope file. Then add its path to
+`scope` in `.claude/harness-lens.json`.
+
 ## 2026-10-09: What a ticket holds, and how one ends
 
 [`steering/tickets.md`](steering/tickets.md) says what goes in an issue (what and why, a "done

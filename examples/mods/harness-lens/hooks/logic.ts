@@ -1,7 +1,7 @@
 // The decisions, as pure functions. register.tsx reads files and watches events, then calls in here,
 // because the test kit can't stand in for the filesystem.
 
-import type { GateHit, Hit, Lens } from '../types'
+import type { GateHit, Hit, Lens, Scope } from '../types'
 
 // Where a harness keeps each layer, relative to its root. A harness with another layout says so in
 // .claude/harness-lens.json, with any of these keys; a key left out keeps the starter's value.
@@ -18,6 +18,9 @@ export type Config = {
   agents: string[]
   // Patterns for a shell command that runs a gate. The first group, if any, is the gate's name.
   gates: string[]
+  // Files that hold this session's scope, read in order until one names it. `{session}` stands for the
+  // session id. Put a file a guard enforces first, so a looser one never shows over it. The starter has none.
+  scope: string[]
 }
 
 export const STARTER: Config = {
@@ -27,6 +30,7 @@ export const STARTER: Config = {
   skillPrefixes: [],
   agents: ['agents'],
   gates: ['([\\w-]+)_gate\\.py'],
+  scope: [],
 }
 
 export const CONFIG_FILE = '.claude/harness-lens.json'
@@ -132,7 +136,41 @@ export function gateRun(command: string, output: string, isError: boolean, confi
 }
 
 export function emptyLens(root: string, always: string[]): Lens {
-  return { root, turn: 0, always, steering: [], skills: [], gates: [], refusals: [], reviews: [] }
+  return { root, turn: 0, always, steering: [], skills: [], gates: [], refusals: [], reviews: [], scope: null }
+}
+
+const SESSION = /^[0-9a-fA-F-]{8,64}$/
+
+// The scope files to try, relative to the root. A pattern that needs the session id is skipped without
+// one, rather than read with a guess.
+export function scopeFiles(config: Config, sessionId: string | null): string[] {
+  const id = sessionId && SESSION.test(sessionId) ? sessionId : null
+  const out: string[] = []
+  for (const pattern of config.scope) {
+    if (pattern.includes('{session}') && !id) continue
+    const path = tidy(id ? pattern.split('{session}').join(id) : pattern)
+    if (path && !path.split('/').includes('..') && !out.includes(path)) out.push(path)
+  }
+  return out
+}
+
+// One scope file: `{"client": "acme"}` from a client guard, or `{"kind": "partner", "name": "fabrikam"}`.
+export function parseScope(text: string): Scope | null {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!data || typeof data !== 'object') return null
+  const { client, kind, name } = data as Record<string, unknown>
+  if (typeof client === 'string' && client.trim()) return { kind: 'client', name: client.trim().toLowerCase() }
+  if (typeof kind === 'string' && kind.trim() && typeof name === 'string' && name.trim()) return { kind: kind.trim(), name: name.trim() }
+  return null
+}
+
+export function scopeText(scope: Scope): string {
+  return scope.kind === scope.name ? scope.name : `${scope.kind} ${scope.name}`
 }
 
 const KEEP = 50
@@ -151,7 +189,7 @@ export type Tone = 'now' | 'pass' | 'fail' | 'earlier' | 'quiet'
 export type Segment = { label: string; text: string; tone: Tone }
 
 // The band: one segment per layer. A layer that acted this turn stands out; one that acted earlier is dim.
-export function bandSegments(lens: Lens): Segment[] {
+export function bandSegments(lens: Lens, showScope = false): Segment[] {
   const now = (hit: Hit | undefined) => hit !== undefined && hit.turn === lens.turn
   const readNow = lens.steering.filter(now).map(hit => hit.name)
   const always = lens.always.length ? `${lens.always.length} always on` : 'none always on'
@@ -163,7 +201,12 @@ export function bandSegments(lens: Lens): Segment[] {
   const gate = lens.gates.at(-1)
   const refusal = lens.refusals.at(-1)
   const review = lens.reviews.at(-1)
+  // Only a harness that declares where its scope lives gets the segment, so the starter's band is unchanged.
+  const scope: Segment[] = showScope
+    ? [lens.scope ? { label: 'scope', text: scopeText(lens.scope), tone: 'earlier' } : { label: 'scope', text: 'none', tone: 'quiet' }]
+    : []
   return [
+    ...scope,
     steering,
     { label: 'skill', text: skill?.name ?? 'none yet', tone: now(skill) ? 'now' : skill ? 'earlier' : 'quiet' },
     {
@@ -187,7 +230,7 @@ function counts(list: readonly Hit[]): string {
 }
 
 // What /lens prints: the whole session, layer by layer.
-export function lensReport(lens: Lens): string {
+export function lensReport(lens: Lens, showScope = false): string {
   const names = (list: readonly Hit[]) => (list.length ? list.map(hit => hit.name).join(', ') : 'none')
   const passed = lens.gates.filter(gate => gate.ok)
   const failed = lens.gates.filter(gate => !gate.ok)
@@ -196,6 +239,7 @@ export function lensReport(lens: Lens): string {
     : 'none run'
   return [
     'What the harness did this session:',
+    ...(showScope ? [`  Scope: ${lens.scope ? scopeText(lens.scope) : 'none'}`] : []),
     `  Steering, always on: ${lens.always.length ? lens.always.join(', ') : 'none'}`,
     `  Steering, read when it applied: ${names(lens.steering)}`,
     `  Skills followed: ${names(lens.skills)}`,
