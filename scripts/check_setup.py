@@ -8,6 +8,7 @@ Read-only. Prints one PASS, WARN or FAIL line per check, with the fix on the
 line below. Exits 1 when anything FAILs, so you can run it in a script. A WARN
 doesn't fail: it's something to decide, not something broken.
 """
+import argparse
 import re
 import subprocess
 import sys
@@ -141,7 +142,9 @@ def run(root, home=None):
             check_company(root), check_shadowed_skills(root, home), check_remote(root)]
 
 
-def main():
+def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.parse_args(argv)
     results = run(ROOT)
     for status, line, fix in results:
         print("{} {}".format(status, line))
@@ -151,4 +154,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
