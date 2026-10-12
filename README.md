@@ -46,13 +46,13 @@ the version it was tested on (2.1.295), or the folder isn't trusted.
 [`examples/mods/harness-lens/`](examples/mods/harness-lens/) has the two commands that install it from inside a
 session. Codex and Kiro don't show it: neither has mods.
 
-Claude Code also offers to install [Stelliad](https://github.com/Stelliad/stelliad-skills), an MIT-licensed set of
-skills the starter uses for specs and tickets. It's optional, and the one set
-of someone else's skills the starter installs rather than has you review
-first: [Borrowing other people's skills](#borrowing-other-peoples-skills) says why and what that trusts. Say
-yes and each one runs as `stelliad:<name>`, so `/stelliad:create-spec` starts
-a spec and `/stelliad:create-ticket` writes an issue the loop can take. No
-prompt? Run `/plugin install stelliad@stelliad`.
+Trusting the folder also switches on [Stelliad](https://github.com/Stelliad/stelliad-skills), an MIT-licensed set of
+skills the starter uses for specs and tickets. There's no separate yes: the
+trust is the yes. It's the one set of someone else's skills the starter
+installs rather than has you review first, and [Borrowing other people's
+skills](#borrowing-other-peoples-skills) says why, what that trusts, and how to keep it off. Each one runs as
+`stelliad:<name>`, so `/stelliad:create-spec` starts a spec and
+`/stelliad:create-ticket` writes an issue the loop can take.
 
 Working through this on your own? Open the repo in your agent and run
 `/orientation` in Claude Code, or say "get me started" in any of them.
@@ -219,17 +219,18 @@ then compares it with what you already have. You adopt only the gaps, rewritten
 in your own conventions, with the source and licence noted. Your harness stays
 yours, and it gets better every time you read someone else's.
 
-[Stelliad](https://github.com/Stelliad/stelliad-skills) is the one exception, and Claude Code offers it when
-you trust the folder. The starter's spec and ticket steps run on it, so it's
+[Stelliad](https://github.com/Stelliad/stelliad-skills) is the one exception: trusting the folder switches it
+on, with no separate prompt. The starter's spec and ticket steps run on it, so it's
 installed rather than copied. Its skills are built the same way as this
 starter's: each one ends in a verdict backed by evidence, and ships a
-`CUSTOMIZE.md` for adapting it. Saying yes trusts its authors, which is the
+`CUSTOMIZE.md` for adapting it. Trusting the folder trusts its authors too, which is the
 trade step 3 of [`STARTER-SKILLS.md`](STARTER-SKILLS.md) warns about. It isn't pinned to a release:
 you get what's on Stelliad's main branch when your copy fetches it, and
 `claude plugin marketplace update stelliad` fetches it again. If that's more
-trust than you want, decline it, or switch it off with
-`claude plugin disable stelliad@stelliad --scope local`, and run the skills
-you need through `review-skill` like anyone else's.
+trust than you want, set `"stelliad@stelliad": false` in
+[`.claude/settings.json`](.claude/settings.json) before you first trust the folder, or switch it off
+afterwards with `claude plugin disable stelliad@stelliad --scope local`. Then
+run the skills you need through `review-skill` like anyone else's.
 
 ## People to follow
 
