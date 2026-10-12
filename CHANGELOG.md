@@ -27,6 +27,28 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: Tickets use Stelliad's sections
+
+The issue template, [`steering/tickets.md`](steering/tickets.md) and the `loop-control` readiness
+check now use the sections of Stelliad's Ticket Authoring Standard: Objective,
+Why, Acceptance Criteria (flat checkboxes), Scope with In and Out, and Risk,
+plus Verification, Context, Dependencies or References when they carry
+something. `stelliad:create-ticket` writes this shape and
+`stelliad:review-ticket` grades it; its checker blocked every ticket in the old
+What and why / Done means shape. The loop's own rules stay on top: at least
+one criterion is proved by a test the loop's test command runs, and a ticket
+with High or Critical risk, a Human Approval section or an open dependency
+isn't loop-ready. The loop's comment on a
+blocked issue now says to fix the acceptance criteria.
+
+Files: [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), [`steering/tickets.md`](steering/tickets.md),
+[`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`scripts/loop.py`](scripts/loop.py), [`tests/test_tickets.py`](tests/test_tickets.py)
+
+**Do:** rewrite open tickets in the new shape before you label them
+`loop-ready`: `loop-control` now wants `stelliad:review-ticket` to say READY,
+and the checker blocks the old shape. Tickets already labelled still run, since
+the loop reads the whole issue body.
+
 ## 2026-10-12: CI runs the link check
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) now runs `python3 scripts/link_files.py --check`, so
