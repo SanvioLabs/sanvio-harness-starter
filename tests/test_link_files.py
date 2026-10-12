@@ -53,7 +53,8 @@ class LinkFiles(unittest.TestCase):
         self.assertEqual(link("README.md", text), (text, 0))
 
     def test_a_backtick_fence_inside_a_tilde_block_does_not_close_it(self):
-        text = "~~~\n```\ncat `AGENTS.md`\n~~~"
+        # A ``` pair inside the block opens and closes nothing: the name after it is still code.
+        text = "~~~\n```\n```\ncat `AGENTS.md`\n~~~"
         self.assertEqual(link("README.md", text), (text, 0))
 
     def test_running_twice_changes_nothing(self):
