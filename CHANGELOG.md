@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: loop-control starts the loop in tmux
+
+When tmux is installed, [`skills/loop-control/`](skills/loop-control/) starts the loop in a tmux
+session named after the clone's folder, instead of in the background of the
+conversation. It keeps running after the conversation ends, and
+`tmux attach -t loop-<folder>` opens it to watch; `Ctrl-b d` leaves it
+running. Without tmux it starts in the background as before.
+[`scripts/loop.py`](scripts/loop.py), run inside tmux, logs a `START` line with the session name
+and `tmux attach -t <name>`, and writes the name to `tmux` in
+`.loop/status.json` while it runs. The loop pane (0.2.0) shows it under its
+first line, with a button that copies the attach command.
+
+Files: [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`examples/mods/loop-pane/`](examples/mods/loop-pane/), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** install tmux if you want to watch the loop this way. The pane's new
+line arrives with your next session.
+
 ## 2026-10-12: Tickets use Stelliad's sections
 
 The issue template, [`steering/tickets.md`](steering/tickets.md) and the `loop-control` readiness

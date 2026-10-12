@@ -45,8 +45,26 @@ it gets read before it's labelled.
    take. Nothing ready means say so and stop.
 3. Ask: one issue (`--once`, or `--issue <N>` for a particular one) or every
    ready issue (`run` alone, which keeps going until the queue is empty).
-4. Start it in the background, so the conversation stays free. Then say how to
-   watch it: `/loop-pane` in Claude Code, or `tail -f .loop/loop.log`.
+4. Start it in tmux when `command -v tmux` finds it, so it outlives this
+   conversation and the person can open it and watch. One session per clone,
+   named after the folder (tmux won't take a dot or a colon in a name), with the
+   flags from step 3 in place of `<flags>`:
+
+   ```bash
+   name="loop-$(basename "$PWD" | tr '.:' '--')"
+   tmux new-session -d -s "$name" -c "$PWD" \
+     "python3 scripts/loop.py run <flags>; echo; echo 'The loop has exited. Press Enter to close.'; read _"
+   ```
+
+   If `tmux new-session` says `duplicate session`, a loop is probably
+   running there: say so and give the attach command rather than starting a
+   second. The loop's lock refuses a second run in one clone anyway.
+   Without tmux, start it in the background instead, and say that it stops
+   when this session ends.
+5. Check it started: `tail -3 .loop/loop.log` shows a `START` line naming
+   the tmux session (none without tmux), then `DISCOVER` or `IDLE`. Then say
+   how to watch it: `tmux attach -t <name>` (`Ctrl-b d` leaves it
+   running), `/loop-pane` in Claude Code, or `tail -f .loop/loop.log`.
 
 ## Say what it did
 
@@ -73,7 +91,9 @@ The order matters. Stopping alone lets the loop take the issue straight back.
 1. Take the label off first: `gh issue edit <N> --remove-label loop-ready`.
 2. Then `python3 scripts/loop.py stop`. The loop ends at its next step, not
    mid-step.
-3. Say what it was doing when it stopped, from `.loop/status.json`.
+3. Say what it was doing when it stopped, from `.loop/status.json`. In tmux,
+   its session waits for Enter once the loop exits, so the last lines stay
+   readable; `tmux kill-session -t <name>` closes it.
 
 ## Rules
 

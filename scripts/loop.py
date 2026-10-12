@@ -18,7 +18,8 @@ loop:blocked and the loop moves on without it.
 
 Watch it with:  tail -f .loop/loop.log
 The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
-issue is on, and how its last round went.
+issue is on, and how its last round went. Run inside tmux, a START line in the log and the
+status name the session, so `tmux attach -t <name>` opens it.
 Everything a round produced is in .loop/issue-N/. Checkouts live outside the clone, in
 ~/.harness-loop/. It never merges.
 Standard library only; needs git and the gh CLI, signed in.
@@ -252,6 +253,15 @@ class Loop:
             self.me = out.strip() if code == 0 else ""
         return self.me
 
+    def tmux_session(self):
+        """The tmux session this loop runs in, so the log and status can say how to open it. None outside tmux."""
+        pane = os.environ.get("TMUX_PANE")
+        if not os.environ.get("TMUX") or not pane:
+            return None
+        code, out = self.sh(["tmux", "display-message", "-p", "-t", pane, "#S"])
+        name = out.strip()
+        return name if code == 0 and name else None
+
     def agent(self, which, prompt, cwd):
         """Run a fresh agent session. Returns (exit code, what it said)."""
         cmd = shlex.split(self.cfg[which])
@@ -426,7 +436,10 @@ class Loop:
             return 1
         try:
             (self.dir / "STOP").unlink(missing_ok=True)  # no other loop holds the lock, so an old stop is stale
-            self.save_status(running=True, pid=os.getpid())
+            tmux = self.tmux_session()
+            self.save_status(running=True, pid=os.getpid(), tmux=tmux)
+            if tmux:
+                self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
             idle = False
             while not self.stopped():
                 issue = self.discover(only)
@@ -449,7 +462,7 @@ class Loop:
                 self.log("STOPPED", "stop file found")
                 (self.dir / "STOP").unlink()
         finally:
-            self.save_status(running=False, pid=None)
+            self.save_status(running=False, pid=None, tmux=None)
             (self.dir / "lock").unlink(missing_ok=True)
         return 0
 

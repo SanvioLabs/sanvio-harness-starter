@@ -56,7 +56,7 @@ export function parseStatus(text: string | null): Status | null {
       note: str(r.note),
       updated: orNull(r.updated) ?? undefined,
     }))
-  return { running: data.running === true, updated: orNull(data.updated), queue, issues }
+  return { running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux), queue, issues }
 }
 
 // The first line of the pane. The lock is the truth about running: the file's own flag can be left
@@ -68,6 +68,14 @@ export function headline(seen: Seen): Line {
   if (!seen.status) return { tone: 'quiet', text: "Hasn't run here yet" }
   if (seen.status.running) return { tone: 'fail', text: "Not running. The last run didn't finish cleanly" }
   return { tone: 'quiet', text: 'Not running' }
+}
+
+// The command that opens the tmux session a running loop is in, or null. A session named by a run
+// that's no longer alive is gone, so it isn't offered.
+export function attach(seen: Seen): string | null {
+  const name = seen.status?.tmux
+  if (!seen.isLocked || !name) return null
+  return /^[\w.@%+=:,-]+$/.test(name) ? `tmux attach -t ${name}` : `tmux attach -t '${name.replace(/'/g, `'\\''`)}'`
 }
 
 // Ready issues not already being worked on.

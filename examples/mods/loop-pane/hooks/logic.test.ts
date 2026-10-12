@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
+import { attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -8,8 +8,8 @@ const ROW: Row = {
   max_rounds: 5, tests: 'failed (1)', review: 'FIX', pr: null, note: '',
 }
 
-function status(rows: Row[], queue = [{ number: 12, title: 'a' }, { number: 15, title: 'b' }], running = true): Status {
-  return { running, updated: '2026-10-09T18:19:55', queue, issues: rows }
+function status(rows: Row[], queue = [{ number: 12, title: 'a' }, { number: 15, title: 'b' }], running = true, tmux: string | null = null): Status {
+  return { running, updated: '2026-10-09T18:19:55', tmux, queue, issues: rows }
 }
 
 function seen(s: Status | null, isLocked: boolean, isStopping = false, isStaleLock = false): Seen {
@@ -51,6 +51,23 @@ group('the headline', () => {
     expect(lockPid('4242\n')).toBe(4242)
     expect(lockPid('')).toBeNull()
     expect(lockPid('abc')).toBeNull()
+  })
+})
+
+group('the tmux session', () => {
+  test('the status file names it', () => {
+    expect(parseStatus(JSON.stringify({ tmux: 'loop-starter', issues: [] }))?.tmux).toBe('loop-starter')
+    expect(parseStatus('{"issues": []}')?.tmux).toBeNull()
+  })
+  test('a running loop in tmux offers the attach command', () => {
+    expect(attach(seen(status([ROW], undefined, true, 'loop-starter'), true))).toBe('tmux attach -t loop-starter')
+  })
+  test('a name with a space is quoted', () => {
+    expect(attach(seen(status([ROW], undefined, true, 'my loop'), true))).toBe("tmux attach -t 'my loop'")
+  })
+  test('no session, or a run that is no longer alive, offers nothing', () => {
+    expect(attach(seen(status([ROW]), true))).toBeNull()
+    expect(attach(seen(status([ROW], undefined, true, 'loop-starter'), false))).toBeNull()
   })
 })
 

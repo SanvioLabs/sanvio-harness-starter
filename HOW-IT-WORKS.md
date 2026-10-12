@@ -79,7 +79,7 @@ Build and Validate repeat up to five rounds. After that the issue is labelled
 **and** the review to say PASS: the script runs the tests, so the agent never
 grades its own work.
 
-**Watch it** with `tail -f .loop/loop.log`. One line per event, the issue
+**Watch it** with `tail -f .loop/loop.log`, or run it in tmux and attach: the `loop-control` skill starts it that way when tmux is installed, and a run inside tmux logs a `START` line with the attach command. One line per event, the issue
 first, nothing secret in it:
 
     2026-10-09T20:14:52 #12 VALIDATE round 1 tests failed (2) review FIX
@@ -88,7 +88,8 @@ first, nothing secret in it:
 
 Point a dashboard or a Slack post at that file and you have a monitor.
 `.loop/status.json` holds the same state for a tool to read rather than parse:
-`running`, the `queue` of ready issues waiting, and one row per issue, newest
+`running`, the `tmux` session it's in (when it was started in one), the
+`queue` of ready issues waiting, and one row per issue, newest
 first, with its `step`, `round`, `state` (`working`, `pr`, `blocked`,
 `stopped` or `skipped`), the last `tests` and `review`, and the `pr` link.
 It's rewritten whole at each step, so a reader never sees half of it.
