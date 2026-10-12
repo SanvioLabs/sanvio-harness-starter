@@ -168,7 +168,7 @@ def block_comment(number, why, rounds, cfg):
     took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
     return ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
             ".loop/issue-{n}/ on the machine that ran it. To try again, fix the ticket (usually the "
-            "Done means), take {blocked} off and put {ready} back.").format(
+            "Acceptance Criteria), take {blocked} off and put {ready} back.").format(
         took=took, why=why, n=number, blocked=cfg["blocked_label"], ready=cfg["ready_label"])
 
 

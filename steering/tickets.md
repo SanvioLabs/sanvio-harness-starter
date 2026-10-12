@@ -8,16 +8,35 @@ Read this when you write an issue, put one on the loop, or close one.
 A ticket says what has to be true and how anyone can tell. It doesn't say how
 to write the code: the rules in [`AGENTS.md`](../AGENTS.md) and the steering already do.
 
+The sections are Stelliad's Ticket Authoring Standard, so `stelliad:create-ticket`
+writes this shape and `stelliad:review-ticket` grades it. Its checker blocks on
+a missing required section, whatever else the ticket gets right.
+
 | Section | Holds | Fails when |
 |---|---|---|
-| **What and why** | One or two sentences | It describes a feeling ("make the gate better") rather than a change |
-| **Done means** | The check that proves it: a test that fails now and passes after, or a command and what it prints | Nobody could run it. "Works well" is not a check |
-| **Out of scope** | What it leaves alone | It's empty on a change that touches shared code |
-| **Pointers** | Files to start from, a similar change. Optional | It turns into instructions for writing the code |
+| **Objective** | The outcome when it's done, in one or two sentences. At least 8 words | It describes a task or a feeling ("make the gate better") rather than a result |
+| **Why** | The reason, legible to someone who wasn't there. At least 12 words | It leans on a conversation the reader didn't have |
+| **Acceptance Criteria** | Flat `- [ ]` items, one observable outcome each, in order, failure behaviour included | Nobody could check one. "Works well" is not a check |
+| **Scope** | **In:** what it changes. **Out:** what it leaves alone | The Out half is missing |
+| **Risk** | Low, Medium, High or Critical, with a reason for the top two | It's missing |
+| Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from | They're there as `N/A`, or References turns into instructions for writing the code |
 
-**One change per ticket.** If the "done means" has two unrelated checks, it's
-two tickets. If it can't fit one pull request, split it so each part can be
-tested on its own.
+The standard also allows Requirements, Constraints, Assumptions and Human
+Approval, on the same terms, and `stelliad:create-ticket` writes them when they
+apply. The title starts with a verb and names the outcome: "Make `--issue N`
+exit when the issue is done", not "Loop bug".
+
+Write a criterion as behaviour you can observe, and let the test prove it:
+"`run --issue 12` returns once #12 has a pull request, proved by a new test in
+[`tests/test_loop.py`](../tests/test_loop.py)", not "add `test_issue_exits`".
+
+**One change per ticket.** If the acceptance criteria hold two unrelated
+outcomes, it's two tickets. If it can't fit one pull request, split it so each
+part can be tested on its own.
+
+`stelliad:create-ticket` also suggests priority and risk labels. The starter
+ships only the loop's labels, so it says when one is missing, and that's fine
+to leave.
 
 ## Ready for the loop
 
@@ -26,10 +45,18 @@ skill checks them and asks before it labels.
 
 - Someone has read the whole issue, comments included. A ticket is an
   instruction to an agent, and the loop acts on it with nobody watching.
-- **Done means** is a check the loop's `test_command` can run. If the proof is
-  something else, the loop can't see it, and the reviewer only reads.
+- At least one acceptance criterion is a test that fails now and passes
+  after, which the loop's `test_command` runs. If the proof is something
+  else, the loop can't see it, and the reviewer only reads.
+- Where Stelliad is installed, `stelliad:review-ticket` says READY. Its
+  docs call the Ready label `agent-ready`; here it's `loop-ready`, applied
+  through `loop-control`.
 - Nothing outside the repo: no deploy, no message, no credentials, nothing the
   guard would refuse.
+- Risk is Low or Medium, and there's no Human Approval section. The loop runs
+  with nobody watching, so nothing in a ticket can make it stop and ask.
+- Any `Depends on #N` has closed. The loop reads neither dependencies nor
+  priority: it takes the lowest-numbered ready issue.
 - It isn't assigned to someone else.
 
 ## While it's worked
@@ -43,8 +70,8 @@ without the machine that ran it:
   are in `.loop/issue-N/` on the machine that ran it.
 
 A person commenting adds what changed: a decision, a narrowed scope, an
-answer to a question the review raised. A comment that changes the "done
-means" changes the ticket, so edit the description too. The loop reads the
+answer to a question the review raised. A comment that changes the
+acceptance criteria changes the ticket, so edit the description too. The loop reads the
 description, not the comments.
 
 ## How it ends
@@ -55,9 +82,9 @@ description, not the comments.
   into the repo's default branch; one that lands somewhere else first leaves
   the issue for a person to close.
 - **Blocked:** stays open with `loop:blocked`. Fix the ticket (usually the
-  "done means"), take `loop:blocked` off, put `loop-ready` back. The loop picks
+  acceptance criteria), take `loop:blocked` off, put `loop-ready` back. The loop picks
   up where it left off, on its old `loop/issue-N` branch. For a clean start,
   delete that branch and its checkout under `~/.harness-loop/` first.
 - **Not doing it:** close it as not planned, with one line saying why.
 
-Never close an issue whose "done means" hasn't been checked.
+Never close an issue whose acceptance criteria haven't been checked.
