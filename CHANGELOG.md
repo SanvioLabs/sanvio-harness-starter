@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: link_files leaves . plain
+
+[`scripts/link_files.py`](scripts/link_files.py) no longer turns a backticked `.` or `./` into a link
+to the file's own folder. Below the root it used to; at the root it never did.
+Named folders still link as before.
+
+Files: [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files.py`](tests/test_link_files.py)
+
+**Do:** nothing.
+
 ## 2026-10-12: loop-control starts the loop in tmux
 
 When tmux is installed, [`skills/loop-control/`](skills/loop-control/) starts the loop in a tmux

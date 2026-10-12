@@ -28,6 +28,8 @@ def resolve(md, ref, files, dirs):
     """The link target for `ref` written in `md`, or None when it isn't a tracked path."""
     if not PATHY.match(ref) or ref.startswith(("/", "-", "..")):
         return None
+    if os.path.normpath(ref) == ".":  # `.` or `./` means "this folder", never a link
+        return None
     # A bare word with no dot or slash links only to a file of that name, like LICENSE:
     # `tests` or `skills` in a sentence is usually the idea, not the folder.
     bare = "/" not in ref and "." not in ref

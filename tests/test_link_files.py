@@ -37,6 +37,13 @@ class LinkFiles(unittest.TestCase):
     def test_a_bare_folder_name_stays_plain(self):
         self.assertEqual(link("README.md", "the `steering` idea"), ("the `steering` idea", 0))
 
+    def test_a_dot_stays_plain_below_the_root(self):
+        text = "tmux won't take a `.` in a name, or `./`."
+        self.assertEqual(link("skills/learn/SKILL.md", text), (text, 0))
+
+    def test_a_named_folder_still_links_below_the_root(self):
+        self.assertEqual(link("skills/learn/SKILL.md", "`steering/`")[0], "[`steering/`](../../steering/)")
+
     def test_an_untracked_name_stays_plain(self):
         self.assertEqual(link("README.md", "`company/COMPANY.md` and `.env`"), ("`company/COMPANY.md` and `.env`", 0))
 
