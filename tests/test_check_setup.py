@@ -156,5 +156,28 @@ class SetupCheck(unittest.TestCase):
         self.assertIn("!/company/", searchable)
 
 
+def run_script(*args):
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / "check_setup.py"), *args],
+                          capture_output=True, text=True)
+
+
+def check_lines(result):
+    return [line for line in (result.stdout + result.stderr).splitlines()
+            if line.startswith(("PASS", "WARN", "FAIL"))]
+
+
+class Arguments(unittest.TestCase):
+    def test_help_prints_usage_and_runs_no_check(self):
+        result = run_script("--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("usage:", result.stdout)
+        self.assertEqual(check_lines(result), [])
+
+    def test_an_unknown_flag_stops_and_runs_no_check(self):
+        result = run_script("--chek")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(check_lines(result), [])
+
+
 if __name__ == "__main__":
     unittest.main()
