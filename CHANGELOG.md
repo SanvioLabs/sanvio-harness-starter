@@ -37,9 +37,11 @@ take. [`AGENTS.md`](AGENTS.md) points spec and ticket work at them, the README a
 [`STARTER-SKILLS.md`](STARTER-SKILLS.md) say why Stelliad is the one set installed rather than copied,
 and the lens counts its skills as the harness's. A new test checks every
 plugin the settings switch on comes from a marketplace they name.
+[`.gitignore`](.gitignore) now ignores `.claude/settings.local.json`, where the
+per-person opt-out below is written, so it can't be committed by accident.
 
 Files: [`.claude/settings.json`](.claude/settings.json), [`.claude/harness-lens.json`](.claude/harness-lens.json), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md),
-[`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`tests/test_plugins.py`](tests/test_plugins.py)
+[`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`tests/test_plugins.py`](tests/test_plugins.py), [`.gitignore`](.gitignore)
 
 **Do:** in an older copy, add the `stelliad` entry to `extraKnownMarketplaces`
 and `"stelliad@stelliad": true` to `enabledPlugins` in [`.claude/settings.json`](.claude/settings.json),
@@ -113,14 +115,14 @@ Files: [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files
 
 A harness that scopes a session to one client or project can now see that
 scope on the lens line, first: `scope: partner fabrikam`. List the files that
-hold it under a new `scope` key in `.claude/harness-lens.json`; `/lens` prints
+hold it under a new `scope` key in [`.claude/harness-lens.json`](.claude/harness-lens.json); `/lens` prints
 it too. The starter declares no scope, so its band doesn't change.
 
 Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
 `types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.2.0.
 
 **Do:** nothing, unless your harness has a scope file. Then add its path to
-`scope` in `.claude/harness-lens.json`.
+`scope` in [`.claude/harness-lens.json`](.claude/harness-lens.json).
 
 ## 2026-10-09: What a ticket holds, and how one ends
 

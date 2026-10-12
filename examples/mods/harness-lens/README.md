@@ -85,7 +85,7 @@ you're driving.
 It looks for the starter's shape: [`AGENTS.md`](../../../AGENTS.md) beside [`steering/`](../../../steering/), skills in
 [`skills/`](../../../skills/) and `examples/*/skills/`, agents in [`agents/`](../../../agents/), gates named
 `*_gate.py`. A harness laid out differently says where its layers live in
-`.claude/harness-lens.json` at its root. Every key is optional, and a key left
+[`.claude/harness-lens.json`](../../../.claude/harness-lens.json) at its root. Every key is optional, and a key left
 out keeps the starter's value:
 
 ```json
