@@ -95,7 +95,7 @@ elif "You are the reviewer" in prompt:
     print("Looks right." if verdict == "PASS" else "feature.txt is wrong.")
     print("VERDICT: " + verdict)
 else:
-    open("feature.txt", "w").write("done")
+    open("feature.txt", "a").write("done")
     print("Added feature.txt.")
 """
 
@@ -136,10 +136,10 @@ class TestAPass(unittest.TestCase):
             path = bin_dir / name
             path.write_text(body)
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
-        origin = tmp / "origin.git"
-        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        self.origin = tmp / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
         self.work = tmp / "work"
-        subprocess.run(["git", "clone", "-q", str(origin), str(self.work)], check=True, capture_output=True)
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.work)], check=True, capture_output=True)
         git(self.work, "config", "user.email", "t@example.test")
         git(self.work, "config", "user.name", "Test")
         (self.work / "README.md").write_text("hi")
@@ -193,6 +193,23 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((self.work / ".loop" / "lock").exists())
         remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
         self.assertIn("refs/heads/loop/issue-12", remote)
+
+    def test_each_round_commits_under_the_issue_title(self):
+        self.go()
+        subject, body = git(self.origin, "log", "-1", "--format=%s%n%b", "loop/issue-12").stdout.split("\n", 1)
+        self.assertEqual(subject, "Add the thing")
+        self.assertIn("#12", body)
+        self.assertIn("round 1", body)
+
+    def test_two_rounds_make_two_commits_with_the_same_subject(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        log = git(self.work, "log", "--format=%s|%b%x00", "main..loop/issue-12").stdout
+        commits = [c.strip().split("|", 1) for c in log.split("\0") if c.strip()]
+        self.assertEqual(len(commits), 2)
+        self.assertEqual([subject for subject, _ in commits], ["Add the thing", "Add the thing"])
+        self.assertIn("round 2", commits[0][1])
+        self.assertIn("round 1", commits[1][1])
 
     def test_status_says_what_waited_and_where_the_issue_ended(self):
         (self.state / "issues.json").write_text(json.dumps([issue(12), issue(15, title="Next one")]))

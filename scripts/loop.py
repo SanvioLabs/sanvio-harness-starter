@@ -349,7 +349,8 @@ class Loop:
             self.git("add", "-A", cwd=tree)
             changed = self.git("diff", "--cached", "--name-only", cwd=tree)[1].split()
             if changed:
-                self.git("commit", "-q", "-m", "loop: issue {} round {}".format(number, round_no), cwd=tree)
+                self.git("commit", "-q", "-m", issue["title"],
+                         "-m", "Loop: issue #{}, round {}.".format(number, round_no), cwd=tree)
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
             self.mark(number, step="VALIDATE")
