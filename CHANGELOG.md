@@ -27,6 +27,28 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: Stelliad comes switched on
+
+[`.claude/settings.json`](.claude/settings.json) now names the public Stelliad marketplace and switches
+its plugin on, so Claude Code offers to install it when you trust the folder.
+Its skills run as `stelliad:<name>`: `stelliad:create-spec` and the spec loop
+for specs, `stelliad:create-ticket` and `review-ticket` for issues the loop can
+take. [`AGENTS.md`](AGENTS.md) points spec and ticket work at them, the README and
+[`STARTER-SKILLS.md`](STARTER-SKILLS.md) say why Stelliad is the one set installed rather than copied,
+and the lens counts its skills as the harness's. A new test checks every
+plugin the settings switch on comes from a marketplace they name.
+[`.gitignore`](.gitignore) now ignores `.claude/settings.local.json`, where the
+per-person opt-out below is written, so it can't be committed by accident.
+
+Files: [`.claude/settings.json`](.claude/settings.json), [`.claude/harness-lens.json`](.claude/harness-lens.json), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md),
+[`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`tests/test_plugins.py`](tests/test_plugins.py), [`.gitignore`](.gitignore)
+
+**Do:** in an older copy, add the `stelliad` entry to `extraKnownMarketplaces`
+and `"stelliad@stelliad": true` to `enabledPlugins` in [`.claude/settings.json`](.claude/settings.json),
+and copy [`.claude/harness-lens.json`](.claude/harness-lens.json). Then say yes when Claude Code offers
+Stelliad, or run `/plugin install stelliad@stelliad`. To keep it off for
+yourself, run `claude plugin disable stelliad@stelliad --scope local`.
+
 ## 2026-10-11: link_files.py leaves ~~~ code blocks alone
 
 [`scripts/link_files.py`](scripts/link_files.py) now treats a block fenced with `~~~` as code, the same
@@ -93,14 +115,14 @@ Files: [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files
 
 A harness that scopes a session to one client or project can now see that
 scope on the lens line, first: `scope: partner fabrikam`. List the files that
-hold it under a new `scope` key in `.claude/harness-lens.json`; `/lens` prints
+hold it under a new `scope` key in [`.claude/harness-lens.json`](.claude/harness-lens.json); `/lens` prints
 it too. The starter declares no scope, so its band doesn't change.
 
 Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
 `types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.2.0.
 
 **Do:** nothing, unless your harness has a scope file. Then add its path to
-`scope` in `.claude/harness-lens.json`.
+`scope` in [`.claude/harness-lens.json`](.claude/harness-lens.json).
 
 ## 2026-10-09: What a ticket holds, and how one ends
 

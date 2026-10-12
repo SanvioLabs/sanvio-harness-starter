@@ -80,10 +80,17 @@
         "source": "directory",
         "path": "./"
       }
+    },
+    "stelliad": {
+      "source": {
+        "source": "github",
+        "repo": "Stelliad/stelliad-skills"
+      }
     }
   },
   "enabledPlugins": {
     "harness-lens@sanvio-harness-starter": true,
-    "loop-pane@sanvio-harness-starter": true
+    "loop-pane@sanvio-harness-starter": true,
+    "stelliad@stelliad": true
   }
 }

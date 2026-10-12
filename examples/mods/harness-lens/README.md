@@ -75,7 +75,8 @@ It only looks. It never blocks a call or changes one: the guard in
 [`.claude/hooks/guard.py`](../../../.claude/hooks/guard.py) and the gates do that, and they work without it.
 
 It shows only this harness's own skills and agents. A skill from a plugin on
-your machine never appears, so the band is safe to put on a projector. A
+your machine never appears unless `skillPrefixes` names that plugin (the
+starter names Stelliad), so the band is safe to put on a projector. A
 subagent's own file reads don't count either. The band is about the session
 you're driving.
 
@@ -84,7 +85,7 @@ you're driving.
 It looks for the starter's shape: [`AGENTS.md`](../../../AGENTS.md) beside [`steering/`](../../../steering/), skills in
 [`skills/`](../../../skills/) and `examples/*/skills/`, agents in [`agents/`](../../../agents/), gates named
 `*_gate.py`. A harness laid out differently says where its layers live in
-`.claude/harness-lens.json` at its root. Every key is optional, and a key left
+[`.claude/harness-lens.json`](../../../.claude/harness-lens.json) at its root. Every key is optional, and a key left
 out keeps the starter's value:
 
 ```json
@@ -98,6 +99,10 @@ out keeps the starter's value:
   "scope": [".studio/hooks/.client-scope.{session}.json", ".studio/hooks/.focus.{session}.json"]
 }
 ```
+
+The starter's own [`.claude/harness-lens.json`](../../../.claude/harness-lens.json) sets only `skillPrefixes` to
+`["stelliad:"]`, so a skill from the Stelliad plugin it switches on shows as
+the harness's.
 
 `gates` are patterns for the shell command that runs a gate. The first group
 in the pattern is the gate's name.

@@ -47,6 +47,15 @@ commit and licence at the top.
 Each skill takes a few minutes this way. Doing it every time matters more than
 which skills you pick.
 
+**Stelliad is the exception.** [`.claude/settings.json`](.claude/settings.json) switches its plugin on, so
+Claude Code offers every skill below marked Stelliad when you trust the folder.
+Accept it and they run as `stelliad:<name>`: `/stelliad:create-ticket`,
+`/stelliad:create-spec`. That skips steps 1 and 3, and with them the
+protection step 3 gives: Stelliad can change under you. The [README](README.md#borrowing-other-peoples-skills)
+says what that trusts and how to decline it. Where this repo has a skill of
+the same name, such as `review-skill`, the one in [`skills/`](skills/) is the one
+[`AGENTS.md`](AGENTS.md) points at. Everything else here goes through the four steps above.
+
 ## Start here
 
 | Skill | What it does for you | Where |

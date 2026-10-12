@@ -46,6 +46,14 @@ the version it was tested on (2.1.295), or the folder isn't trusted.
 [`examples/mods/harness-lens/`](examples/mods/harness-lens/) has the two commands that install it from inside a
 session. Codex and Kiro don't show it: neither has mods.
 
+Claude Code also offers to install [Stelliad](https://github.com/Stelliad/stelliad-skills), an MIT-licensed set of
+skills the starter uses for specs and tickets. It's optional, and the one set
+of someone else's skills the starter installs rather than has you review
+first: [Borrowing other people's skills](#borrowing-other-peoples-skills) says why and what that trusts. Say
+yes and each one runs as `stelliad:<name>`, so `/stelliad:create-spec` starts
+a spec and `/stelliad:create-ticket` writes an issue the loop can take. No
+prompt? Run `/plugin install stelliad@stelliad`.
+
 Working through this on your own? Open the repo in your agent and run
 `/orientation` in Claude Code, or say "get me started" in any of them.
 [`skills/orientation/`](skills/orientation/) checks your setup, asks where your company's data lives
@@ -130,6 +138,7 @@ every day.
 | Guards inside the agent | [`.claude/settings.json`](.claude/settings.json), [`.claude/hooks/`](.claude/hooks/) | Claude Code runs `guard.py` before every tool call: it refuses credential files and asks you before any connector tool whose name says it sends, edits, deletes or shares. A session-start check says out loud when the git hook is off |
 | Your repos, inside it | [`projects/`](projects/) | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. [`projects/README.md`](projects/README.md) has the catch we measured: start inside a project and the hooks and skills don't load |
 | Review skills | [`skills/review-pr/`](skills/review-pr/), [`skills/review-tests/`](skills/review-tests/) | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
+| Specs and tickets | The Stelliad plugin, switched on in [`.claude/settings.json`](.claude/settings.json) | `stelliad:create-spec`, `stelliad:plan-spec`, `stelliad:implement-spec` and `stelliad:review-spec` take a feature from idea to spec, to plan, to code one tested task at a time, then review it. `stelliad:create-ticket` and `stelliad:review-ticket` write and grade issues, and [`skills/loop-control/`](skills/loop-control/) puts a ready one on the loop. `claude plugin disable stelliad@stelliad --scope local` switches it off for you; `"stelliad@stelliad": false` there switches it off for everyone |
 | A way to learn | [`skills/learn/`](skills/learn/) | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
 | A release log | [`CHANGELOG.md`](CHANGELOG.md), [`skills/whats-new/`](skills/whats-new/) | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
 | A usage log and sprint report | [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`skills/harness-report/`](skills/harness-report/) | Each person's sessions log which skills, agents and commands ran and when the guard refused or asked: names and counts, never content, kept on their own machine. At sprint end `harness-report` turns it into a short report with their proposals, shared as a PR, so whoever owns the harness sees what the team actually uses and what to add. `HARNESS_USAGE_LOG=off` turns it off for you |
@@ -210,12 +219,17 @@ then compares it with what you already have. You adopt only the gaps, rewritten
 in your own conventions, with the source and licence noted. Your harness stays
 yours, and it gets better every time you read someone else's.
 
-When you want more than this starter carries,
-[Stelliad](https://github.com/Stelliad/stelliad-skills) has 28 open skills
-built the same way: each one ends in a verdict backed by evidence, and ships a
-`CUSTOMIZE.md` so you adapt it rather than install it as-is. The full
-`review-skill`, `run-gates` and `review-ticket` live there. Review them like
-anyone else's.
+[Stelliad](https://github.com/Stelliad/stelliad-skills) is the one exception, and Claude Code offers it when
+you trust the folder. The starter's spec and ticket steps run on it, so it's
+installed rather than copied. Its skills are built the same way as this
+starter's: each one ends in a verdict backed by evidence, and ships a
+`CUSTOMIZE.md` for adapting it. Saying yes trusts its authors, which is the
+trade step 3 of [`STARTER-SKILLS.md`](STARTER-SKILLS.md) warns about. It isn't pinned to a release:
+you get what's on Stelliad's main branch when your copy fetches it, and
+`claude plugin marketplace update stelliad` fetches it again. If that's more
+trust than you want, decline it, or switch it off with
+`claude plugin disable stelliad@stelliad --scope local`, and run the skills
+you need through `review-skill` like anyone else's.
 
 ## People to follow
 
