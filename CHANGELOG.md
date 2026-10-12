@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: CI runs the link check
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) now runs `python3 scripts/link_files.py --check`, so
+a pull request that names a tracked file in its Markdown without linking it
+fails CI instead of merging. It's checked against what git tracks, so a file
+added in the same change counts.
+
+Files: [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`README.md`](README.md)
+
+**Do:** run `python3 scripts/link_files.py` before you push if you've
+written file names into Markdown. It adds the links for you.
+
 ## 2026-10-12: Stelliad comes switched on
 
 [`.claude/settings.json`](.claude/settings.json) now names the public Stelliad marketplace and switches
