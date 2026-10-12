@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import loop  # noqa: E402
@@ -326,6 +327,21 @@ class TestAPass(unittest.TestCase):
     def test_nothing_ready_logs_idle_once(self):
         (self.state / "issues.json").write_text("[]")
         self.go()
+        self.assertEqual([l.split()[2] for l in self.lines()], ["IDLE"])
+
+    def run_issue_flag(self):
+        """A run with --issue 12 and no --once. Sleeping means it went on polling, so that fails at once."""
+        with mock.patch.object(loop.time, "sleep", side_effect=AssertionError("polled")), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).run(once=False, only=12)
+
+    def test_issue_flag_exits_after_that_issue(self):
+        self.assertEqual(self.run_issue_flag(), 0)
+        self.assertEqual(self.lines()[-1].split()[2], "SCALE")
+
+    def test_issue_flag_not_ready_logs_idle_once_and_exits(self):
+        (self.state / "issues.json").write_text("[]")
+        self.assertEqual(self.run_issue_flag(), 0)
         self.assertEqual([l.split()[2] for l in self.lines()], ["IDLE"])
 
     def test_a_second_loop_is_refused_while_one_holds_the_lock(self):

@@ -433,7 +433,7 @@ class Loop:
                     if not idle:
                         self.log("IDLE", "nothing ready")
                         idle = True
-                    if once or dry_run:
+                    if once or dry_run or only is not None:
                         break
                     time.sleep(self.cfg["poll_seconds"])
                     continue
@@ -442,7 +442,7 @@ class Loop:
                     self.log("DISCOVER", 'would pick "{}"'.format(issue["title"]), issue["number"])
                     break
                 self.process(issue)
-                if once:
+                if once or only is not None:
                     break
             if self.stopped():
                 self.log("STOPPED", "stop file found")
