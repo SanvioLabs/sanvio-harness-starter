@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-11: loop run --issue exits when that issue is done
+
+`python3 scripts/loop.py run --issue N` now stops once issue N has a pull
+request or is blocked, or logs `IDLE` once and stops if N isn't ready, instead
+of polling for an issue that can never come.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing.
+
 ## 2026-10-11: check_setup stops on --help or an unknown flag
 
 [`scripts/check_setup.py`](scripts/check_setup.py) now reads its arguments with argparse, so `--help`
