@@ -119,6 +119,15 @@ elif args[:2] == ["issue", "comment"] and os.path.exists(os.path.join(state, "co
     sys.exit(1)
 """
 
+# A stand-in tmux that answers display-message with the session name, and records what it was asked.
+TMUX = """#!/usr/bin/env python3
+import os, sys
+state = os.environ["LOOP_TEST_STATE"]
+with open(os.path.join(state, "tmux-calls"), "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\\n")
+print("loop-work")
+"""
+
 
 def git(cwd, *args):
     return subprocess.run(["git", "-C", str(cwd)] + list(args), capture_output=True, text=True, check=True)
@@ -132,7 +141,7 @@ class TestAPass(unittest.TestCase):
         self.state.mkdir()
         bin_dir = tmp / "bin"
         bin_dir.mkdir()
-        for name, body in (("gh", GH), ("agent", AGENT)):
+        for name, body in (("gh", GH), ("agent", AGENT), ("tmux", TMUX)):
             path = bin_dir / name
             path.write_text(body)
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -154,9 +163,14 @@ class TestAPass(unittest.TestCase):
         os.environ["LOOP_TEST_STATE"] = str(self.state)
         self.old_path = os.environ["PATH"]
         os.environ["PATH"] = str(bin_dir) + os.pathsep + self.old_path
+        # The suite may itself run inside tmux; each test says whether the loop does.
+        self.old_tmux = {k: os.environ.pop(k) for k in ("TMUX", "TMUX_PANE") if k in os.environ}
 
     def tearDown(self):
         os.environ["PATH"] = self.old_path
+        for k in ("TMUX", "TMUX_PANE"):
+            os.environ.pop(k, None)
+        os.environ.update(self.old_tmux)
         os.environ.pop("LOOP_TEST_STATE", None)
         self.tmp.cleanup()
 
@@ -340,6 +354,30 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(self.lines()), 1)
         self.assertIn("would pick", self.lines()[0])
         self.assertFalse((self.work / ".loop" / "issue-12").exists())
+
+    def test_inside_tmux_the_log_and_status_name_the_session(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        self.go()
+        self.assertEqual(self.lines()[0].split()[2], "START")
+        self.assertIn("in tmux session loop-work: tmux attach -t loop-work", self.lines()[0])
+        self.assertIn("-t %3", (self.state / "tmux-calls").read_text())
+        self.assertIsNone(self.status()["tmux"])  # a finished run names no session
+
+    def test_status_names_the_session_while_running(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        seen = []
+        original = loop.Loop.process
+        def process(this, issue):
+            seen.append(this.status.get("tmux"))
+            return original(this, issue)
+        with mock.patch.object(loop.Loop, "process", process):
+            self.go()
+        self.assertEqual(seen, ["loop-work"])
+
+    def test_outside_tmux_nothing_extra_is_logged_or_asked(self):
+        self.go()
+        self.assertNotIn("START", [l.split()[2] for l in self.lines()])
+        self.assertFalse((self.state / "tmux-calls").exists())
 
     def test_nothing_ready_logs_idle_once(self):
         (self.state / "issues.json").write_text("[]")

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, STATUS_FILE, STOP_FILE, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
+import { LOCK_FILE, STATUS_FILE, STOP_FILE, attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
 import type { Tone } from './logic'
 import type { Seen } from '../types'
 
@@ -112,12 +112,21 @@ export const register: Register = on => {
     if (!seen) return <Text dimColor>Looking for the loop…</Text>
 
     const head = headline(seen)
+    const tmux = attach(seen)
     const queue = waiting(seen.status)
     const rows = seen.status?.issues ?? []
 
     return (
       <Box flexDirection="column">
         <Text {...COLORS[head.tone]}>{clip(head.text, width)}</Text>
+        {tmux && <Text>{clip(`tmux ${seen.status?.tmux}: ${tmux}`, width * 2)}</Text>}
+        {tmux && (
+          <Button
+            key="tmux"
+            label={clip('Copy attach command', width)}
+            onPress={press => $.ui.copy({ text: tmux, surface: press.surface })}
+          />
+        )}
         <Text dimColor>{clip(`${queue.length} waiting${queue.length ? `: ${queue.map(q => `#${q.number}`).join(' ')}` : ''}`, width)}</Text>
         {rows.length === 0 && (
           <Text dimColor>{clip('No issue taken yet. Label one loop-ready, then: python3 scripts/loop.py run --once', width * 3)}</Text>

@@ -19,6 +19,8 @@ export type Row = {
 export type Status = {
   running: boolean
   updated: string | null
+  // The tmux session a running loop is in, when it was started in one.
+  tmux: string | null
   queue: QueueItem[]
   issues: Row[]
 }

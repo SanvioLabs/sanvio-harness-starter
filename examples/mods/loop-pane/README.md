@@ -5,6 +5,8 @@ work. This mod opens a pane beside the conversation that shows it:
 
 ```
 Running
+tmux loop-starter: tmux attach -t loop-starter
+[ Copy attach command ]
 1 waiting: #15
 
 #14 Gate: an empty Role cell passes
@@ -53,6 +55,7 @@ it.
 | Line | Shows |
 |---|---|
 | The first line | **Running** while a live loop holds its lock, **Stopping after this step** after `loop.py stop`, **Not running** otherwise. Red when the last run was killed: its lock is still there but its process isn't, and the next run replaces it |
+| **tmux** | While a loop started in tmux is running, its session and the command that opens it, with a button that copies the command. `loop-control` starts the loop that way when tmux is installed |
 | **waiting** | Ready issues the loop will take next, lowest first |
 | An issue | Its title, then what it's on (planning, building, checking, opening the pull request) with the round, or how it ended: a pull request, blocked, stopped or skipped |
 | Under it | The last round's test and review results, and why it was blocked |
