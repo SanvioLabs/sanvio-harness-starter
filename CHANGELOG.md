@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-11: link_files.py leaves ~~~ code blocks alone
+
+[`scripts/link_files.py`](scripts/link_files.py) now treats a block fenced with `~~~` as code, the same
+as one fenced with three backticks, and a block closes only on the marker that
+opened it, so file names inside it stay plain.
+
+Files: [`scripts/link_files.py`](scripts/link_files.py), [`tests/test_link_files.py`](tests/test_link_files.py)
+
+**Do:** if your copy has `~~~` blocks, check them for links like
+``[`name`](path)`` that an earlier run added and remove them by hand.
+Re-running the script won't remove them.
+
 ## 2026-10-11: Loop commits use the issue title
 
 Each round's commit from [`scripts/loop.py`](scripts/loop.py) now takes the issue's title as its
