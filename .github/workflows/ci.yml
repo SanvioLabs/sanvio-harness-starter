@@ -26,6 +26,8 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: The example's proposals pass their gate
         run: python3 examples/proposal/gates/proposal_gate.py
+      - name: Every file name in the Markdown is a link
+        run: python3 scripts/link_files.py --check
       - name: Setup check
         run: |
           git config core.hooksPath .githooks
