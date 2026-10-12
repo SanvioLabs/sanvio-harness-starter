@@ -27,6 +27,26 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-12: Stelliad comes switched on
+
+[`.claude/settings.json`](.claude/settings.json) now names the public Stelliad marketplace and switches
+its plugin on, so Claude Code offers to install it when you trust the folder.
+Its skills run as `stelliad:<name>`: `stelliad:create-spec` and the spec loop
+for specs, `stelliad:create-ticket` and `review-ticket` for issues the loop can
+take. [`AGENTS.md`](AGENTS.md) points spec and ticket work at them, the README and
+[`STARTER-SKILLS.md`](STARTER-SKILLS.md) say why Stelliad is the one set installed rather than copied,
+and the lens counts its skills as the harness's. A new test checks every
+plugin the settings switch on comes from a marketplace they name.
+
+Files: [`.claude/settings.json`](.claude/settings.json), [`.claude/harness-lens.json`](.claude/harness-lens.json), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md),
+[`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`examples/mods/harness-lens/README.md`](examples/mods/harness-lens/README.md), [`tests/test_plugins.py`](tests/test_plugins.py)
+
+**Do:** in an older copy, add the `stelliad` entry to `extraKnownMarketplaces`
+and `"stelliad@stelliad": true` to `enabledPlugins` in [`.claude/settings.json`](.claude/settings.json),
+and copy [`.claude/harness-lens.json`](.claude/harness-lens.json). Then say yes when Claude Code offers
+Stelliad, or run `/plugin install stelliad@stelliad`. To keep it off for
+yourself, run `claude plugin disable stelliad@stelliad --scope local`.
+
 ## 2026-10-11: link_files.py leaves ~~~ code blocks alone
 
 [`scripts/link_files.py`](scripts/link_files.py) now treats a block fenced with `~~~` as code, the same

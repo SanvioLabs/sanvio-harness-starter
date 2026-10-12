@@ -77,6 +77,19 @@ steps in order.
 | [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md) | At the end of a sprint, or asked for a harness report, a sprint follow-up, or what to add to the harness |
 | [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
 
+These come from the Stelliad plugin, which [`.claude/settings.json`](.claude/settings.json) switches on.
+Installing it is the one install that doesn't go through `review-skill`; the
+README says why. In Claude Code, invoke them by name, and if one isn't
+installed, say so and point at `/plugin install stelliad@stelliad`. In a tool
+without plugins, write tickets from [`steering/tickets.md`](steering/tickets.md) and
+[`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), and say there's no spec procedure here
+without Stelliad.
+
+| Skill | Use when |
+|---|---|
+| `stelliad:create-spec`, then `stelliad:plan-spec`, `stelliad:implement-spec`, `stelliad:review-spec` | Asked to spec a feature, plan a spec, build it a task at a time, or review a finished one |
+| `stelliad:create-ticket`, `stelliad:review-ticket` | Asked to write, split or grade an issue. One meant for the loop also needs what [`steering/tickets.md`](steering/tickets.md) asks, then `loop-control` puts it on |
+
 ## Done means the gate passes
 
 Work that has a gate is done when its gate passes. Each job's skill names its
