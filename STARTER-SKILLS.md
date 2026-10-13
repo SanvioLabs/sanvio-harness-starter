@@ -61,6 +61,7 @@ the same name, such as `review-skill`, the one in [`skills/`](skills/) is the on
 | Skill | What it does for you | Where |
 |---|---|---|
 | `review-skill` | Vets an outside skill before it gets anywhere near your agent | [This repo](skills/review-skill/), also in [Stelliad](https://github.com/Stelliad/stelliad-skills/tree/main/skills/review-skill) |
+| `standup` | One morning read of what's on you, from GitHub, the loop and whatever calendar, email or tracker your harness reaches, with a suggested order for the day. Reads only | [This repo](skills/standup/) |
 | `skill-creator` | Writes and tests your own skills, and tunes their descriptions so they fire when they should | [Anthropic](https://github.com/anthropics/skills/tree/main/skills/skill-creator) (Apache 2.0) |
 | `find-skill` | Searches the public catalogues for a skill that does what you're about to do by hand | [fockus/claude-skill-find-skill](https://github.com/fockus/claude-skill-find-skill). No licence, so build your own version |
 | `verify-done` | "Done" means the command that proves it ran and passed, not that the agent says so | [Stelliad](https://github.com/Stelliad/stelliad-skills/tree/main/skills/verify-done) |

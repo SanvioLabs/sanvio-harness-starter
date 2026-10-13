@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: A standup skill
+
+[`skills/standup/`](skills/standup/) gives you one morning read of what's on you, from GitHub, the
+loop and any calendar, email or tracker your session reaches, then asks about
+each item and suggests an order for the day. It reads only and changes nothing.
+
+Files: [`skills/standup/SKILL.md`](skills/standup/SKILL.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** nothing; ask for a standup in a new session.
+
 ## 2026-10-13: The loop off your laptop
 
 "The loop" in [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) has a subsection, *Off your laptop*: where the loop can run
