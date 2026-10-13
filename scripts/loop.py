@@ -548,7 +548,7 @@ class Loop:
             elif prs is not None and not idle:
                 self.log("IDLE", "no pull request waiting for a review")
                 idle = True
-            if once:
+            if once or self.stopped():
                 break
             time.sleep(self.cfg["poll_seconds"])
 
@@ -582,27 +582,35 @@ class Loop:
             return False
 
         self.save_status(reviewing={"number": number, "sha": sha[:7]})
-        ran, sha, why = self.review_run(pr)
-        self.status["reviews"][str(number)] = {
-            "number": number, "title": pr["title"], "sha": sha,
-            "state": "posted" if why is None else "failed", "note": why or "",
-            "updated": datetime.now().isoformat(timespec="seconds")}
+        ran, sha, why, record = self.review_run(pr)
+        if why is None or record:
+            self.status["reviews"][str(number)] = {
+                "number": number, "title": pr["title"], "sha": sha,
+                "state": "posted" if why is None else "failed", "note": why or "",
+                "updated": datetime.now().isoformat(timespec="seconds")}
         self.save_status(reviewing=None)
-        self.log("REVIEW", "#{} {} {}".format(number, sha[:7], "posted" if why is None else "failed: " + why))
+        if why is None:
+            self.log("REVIEW", "#{} {} posted".format(number, sha[:7]))
+        else:
+            # Not recorded when the agent never failed (GitHub or git did), so the next poll tries again.
+            self.log("REVIEW", "#{} {} failed: {}{}".format(number, sha[:7], why, "" if record else " (will retry)"))
         return ran
 
     def review_run(self, pr):
-        """(an agent ran, the commit reviewed, why it failed or None). On success the report is posted."""
+        """(an agent ran, the commit reviewed, why it failed or None, whether the failure is the agent's).
+
+        On success the report is posted. A failure that isn't the agent's isn't recorded, so it's retried.
+        """
         number, sha, base = pr["number"], pr["headRefOid"], pr["baseRefName"]
         code, out = self.git("fetch", "-q", "origin", "pull/{}/head".format(number))
         if code != 0:
-            return False, sha, "could not fetch the pull request: " + out.strip()[:200]
+            return False, sha, "could not fetch the pull request: " + out.strip()[:200], False
         code, out = self.git("rev-parse", "FETCH_HEAD")
         if code == 0 and out.strip():
             sha = out.strip()  # the commit this checkout is, if the branch moved since the list
         code, out = self.git("fetch", "-q", "origin", base)
         if code != 0:
-            return False, sha, "could not fetch {}: {}".format(base, out.strip()[:200])
+            return False, sha, "could not fetch {}: {}".format(base, out.strip()[:200]), False
 
         tree = self.worktrees() / "review-pr-{}".format(number)
         if tree.exists():
@@ -612,7 +620,7 @@ class Loop:
         tree.parent.mkdir(parents=True, exist_ok=True)
         code, out = self.git("worktree", "add", "-q", "--detach", str(tree), sha)
         if code != 0:
-            return False, sha, "could not make the checkout: " + out.strip()[:200]
+            return False, sha, "could not make the checkout: " + out.strip()[:200], False
         try:
             diff = self.git("diff", "origin/{}...HEAD".format(base), cwd=tree)[1]
             commits = self.git("log", "--format=%h %s%n%b", "origin/{}..HEAD".format(base), cwd=tree)[1]
@@ -620,13 +628,16 @@ class Loop:
             skill = skill_file.read_text() if skill_file.exists() else ""
             prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
             code, report = self.agent("reader_agent", prompt, tree, untrusted=True)
-            if code in (124, 127):
-                return True, sha, report.strip()  # timed out, or no such command: the loop's own words
+            # Fixed reasons only: the report is text someone else could shape, and these go in a one-line log.
+            if code == 124:
+                return True, sha, "timed out after {}s".format(self.cfg["agent_timeout"]), True
+            if code == 127:
+                return True, sha, "agent command not found", True
             if code != 0:
-                return True, sha, "agent exit {}".format(code)
+                return True, sha, "agent exit {}".format(code), True
             if not report.strip():
-                return True, sha, "the agent said nothing"
-            return True, sha, self.post_review(number, review_comment(report, sha))
+                return True, sha, "the agent said nothing", True
+            return (True, sha, self.post_review(number, review_comment(report, sha)), False)
         finally:
             # Whatever the reviewer edited goes with the checkout: nothing is committed or pushed.
             self.git("worktree", "remove", "--force", str(tree))
