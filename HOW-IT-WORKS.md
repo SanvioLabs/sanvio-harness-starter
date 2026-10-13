@@ -270,6 +270,31 @@ Nobody edits a shared rule in their own copy. A local edit is a quiet fork,
 and the next update collides with it. A rule only one project needs goes in
 that project's `AGENTS.md`.
 
+### Where a change lives
+
+A change reaches the people who load the file it's written in, and nobody else:
+
+| Where it's written | Who gets it | What belongs there |
+|---|---|---|
+| This repo: [`skills/`](skills/), [`steering/`](steering/), [`AGENTS.md`](AGENTS.md), [`.claude/settings.json`](.claude/settings.json) | Everyone, once it's merged and they pull | Anything the team relies on |
+| A project's `AGENTS.md`, in that project's own repo under [`projects/`](projects/) | Anyone working in that project, once it's merged there | What only that project needs |
+| `.claude/settings.local.json` in your clone | You, in this clone. Git ignores it | Your own permissions and preferences here |
+| Your own `~/.claude/CLAUDE.md`, `~/.claude/settings.json` and `~/.claude/skills/` | You, in every repo on your machine | Personal habits nobody else depends on |
+
+The quick test: if `git status` in the repo it belongs to doesn't show the
+change, your team won't get it. Something that lives only in `~/.claude/` works for you and for
+nobody you work with, and nothing tells you so. If the team needs it, it goes
+in one of the first two rows, through a pull request with a
+[`CHANGELOG.md`](CHANGELOG.md) entry.
+
+**Don't keep a copy in both.** A skill in `~/.claude/skills/` with the same name
+as one in [`skills/`](skills/) wins in Claude Code, so your agent runs your copy and
+everyone else runs the harness's: one name, two different skills.
+`python3 scripts/check_setup.py` warns when that happens. Settings go the other
+way: where this repo's [`.claude/settings.json`](.claude/settings.json) or your `settings.local.json` sets
+something, it wins over your `~/.claude/settings.json`. Your `~/.claude/CLAUDE.md`
+and this repo's [`CLAUDE.md`](CLAUDE.md) both load, so a rule in yours applies to you alone.
+
 ### Who owns what
 
 - **The harness owner**: steering, skills, gates, hooks and the release log.
