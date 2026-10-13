@@ -1,0 +1,80 @@
+# Runs one pass of the loop, scripts/loop.py, on a GitHub Actions runner: one
+# ready issue, taken through plan, build, test and review, and a pull request
+# it doesn't merge. Copy it into the repo that has the issues as
+# .github/workflows/loop.yml. It lives under examples/ so it never runs in the
+# starter's own CI.
+#
+# Secret it needs, by name: ANTHROPIC_API_KEY, added under Settings, Secrets and
+# variables, Actions. Nothing here holds a key, and nothing should.
+#
+# Two limits, both because the workflow's own token is what it uses:
+#   - A pull request opened with GITHUB_TOKEN doesn't start the repo's other
+#     workflows, so required checks never run on it. To have them run, add a
+#     fine-grained token with contents, issues and pull requests write as a
+#     secret named LOOP_GITHUB_TOKEN and use it for GH_TOKEN, and for the
+#     checkout's token, below.
+#   - GITHUB_TOKEN can't say who it is, so `gh api user` returns no login and
+#     the loop skips every assigned issue. The same token swap fixes that.
+# Also turn on Settings, Actions, General, "Allow GitHub Actions to create and
+# approve pull requests", or opening the pull request fails.
+#
+# HOW-IT-WORKS.md, "Off your laptop", has what this costs and what it can't do.
+name: Loop
+
+on:
+  schedule:
+    - cron: "17 6 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: loop
+  cancel-in-progress: false
+
+jobs:
+  pass:
+    name: one pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      # The installs come before checkout, and no token is set at job level, so
+      # the package install and its scripts see neither the repo token nor the
+      # copy checkout saves in .git/config.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the agent
+        run: npm install -g @anthropic-ai/claude-code
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Swap both GITHUB_TOKEN lines for ${{ secrets.LOOP_GITHUB_TOKEN }} to
+          # start the repo's checks on the pull request and to take issues
+          # assigned to you.
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the committer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: One pass of the loop
+        # The token and the key are on this step alone.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 scripts/loop.py run --once
+      - name: Keep what the pass wrote
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop
+          path: .loop/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

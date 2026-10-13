@@ -138,13 +138,66 @@ it did, and stops it with the label off first.
 **Rules it keeps.** To take an issue off the loop, the label comes off first and
 then the run stops, because stopping alone lets the queue pick it straight back
 up. `python3 scripts/loop.py stop` ends a running loop at its next step. A lock
-file stops two loops running in one clone. It uses your own agent sign-in and
-holds no credentials. A ticket is an instruction to an agent, so label only
-issues you wrote or have read.
+file stops two loops running in one clone. On your machine it uses your own
+agent sign-in and holds no credentials; in [GitHub Actions](#off-your-laptop) the
+agent needs a key, held as a repository secret. A ticket is an instruction to an
+agent, so label only issues you wrote or have read.
 
 **Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
 a dashboard, model-tier routing. Each can be added by whoever needs it, reading
 the log.
+
+### Off your laptop
+
+The loop is one script, so it runs wherever `python3`, `git`, `gh` and your
+agent's CLI do. There are three places, and the script is the same in each:
+
+| Where | Needs | Costs |
+|---|---|---|
+| Your own machine, in tmux | Your laptop awake and online, `gh` signed in, your agent signed in | Nothing extra. It stops when the lid closes |
+| An always-on machine (a VM) beside the repo | A clone, `python3`, `git`, `gh` and the agent CLI signed in as you, and `loop.py run` in tmux | A machine that's billed whether or not there's work, and someone to patch it |
+| GitHub Actions | The workflow in [`examples/ci/loop.yml`](examples/ci/loop.yml), an API key as a repository secret, and the agent CLI installed on the runner each run | Runner minutes for as long as a pass iterates, and the agent's usage on the key |
+
+Setting up the VM is yours: nothing here goes beyond naming it. Actions is the
+one the starter ships an example for: it runs `python3 scripts/loop.py run --once`
+on a schedule and on manual dispatch, and uploads `.loop/` as a build artifact so
+the plan, the test output and the review outlive the runner.
+
+**Where Actions is the weaker home:**
+
+- A run that iterates for an hour spends an hour of runner minutes. Five rounds
+  of a slow test command is a long job, and it's billed like one.
+- `/loop-pane` and `tmux attach` don't reach a runner. You read the job log and
+  the artifact, not the pane.
+- A job that commits back puts building into a pipeline that is otherwise only
+  checks. Everything else in [`.github/workflows/`](.github/workflows/) reads the repo; this one writes
+  to it, which is why its `permissions:` block names contents, issues and pull
+  requests, all write, and nothing else.
+
+**Its pull request won't start your checks.** A pull request opened with the
+workflow's own `GITHUB_TOKEN` doesn't trigger other workflows, so the repo's
+required checks don't run on it, and it can't merge until something triggers
+them. The choice that changes that is a token that isn't the workflow's: a
+fine-grained personal access token (or a GitHub App's token) with contents,
+issues and pull requests write, held as a secret and used in place of
+`GITHUB_TOKEN` for `GH_TOKEN` and the checkout. The example sets that token
+only on the step that runs the loop and on checkout, after the agent is
+installed, so the install never reads it.
+
+**It can't tell who you are.** With a workflow token, `gh api user` returns no
+login, so the loop skips every issue that's assigned to anyone and takes only
+unassigned ones. The same personal token gives it your login, and your assigned
+issues come back. Reading a login from the config instead is a change to
+[`scripts/loop.py`](scripts/loop.py), left for when this limit bites.
+
+**Credentials change.** On your machine the loop uses your own agent sign-in. In
+Actions the agent needs an API key (or a cloud provider's credentials), held as a
+repository secret and referenced by name, as `${{ secrets.ANTHROPIC_API_KEY }}`.
+It's never written into a file, the workflow, `loop.json` or an issue.
+
+**To use it,** copy [`examples/ci/loop.yml`](examples/ci/loop.yml) into [`.github/workflows/`](.github/workflows/), add the
+secret it names, and read its opening comment: it lists the repository setting
+that has to be on for a workflow to open a pull request at all.
 
 ## Context: who remembers what
 

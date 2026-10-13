@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: The loop off your laptop
+
+"The loop" in [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) has a subsection, *Off your laptop*: where the loop can run
+besides your terminal, what each place costs, and the limits of GitHub Actions.
+[`examples/ci/loop.yml`](examples/ci/loop.yml) runs one pass there on a schedule or on demand.
+
+Files: [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`examples/ci/loop.yml`](examples/ci/loop.yml), [`tests/test_ci_example.py`](tests/test_ci_example.py)
+
+**Do:** to use it, copy it into [`.github/workflows/`](.github/workflows/) and add the secret it names,
+`ANTHROPIC_API_KEY`.
+
 ## 2026-10-13: Review every pull request in CI
 
 [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) is a GitHub Actions workflow that runs the
