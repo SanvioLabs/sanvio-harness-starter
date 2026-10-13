@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: The loop, animated
+
+"The loop" in [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) has an animation after its step table,
+[`docs/one-issue-through-the-loop.gif`](docs/one-issue-through-the-loop.gif): one issue through Discover, Shape, Build and
+Validate, a FIX round back to Build, then a pull request the loop doesn't
+merge. The log lines are in the format [`scripts/loop.py`](scripts/loop.py) writes.
+
+Files: [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`docs/one-issue-through-the-loop.gif`](docs/one-issue-through-the-loop.gif)
+
+**Do:** nothing.
+
 ## 2026-10-13: The README explains gates
 
 [`README.md`](README.md) has a new section, *Gates: done is a script's call*: what a gate
