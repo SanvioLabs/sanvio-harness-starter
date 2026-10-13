@@ -97,15 +97,23 @@ class ReviewPrWorkflow(unittest.TestCase):
         self.assertNotIn(":*", allowed.group(1), "a prefix match lets git diff --no-index read the environment")
         self.assertNotIn("git show", allowed.group(1))
 
-    def test_the_read_tools_are_scoped_to_the_checkout_and_deny_proc(self):
-        allowed = re.search(r'--allowedTools "([^"]*)"', self.code).group(1).split(",")
-        for tool in ("Read", "Grep", "Glob"):
-            self.assertNotIn(tool, allowed, tool + " with no path can read /proc/self/environ")
-            self.assertIn(tool + "(./**)", allowed)
+    def test_proc_is_denied_with_a_read_rule(self):
         denied = re.search(r'--disallowedTools "([^"]*)"', self.code)
         self.assertIsNotNone(denied, "no --disallowedTools list")
-        for tool in ("Read", "Grep", "Glob"):
-            self.assertIn(tool + "(//proc/**)", denied.group(1).split(","))
+        self.assertIn("Read(//proc/**)", denied.group(1).split(","))
+
+    def test_no_grep_or_glob_path_rule_which_the_cli_refuses(self):
+        for flag in ("--allowedTools", "--disallowedTools"):
+            rules = re.search(flag + r' "([^"]*)"', self.code).group(1)
+            self.assertNotRegex(rules, r"(Grep|Glob)\(", flag + ": a Read rule covers Grep and Glob")
+
+    def test_a_failed_run_says_why_only_after_the_key_check(self):
+        review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
+        self.assertIn("code=$?", review)
+        self.assertLess(review.index('grep -qF -e "$ANTHROPIC_API_KEY"'), review.index("head -c"))
+
+    def test_the_cli_is_pinned(self):
+        self.assertRegex(self.code, r"npm install -g @anthropic-ai/claude-code@\d+\.\d+\.\d+")
 
     def test_a_report_holding_the_key_is_not_posted(self):
         review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
