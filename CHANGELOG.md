@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: Review every pull request in CI
+
+[`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) is a GitHub Actions workflow that runs the
+`review-pr` skill on every pull request and posts its report as one comment. It
+runs on `pull_request` only, skips forks with a notice, and gives the agent no
+GitHub token.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py),
+[`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md)
+
+**Do:** to use it, copy it into [`.github/workflows/`](.github/workflows/) and add the secret it
+names, `ANTHROPIC_API_KEY`, as a repository secret.
+
 ## 2026-10-13: The loop, animated
 
 "The loop" in [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) has an animation after its step table,

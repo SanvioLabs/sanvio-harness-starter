@@ -55,6 +55,13 @@ which, ask. Also note which project under [`projects/`](../../projects/) it belo
   wrong, what it costs, and the smallest fix
 - What you didn't review and why, if anything
 
+## On every pull request
+
+To run this skill on every pull request without anyone asking,
+[`examples/ci/review-pr.yml`](../../examples/ci/review-pr.yml) is a GitHub Actions workflow to copy into
+[`.github/workflows/`](../../.github/workflows/). It runs the skill headlessly and posts the report as one
+comment. The workflow posts; the skill still doesn't.
+
 ## Rules
 
 - Never approve, merge, close or push. Never post a comment on the PR unless a
