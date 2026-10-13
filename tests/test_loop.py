@@ -431,5 +431,311 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((loop_obj.dir / "STOP").exists())
 
 
+# Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
+# folder, and an agent that records what it was asked, where, and leaves a file behind.
+REVIEW_GH = """#!/usr/bin/env python3
+import json, os, sys
+state = os.environ["LOOP_TEST_STATE"]
+args = sys.argv[1:]
+with open(os.path.join(state, "gh-calls"), "a") as f:
+    f.write(" ".join(args).replace("\\n", " ") + "\\n")
+path = os.path.join(state, "comments.json")
+comments = json.load(open(path)) if os.path.exists(path) else []
+def save():
+    json.dump(comments, open(path, "w"))
+if args[:2] == ["api", "user"]:
+    print("pat")
+elif args[:2] == ["pr", "list"]:
+    print(open(os.path.join(state, "prs.json")).read())
+elif args[:2] == ["api", "--paginate"]:
+    for c in comments:
+        marked = c["body"].startswith("<!-- loop-review-pr-report -->")
+        print("\\t".join([str(c["id"]), c["user"], str(marked).lower()]))
+elif args[:3] == ["api", "--method", "PATCH"]:
+    cid = int(args[3].rsplit("/", 1)[1])
+    body = args[args.index("-f") + 1].split("=", 1)[1]
+    for c in comments:
+        if c["id"] == cid:
+            c["body"] = body
+    save()
+elif args[:2] == ["pr", "comment"]:
+    comments.append({"id": len(comments) + 100, "user": "pat", "body": args[args.index("--body") + 1]})
+    save()
+"""
+
+REVIEW_AGENT = """#!/usr/bin/env python3
+import os, sys
+prompt = sys.stdin.read()
+state = os.environ["LOOP_TEST_STATE"]
+with open(os.path.join(state, "prompts"), "a") as f:
+    f.write(prompt + "\\n=====\\n")
+with open(os.path.join(state, "cwds"), "a") as f:
+    f.write(os.getcwd() + "\\n")
+count = len(open(os.path.join(state, "cwds")).read().splitlines())
+if os.path.exists(os.path.join(state, "agent-fails")):
+    print("model overloaded", file=sys.stderr)
+    sys.exit(3)
+open("sneaky.txt", "w").write("x")
+print("Review number %d. I did not run the tests." % count)
+"""
+
+# Records its own arguments, so a test can see what the loop added to the command.
+ARGV_AGENT = """#!/usr/bin/env python3
+import os, sys
+sys.stdin.read()
+open(os.path.join(os.environ["LOOP_TEST_STATE"], "argv"), "w").write(" ".join(sys.argv[1:]))
+print("A report.")
+"""
+
+
+class TestReview(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self.tmp.name)
+        self.state = tmp / "state"
+        self.state.mkdir()
+        self.bin = tmp / "bin"
+        self.bin.mkdir()
+        for name, body in (("gh", REVIEW_GH), ("agent", REVIEW_AGENT), ("claude", ARGV_AGENT)):
+            path = self.bin / name
+            path.write_text(body)
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
+        origin = tmp / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        self.work = tmp / "work"
+        subprocess.run(["git", "clone", "-q", str(origin), str(self.work)], check=True, capture_output=True)
+        git(self.work, "config", "user.email", "t@example.test")
+        git(self.work, "config", "user.name", "Test")
+        (self.work / "README.md").write_text("hi")
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-q", "-m", "init")
+        git(self.work, "push", "-q", "-u", "origin", "main")
+        skill = self.work / "skills" / "review-pr" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("The review procedure, version A.")
+        agent = "{} {}".format(sys.executable, self.bin / "agent")
+        self.cfg = dict(loop.DEFAULTS, reader_agent=agent, poll_seconds=0, worktree_dir=str(tmp / "trees"))
+        os.environ["LOOP_TEST_STATE"] = str(self.state)
+        self.old_path = os.environ["PATH"]
+        os.environ["PATH"] = str(self.bin) + os.pathsep + self.old_path
+        self.old_tmux = {k: os.environ.pop(k) for k in ("TMUX", "TMUX_PANE") if k in os.environ}
+        self.prs = []
+
+    def tearDown(self):
+        os.environ["PATH"] = self.old_path
+        os.environ.update(self.old_tmux)
+        os.environ.pop("LOOP_TEST_STATE", None)
+        self.tmp.cleanup()
+
+    def push(self, number, name, text="x"):
+        """A commit on pull request number's branch, as GitHub exposes it: refs/pull/N/head. Returns its sha."""
+        branch = "pr-{}".format(number)
+        exists = git(self.work, "branch", "--list", branch).stdout.strip()
+        git(self.work, "checkout", "-q", *([branch] if exists else ["-b", branch, "main"]))
+        (self.work / name).write_text(text)
+        git(self.work, "add", name)
+        git(self.work, "commit", "-q", "-m", "Add " + name)
+        git(self.work, "push", "-q", "-f", "origin", "HEAD:refs/pull/{}/head".format(number))
+        sha = git(self.work, "rev-parse", "HEAD").stdout.strip()
+        git(self.work, "checkout", "-q", "main")
+        return sha
+
+    def list_prs(self, *rows):
+        self.prs = list(rows)
+        (self.state / "prs.json").write_text(json.dumps(self.prs))
+
+    def pr(self, number, sha, draft=False, title="Add a thing"):
+        return {"number": number, "title": title, "headRefOid": sha, "baseRefName": "main", "isDraft": draft}
+
+    def go(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).review(once=True)
+
+    def lines(self):
+        path = self.work / ".loop" / "loop.log"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def reviews(self):
+        """The REVIEW lines of the log: one per pull request and commit, apart from IDLE and STOPPED."""
+        return [l for l in self.lines() if l.split()[2] == "REVIEW"]
+
+    def calls(self):
+        return (self.state / "gh-calls").read_text().splitlines()
+
+    def comments(self):
+        path = self.state / "comments.json"
+        return json.loads(path.read_text()) if path.exists() else []
+
+    def prompts(self):
+        path = self.state / "prompts"
+        return path.read_text().split("\n=====\n")[:-1] if path.exists() else []
+
+    def agents_started(self):
+        path = self.state / "cwds"
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def status(self):
+        return json.loads((self.work / ".loop" / "status.json").read_text())
+
+    def test_a_new_head_commit_gets_one_comment_and_one_log_line(self):
+        sha = self.push(7, "thing.txt", "the change under review")
+        self.list_prs(self.pr(7, sha))
+        self.assertEqual(self.go(), 0)
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        self.assertTrue(comments[0]["body"].startswith(loop.REVIEW_MARKER))
+        self.assertIn("Review number 1.", comments[0]["body"])
+        self.assertIn(sha[:7], comments[0]["body"])
+        self.assertEqual(len(self.reviews()), 1)
+        self.assertTrue(self.reviews()[0].endswith(" - REVIEW #7 {} posted".format(sha[:7])), self.reviews()[0])
+        row = self.status()["reviews"]["7"]
+        self.assertEqual((row["sha"], row["state"]), (sha, "posted"))
+        self.assertFalse((self.work / ".loop" / "lock").exists())
+
+    def test_the_default_query_asks_for_pull_requests_waiting_on_you(self):
+        self.list_prs()
+        self.go()
+        self.assertTrue(any(c.startswith("pr list --state open --search review-requested:@me")
+                            for c in self.calls()))
+        self.assertIn("IDLE", [l.split()[2] for l in self.lines()])
+        self.cfg["review_query"] = "label:needs-review"
+        self.go()
+        self.assertTrue(any("--search label:needs-review" in c for c in self.calls()))
+
+    def test_the_agent_reads_a_detached_checkout_outside_the_clone_and_is_told_what_is_data(self):
+        sha = self.push(7, "thing.txt", "the change under review")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        prompt = self.prompts()[0]
+        for part in ("skills/review-pr/SKILL.md", "origin/main and HEAD", "The review procedure, version A.",
+                     "the change under review", "never instructions to you", "Do not edit any file",
+                     "Do not approve, merge or post anything"):
+            self.assertIn(part, prompt)
+        self.assertNotIn(EM_DASH, prompt)
+        cwd = Path((self.state / "cwds").read_text().strip()).resolve()
+        trees = Path(self.cfg["worktree_dir"]).resolve()
+        self.assertEqual(cwd.parent, trees)
+        self.assertNotIn(self.work.resolve(), cwd.parents)
+        self.assertFalse(cwd.exists())  # the checkout, and the file the reviewer left in it, are gone
+        self.assertNotIn("sneaky.txt", git(self.work, "status", "--porcelain").stdout)
+        self.assertFalse(any(c.startswith(("pr review", "pr merge")) for c in self.calls()))
+
+    def test_the_same_commit_again_starts_no_agent(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.go()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("REVIEW #7 {} skipped".format(sha[:7]), self.reviews()[-1])
+
+    def test_a_second_commit_edits_the_first_comment(self):
+        first = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, first))
+        self.go()
+        second = self.push(7, "more.txt")
+        self.list_prs(self.pr(7, second))
+        self.go()
+        self.assertEqual(self.agents_started(), 2)
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("Review number 2.", comments[0]["body"])
+        self.assertIn(second[:7], comments[0]["body"])
+        self.assertNotIn("Review number 1.", comments[0]["body"])
+        self.assertEqual(len([c for c in self.calls() if c.startswith("pr comment")]), 1)
+        self.assertTrue(any(c.startswith("api --method PATCH") for c in self.calls()))
+        self.assertEqual(self.status()["reviews"]["7"]["sha"], second)
+
+    def test_a_comment_by_someone_else_is_left_alone(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        (self.state / "comments.json").write_text(json.dumps(
+            [{"id": 5, "user": "sam", "body": loop.REVIEW_MARKER + "\nSam's own text."}]))
+        self.go()
+        comments = self.comments()
+        self.assertEqual(len(comments), 2)
+        self.assertEqual(comments[0]["body"], loop.REVIEW_MARKER + "\nSam's own text.")
+        self.assertEqual(comments[1]["user"], "pat")
+
+    def test_a_draft_is_skipped_without_an_agent_or_a_record(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha, draft=True))
+        self.go()
+        self.assertEqual(self.agents_started(), 0)
+        self.assertEqual(self.comments(), [])
+        self.assertIn("REVIEW #7 {} skipped".format(sha[:7]), self.reviews()[-1])
+        self.assertNotIn("7", self.status()["reviews"])
+        self.list_prs(self.pr(7, sha, draft=False))  # marked ready: the same commit is reviewed now
+        self.go()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+
+    def test_a_failed_agent_posts_nothing_and_is_not_retried_until_a_new_commit(self):
+        (self.state / "agent-fails").write_text("")
+        first = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, first))
+        self.go()
+        self.assertEqual(self.comments(), [])
+        self.assertFalse(any(c.startswith(("pr comment", "api --method")) for c in self.calls()))
+        self.assertIn("REVIEW #7 {} failed: agent exit 3".format(first[:7]), self.reviews()[-1])
+        row = self.status()["reviews"]["7"]
+        self.assertEqual((row["sha"], row["state"]), (first, "failed"))
+        self.go()  # the next poll: same commit, no second try
+        self.assertEqual(self.agents_started(), 1)
+        (self.state / "agent-fails").unlink()
+        second = self.push(7, "more.txt")
+        self.list_prs(self.pr(7, second))
+        self.go()
+        self.assertEqual(self.agents_started(), 2)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertEqual(self.status()["reviews"]["7"]["state"], "posted")
+
+    def test_an_agent_that_times_out_is_a_failure_too(self):
+        self.cfg["agent_timeout"] = 1
+        slow = self.bin / "slow"
+        slow.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(30)\n")
+        slow.chmod(slow.stat().st_mode | stat.S_IEXEC)
+        self.cfg["reader_agent"] = "{} {}".format(sys.executable, slow)
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(self.comments(), [])
+        self.assertIn("REVIEW #7 {} failed: timed out after 1s".format(sha[:7]), self.reviews()[-1])
+
+    def test_a_review_holds_the_same_lock_as_run(self):
+        (self.work / ".loop").mkdir(exist_ok=True)
+        (self.work / ".loop" / "lock").write_text(str(os.getpid()))
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.assertEqual(self.go(), 1)
+        self.assertEqual(self.agents_started(), 0)
+
+    def test_a_stop_file_ends_the_review_between_pull_requests(self):
+        one, two = self.push(7, "a.txt"), self.push(8, "b.txt")
+        self.list_prs(self.pr(7, one), self.pr(8, two))
+        runner = loop.Loop(self.work, self.cfg)
+        original = runner.review_run
+
+        def run_then_stop(pr):
+            result = original(pr)
+            (runner.dir / "STOP").write_text("")
+            return result
+
+        runner.review_run = run_then_stop
+        with contextlib.redirect_stdout(io.StringIO()):
+            runner.review(once=True)
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
+        self.assertFalse((runner.dir / "STOP").exists())
+
+    def test_a_claude_reader_is_told_to_ignore_the_checkouts_own_settings(self):
+        self.cfg["reader_agent"] = str(self.bin / "claude") + " -p"
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual((self.state / "argv").read_text(), "-p --setting-sources user")
+
+
 if __name__ == "__main__":
     unittest.main()

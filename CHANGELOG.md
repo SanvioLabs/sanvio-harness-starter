@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: loop.py review
+
+`python3 scripts/loop.py review` watches the open pull requests that ask for
+your review (`review_query`, by default `review-requested:@me`), has a fresh
+`reader_agent` review each new head commit with [`skills/review-pr/`](skills/review-pr/), and posts the report as one
+comment per pull request, edited in place on later commits. A commit is reviewed
+once, a failed review is retried only on a new commit, and it never approves,
+merges or pushes. It shares the loop's lock, log, status file and stop file.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** nothing, or start `loop.py review` on the machine the loop runs on, in a clone of its own if `run` is working the first.
+
 ## 2026-10-13: Where a change lives
 
 [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) says which changes reach the team and which stay on your machine, and why a
