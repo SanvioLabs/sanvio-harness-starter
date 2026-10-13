@@ -749,6 +749,37 @@ class TestReview(unittest.TestCase):
                 self.assertEqual(runner.review(once=False), 0)
         self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
 
+    def test_a_hook_in_the_pull_requests_own_files_never_runs(self):
+        marker = self.state / "hook-ran"
+        hook = self.work / "hooks" / "post-checkout"
+        git(self.work, "checkout", "-q", "-b", "pr-7", "main")
+        hook.parent.mkdir()
+        hook.write_text("#!/bin/sh\ntouch '{}'\n".format(marker))
+        hook.chmod(0o755)
+        git(self.work, "add", "hooks/post-checkout")
+        git(self.work, "commit", "-q", "-m", "Add a hook")
+        git(self.work, "push", "-q", "-f", "origin", "HEAD:refs/pull/7/head")
+        sha = git(self.work, "rev-parse", "HEAD").stdout.strip()
+        git(self.work, "checkout", "-q", "main")
+        git(self.work, "config", "core.hooksPath", "hooks")  # relative, so the checkout's own file is the hook
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertFalse(marker.exists())
+
+    def test_a_failed_diff_is_a_failed_review_not_a_review_of_the_error(self):
+        sha = self.push(7, "thing.txt")
+        git(self.work, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main")
+        git(self.work, "push", "-q", "origin", "main:other")
+        row = self.pr(7, sha)
+        row["baseRefName"] = "other"  # fetched, but never tracked here, so origin/other doesn't exist
+        self.list_prs(row)
+        self.go()
+        self.assertEqual(self.agents_started(), 0)
+        self.assertEqual(self.comments(), [])
+        self.assertIn("REVIEW #7 {} failed: could not diff against other".format(sha[:7]), self.reviews()[-1])
+        self.assertNotIn("7", self.status()["reviews"])
+
     def test_a_review_holds_the_same_lock_as_run(self):
         (self.work / ".loop").mkdir(exist_ok=True)
         (self.work / ".loop" / "lock").write_text(str(os.getpid()))

@@ -618,12 +618,16 @@ class Loop:
             shutil.rmtree(tree, ignore_errors=True)
         self.git("worktree", "prune")
         tree.parent.mkdir(parents=True, exist_ok=True)
-        code, out = self.git("worktree", "add", "-q", "--detach", str(tree), sha)
+        # Hooks off: a post-checkout hook could come from the pull request's own files, and runs before any agent.
+        code, out = self.git("-c", "core.hooksPath=/dev/null", "worktree", "add", "-q", "--detach", str(tree), sha)
         if code != 0:
             return False, sha, "could not make the checkout: " + out.strip()[:200], False
         try:
-            diff = self.git("diff", "origin/{}...HEAD".format(base), cwd=tree)[1]
-            commits = self.git("log", "--format=%h %s%n%b", "origin/{}..HEAD".format(base), cwd=tree)[1]
+            # An error's text would be reviewed as if it were the diff, so a failed git is a failed review.
+            diff_code, diff = self.git("diff", "origin/{}...HEAD".format(base), cwd=tree)
+            log_code, commits = self.git("log", "--format=%h %s%n%b", "origin/{}..HEAD".format(base), cwd=tree)
+            if diff_code != 0 or log_code != 0:
+                return False, sha, "could not diff against {}".format(base), False
             skill_file = self.root / "skills" / "review-pr" / "SKILL.md"
             skill = skill_file.read_text() if skill_file.exists() else ""
             prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
