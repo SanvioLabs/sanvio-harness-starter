@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: The PR review workflow runs
+
+[`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) failed on every run: the CLI refuses Grep and Glob path rules. It now
+denies `/proc` with one Read rule, pins the CLI, prints why a run failed, and says the key must be scoped to a workspace.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
+
+**Do:** copied it already? Copy it again.
+
 ## 2026-10-13: A standup skill
 
 [`skills/standup/`](skills/standup/) gives you one morning read of what's on you, from GitHub, the
