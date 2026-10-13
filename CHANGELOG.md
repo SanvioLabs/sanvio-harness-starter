@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: The README explains gates
+
+[`README.md`](README.md) has a new section, *Gates: done is a script's call*: what a gate
+is, the three places one runs and what each catches, when a check earns one,
+and how a job's gate differs from the gate at the end of a phase. An
+animation, [`docs/where-a-gate-runs.gif`](docs/where-a-gate-runs.gif), shows one gate file catching three
+different mistakes in three places.
+
+Files: [`README.md`](README.md), [`docs/where-a-gate-runs.gif`](docs/where-a-gate-runs.gif)
+
+**Do:** nothing.
+
 ## 2026-10-12: link_files leaves . plain
 
 [`scripts/link_files.py`](scripts/link_files.py) no longer turns a backticked `.` or `./` into a link
