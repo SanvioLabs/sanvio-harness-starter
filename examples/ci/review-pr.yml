@@ -71,12 +71,16 @@ jobs:
         if: steps.scope.outputs.review == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
-      # The agent gets read tools and exactly two git commands, and no GitHub
-      # token. Its allowlist names each command in full, with no `git diff:*`
-      # prefix, because `git diff --no-index /proc/self/environ /dev/null`
-      # would print the API key. Its report is posted verbatim, so the step
-      # also refuses to post one that contains the key. That is a backstop for
-      # a key written out as it is, not a guarantee against an encoded one.
+      # The agent gets read tools limited to the checkout and exactly two git
+      # commands, and no GitHub token. The key sits in the environment of the
+      # process the tools run in, so the read tools are scoped to ./ and /proc
+      # is denied outright: an unscoped Read could open /proc/self/environ. The
+      # allowlist names each git command in full, with no `git diff:*` prefix,
+      # because `git diff --no-index /proc/self/environ /dev/null` would print
+      # the key too. Its report is posted verbatim, so the step also refuses to
+      # post one that contains the key. That is a backstop for a key written
+      # out as it is, not a guarantee against an encoded one, which is why the
+      # scoping above matters more.
       - name: Run the review-pr skill
         if: steps.scope.outputs.review == 'true'
         env:
@@ -94,7 +98,8 @@ jobs:
           Markdown. Do not approve, merge or post anything.
           EOF
           claude -p --max-turns 30 \
-            --allowedTools "Read,Grep,Glob,Bash(git diff origin/$BASE_REF...HEAD),Bash(git log origin/$BASE_REF..HEAD)" \
+            --allowedTools "Read(./**),Grep(./**),Glob(./**),Bash(git diff origin/$BASE_REF...HEAD),Bash(git log origin/$BASE_REF..HEAD)" \
+            --disallowedTools "Read(//proc/**),Grep(//proc/**),Glob(//proc/**)" \
             < "$RUNNER_TEMP/prompt.md" > "$RUNNER_TEMP/report.md"
           if grep -qF -e "$ANTHROPIC_API_KEY" "$RUNNER_TEMP/report.md"; then
             rm -f "$RUNNER_TEMP/report.md"
