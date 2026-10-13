@@ -118,6 +118,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
+          set -o pipefail
           test -s "$RUNNER_TEMP/report.md"
           {
             echo "<!-- review-pr-report -->"
