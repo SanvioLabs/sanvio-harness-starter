@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: Where a change lives
+
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) says which changes reach the team and which stay on your machine, and why a
+skill kept in both this repo and `~/.claude/skills/` runs differently for you than for everyone else.
+
+Files: [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-13: The PR review workflow runs
 
 [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) failed on every run: the CLI refuses Grep and Glob path rules. It now
