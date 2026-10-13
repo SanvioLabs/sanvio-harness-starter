@@ -86,6 +86,21 @@ class ReviewPrWorkflow(unittest.TestCase):
         self.assertIn("github.event.pull_request.head.repo.full_name", self.code)
         self.assertIn("::notice::", self.code)
 
+    def test_a_pull_request_without_the_secret_skips_instead_of_failing(self):
+        scope = self.code.split("id: scope", 1)[1].split("- uses:", 1)[0]
+        self.assertIn("${{ secrets.ANTHROPIC_API_KEY }}", scope)
+        self.assertRegex(scope, r'-z "\$ANTHROPIC_API_KEY"')
+
+    def test_the_agent_gets_no_git_command_that_matches_by_prefix(self):
+        allowed = re.search(r'--allowedTools "([^"]*)"', self.code)
+        self.assertIsNotNone(allowed, "no --allowedTools list")
+        self.assertNotIn(":*", allowed.group(1), "a prefix match lets git diff --no-index read the environment")
+        self.assertNotIn("git show", allowed.group(1))
+
+    def test_a_report_holding_the_key_is_not_posted(self):
+        review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
+        self.assertIn('grep -qF -e "$ANTHROPIC_API_KEY"', review)
+
     def test_no_expression_is_expanded_inside_a_script(self):
         self.assertTrue(run_lines(self.code), "found no run: blocks to check")
         for line in run_lines(self.code):

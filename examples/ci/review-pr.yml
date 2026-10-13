@@ -49,12 +49,16 @@ jobs:
         env:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           THIS_REPO: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          if [ "$HEAD_REPO" = "$THIS_REPO" ]; then
-            echo "review=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
             echo "review=false" >> "$GITHUB_OUTPUT"
             echo "::notice::A pull request from a fork gets no secrets, so the review skips."
+          elif [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "review=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::This pull request has no ANTHROPIC_API_KEY (Dependabot's don't get Actions secrets), so the review skips."
+          else
+            echo "review=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
@@ -67,8 +71,12 @@ jobs:
         if: steps.scope.outputs.review == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
-      # The agent gets read tools and read-only git, and no GitHub token, so a
-      # diff that tries to steer it has nothing to act with.
+      # The agent gets read tools and exactly two git commands, and no GitHub
+      # token. Its allowlist names each command in full, with no `git diff:*`
+      # prefix, because `git diff --no-index /proc/self/environ /dev/null`
+      # would print the API key. Its report is posted verbatim, so the step
+      # also refuses to post one that contains the key. That is a backstop for
+      # a key written out as it is, not a guarantee against an encoded one.
       - name: Run the review-pr skill
         if: steps.scope.outputs.review == 'true'
         env:
@@ -86,8 +94,13 @@ jobs:
           Markdown. Do not approve, merge or post anything.
           EOF
           claude -p --max-turns 30 \
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*)" \
+            --allowedTools "Read,Grep,Glob,Bash(git diff origin/$BASE_REF...HEAD),Bash(git log origin/$BASE_REF..HEAD)" \
             < "$RUNNER_TEMP/prompt.md" > "$RUNNER_TEMP/report.md"
+          if grep -qF -e "$ANTHROPIC_API_KEY" "$RUNNER_TEMP/report.md"; then
+            rm -f "$RUNNER_TEMP/report.md"
+            echo "::error::The report contained the API key, so it was not posted."
+            exit 1
+          fi
 
       - name: Post the report as one comment
         if: steps.scope.outputs.review == 'true'
