@@ -58,6 +58,16 @@ class Skills(unittest.TestCase):
         for skill in skills:
             self.assertEqual(problems(skill, agents_text), [])
 
+    def test_the_standup_skill_exists_and_changes_nothing(self):
+        path = ROOT / "skills" / "standup" / "SKILL.md"
+        self.assertTrue(path.exists(), "skills/standup/SKILL.md is missing")
+        text = path.read_text()
+        description = frontmatter(text).get("description", "")
+        self.assertIn("standup", description)
+        self.assertIn("morning check", description)
+        body = text.split("---", 2)[2]
+        self.assertIn("changes nothing", body.lower())
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 
