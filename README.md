@@ -126,6 +126,37 @@ Here's which is which, in the order a session meets them:
 
 ![Two columns. What the agent reads, and can skip: the rules for the repo, how you work every session, guidance on one topic when it comes up, and step-by-step procedures. What checks the agent: a warning when the checks are off, the guard refusing a risky action, the hook blocking a bad commit, and CI blocking a bad merge.](docs/what-shapes-a-session.gif)
 
+## Gates: done is a script's call
+
+A gate is a script that fails when work isn't ready. It turns "done" from
+something the agent says into something a script checks: no placeholder left
+in, every section filled, every rate from the rate card, every total adding up.
+The example's gate is [`examples/proposal/gates/proposal_gate.py`](examples/proposal/gates/proposal_gate.py), and
+[`gates/README.md`](gates/README.md) has how to write one for your own job.
+
+One file runs in three places, and each catches what the one before missed:
+
+![One gate file, examples/proposal/gates/proposal_gate.py, wired to three places: the skill's last step, the git hook and CI, with main after them. A made-up rate is caught at the skill's last step. With that step skipped, a start date left as TBD is blocked by the hook. With the hook skipped by --no-verify, a total that doesn't add up fails CI and the merge is blocked. Fixed, the draft passes all three and is merged.](docs/where-a-gate-runs.gif)
+
+The skill's last step runs it, so the agent fixes what it names before you see
+the work. That's the cheapest catch, but an agent can skip a step. The git
+hook runs it on every commit from any tool, unless the hook is off in that
+clone or someone uses `--no-verify`. CI runs it on every push, and once it's a
+required check, it's the one nobody can skip.
+
+A check earns a gate when a script can decide it, missing it costs more than
+checking it, and it has to hold even when the agent decides otherwise. Anything
+that needs judgement goes to the reviewer instead. Never edit a gate to make
+work pass. Fix the work.
+
+"Gate" also names the checkpoint at the end of each phase of the
+[flywheel](#four-loops-that-keep-it-working). That one is a question, mostly answered by a person: was it
+measured against real use? Can it run without you? One or two become scripts,
+and Build's runs the job's gate above. [`steering/gates.md`](steering/gates.md) has both: where each
+check runs, and what each phase asks. A bigger harness names its gates, one set
+per phase and one per repo, and lists each one's checks in a file. Start with
+one script.
+
 ## Beyond the five layers
 
 Each piece below is the small version of something a working harness runs on
