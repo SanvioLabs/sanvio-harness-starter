@@ -17,10 +17,11 @@
 # the permissions below still apply.
 #
 # Why the permissions are so small: the agent reads diff text that anyone who
-# can open a pull request can write, so treat it as untrusted input. Its token
-# can read the repo and comment, and can do nothing else. Keep it that way:
-# don't widen the trigger to the `_target` variant of pull_request, and don't
-# add a permission.
+# can open a pull request can write, so treat it as untrusted input. The agent
+# gets no GitHub token at all. The job's token can read the repo and write to
+# pull requests, and only the last step uses it, to post the comment. Keep it
+# that way: don't widen the trigger to the `_target` variant of pull_request,
+# and don't add a permission.
 #
 # Pin the CLI version below once you've seen it work, and review that pin as
 # you would any dependency.
@@ -71,10 +72,11 @@ jobs:
         if: steps.scope.outputs.review == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
-      # The agent gets read tools limited to the checkout and exactly two git
-      # commands, and no GitHub token. The key sits in the environment of the
-      # process the tools run in, so the read tools are scoped to ./ and /proc
-      # is denied outright: an unscoped Read could open /proc/self/environ. The
+      # The agent gets the read tools, exactly two git commands, and no GitHub
+      # token. Claude Code runs Read, Grep and Glob without asking, so the allow
+      # list doesn't fence them in: the deny list does. The key sits in the
+      # environment of the process the tools run in, so /proc is denied
+      # outright, since a Read of /proc/self/environ would print it. The
       # allowlist names each git command in full, with no `git diff:*` prefix,
       # because `git diff --no-index /proc/self/environ /dev/null` would print
       # the key too. The checkout is the pull request's, so its .claude/ folder

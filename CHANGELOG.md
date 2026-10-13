@@ -30,12 +30,9 @@ fine).
 ## 2026-10-13: Review every pull request in CI
 
 [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) is a GitHub Actions workflow that runs the
-`review-pr` skill headlessly on every pull request and posts its report as one
-comment, edited in place on each push. It runs on `pull_request` only, skips a
-pull request from a fork, or one with no secret, with a notice, holds a token
-that can read contents and write comments and nothing else, and gives the agent
-no GitHub token and two named git commands. It won't post a report that holds
-the API key. The skill still never posts, approves or merges.
+`review-pr` skill on every pull request and posts its report as one comment. It
+runs on `pull_request` only, skips forks with a notice, and gives the agent no
+GitHub token.
 
 Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py),
 [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md)
