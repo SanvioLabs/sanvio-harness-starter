@@ -73,3 +73,67 @@ group('the Watch it button', () => {
     await ui.unmount()
   })
 })
+
+// A local time, as loop.py writes it, `hours` ago.
+function hoursAgo(hours: number): string {
+  const d = new Date(Date.now() - hours * 3600_000)
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`
+}
+
+const FINISHED = (number: number, hours: number) => ({
+  number, title: `job ${number}`, step: 'SCALE', state: 'pr', round: 1, tests: 'passed', review: 'PASS',
+  pr: `https://example.test/pull/${number}`, note: '', updated: hoursAgo(hours),
+})
+
+const MANY: Seen = {
+  root: '/h/starter',
+  status: {
+    running: false, updated: null, tmux: null,
+    queue: [{ number: 30, title: 'next up' }],
+    issues: [FINISHED(21, 1), FINISHED(22, 2), FINISHED(23, 3), FINISHED(24, 4), FINISHED(25, 5), FINISHED(9, 30)],
+  },
+  isLocked: false, isStaleLock: false, isStopping: false, hasWatchFile: false,
+}
+
+const titles = async (ui: { findAll: (q: { type: string; text: RegExp }) => Promise<{ text: string }[]> }) =>
+  (await ui.findAll({ type: 'Text', text: /^#\d+ / })).map(t => t.text)
+
+group('the tabs', () => {
+  test('nothing active opens on the queue; finished shows three from the last day, the rest below', async ($, on) => {
+    seed(on, MANY)
+    const ui = await $.ui.mount(PANE)
+    expect((await ui.find({ key: 'tab-queue' }))?.props.label).toBe('Queue 1')
+    expect((await ui.find({ key: 'tab-active' }))?.props.label).toBe('Active 0')
+    expect((await ui.find({ key: 'tab-finished' }))?.props.label).toBe('Finished 5')
+    expect(await titles(ui)).toEqual(['#30 next up'])
+    await ui.press({ key: 'tab-finished' })
+    await drain()
+    expect(await titles(ui)).toEqual(['#21 job 21', '#22 job 22', '#23 job 23'])
+    expect((await ui.find({ key: 'down' }))?.props.label).toBe('▼ 2 more')
+    expect(await ui.find({ key: 'up' })).toBeUndefined()
+    await ui.unmount()
+  })
+  test('the more line moves the list a job at a time', async ($, on) => {
+    seed(on, MANY)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'tab-finished' })
+    await drain()
+    await ui.press({ key: 'down' })
+    await drain()
+    expect(await titles(ui)).toEqual(['#22 job 22', '#23 job 23', '#24 job 24'])
+    expect((await ui.find({ key: 'up' }))?.props.label).toBe('▲ 1 more')
+    await ui.unmount()
+  })
+  test('a tab press shows that list', async ($, on) => {
+    seed(on, MANY)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'tab-queue' })
+    await drain()
+    expect(await titles(ui)).toEqual(['#30 next up'])
+    await ui.press({ key: 'tab-active' })
+    await drain()
+    expect(await ui.find({ text: 'Nothing being worked on.' })).toBeDefined()
+    await ui.unmount()
+  })
+})

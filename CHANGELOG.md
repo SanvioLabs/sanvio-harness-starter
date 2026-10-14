@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Loop pane tabs
+
+The loop pane (0.4.0) splits its list into **Queue**, **Active** and
+**Finished** tabs, each with its count, and shows three jobs at a time:
+scroll over the pane, or press the more lines, for the rest. **Finished**
+keeps only the last 24 hours, so a pull request the loop opened days ago no
+longer reads as open.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** nothing. It arrives with your next session.
+
 ## 2026-10-14: Loop pane opens a window on the loop
 
 On a Mac, the loop pane (0.3.0) has a **Watch it** button while the loop runs

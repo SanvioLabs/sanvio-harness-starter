@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -140,5 +140,39 @@ group('fitting and finding', () => {
   test('two looks with the same content are the same', () => {
     expect(sameSeen(seen(status([ROW]), true), seen(status([ROW]), true))).toBe(true)
     expect(sameSeen(seen(status([ROW]), true), seen(status([ROW]), false))).toBe(false)
+  })
+})
+
+group('the tabs', () => {
+  const NOW = Date.parse('2026-10-14T12:00:00')
+  const ended = (number: number, state: string, updated?: string): Row => ({ ...ROW, number, state, updated })
+  test('finished keeps an ended job from the last 24 hours, and drops an older or undated one', () => {
+    const rows = [
+      ended(1, 'pr', '2026-10-14T09:00:00'),
+      ended(2, 'blocked', '2026-10-13T12:00:00'),
+      ended(3, 'pr', '2026-10-12T12:23:36'),
+      ended(4, 'stopped'),
+    ]
+    expect(lists(status(rows), NOW).finished.map(r => r.number)).toEqual([1, 2])
+    expect(NOW - Date.parse('2026-10-13T12:00:00')).toBe(FINISHED_MS)
+  })
+  test('active is what is being worked; queue leaves it out', () => {
+    const l = lists(status([ROW, ended(3, 'pr', '2026-10-14T09:00:00')]), NOW)
+    expect(l.active.map(r => r.number)).toEqual([12])
+    expect(l.queue.map(q => q.number)).toEqual([15])
+  })
+  test('opens on active, else queue, else finished', () => {
+    expect(firstTab(lists(status([ROW]), NOW))).toBe('active')
+    expect(firstTab(lists(status([]), NOW))).toBe('queue')
+    expect(firstTab(lists(status([], []), NOW))).toBe('finished')
+  })
+  test('three at a time, with the start kept inside the list', () => {
+    const five = [1, 2, 3, 4, 5]
+    expect(page(five, 0)).toEqual({ shown: [1, 2, 3], start: 0, above: 0, below: 2 })
+    expect(page(five, 1)).toEqual({ shown: [2, 3, 4], start: 1, above: 1, below: 1 })
+    expect(page(five, 9).start).toBe(2)
+    expect(page(five, -4).start).toBe(0)
+    expect(page([1, 2], 1)).toEqual({ shown: [1, 2], start: 0, above: 0, below: 0 })
+    expect(page([], 3)).toEqual({ shown: [], start: 0, above: 0, below: 0 })
   })
 })
