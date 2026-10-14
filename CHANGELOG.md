@@ -27,18 +27,6 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
-## 2026-10-14: Secret scan reads every staged name
-
-The pre-commit secret scan now checks files whose names have a space in them
-and files renamed in the commit. Before, a name like `a b.txt` was split into
-two names that didn't exist, and a renamed file was skipped, so a key in
-either got through. Accented names come through as written. Names holding a
-newline, a quote, a backslash or a control character are still not handled.
-
-Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.py`](tests/test_pre_commit.py)
-
-**Do:** nothing.
-
 ## 2026-10-14: Tighter guard on the security reviewer and on credential names
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) closes gaps the security reviewer found in its own
@@ -55,6 +43,34 @@ Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_ho
 [`tests/test_pre_commit.py`](tests/test_pre_commit.py), [`agents/security-reviewer.md`](agents/security-reviewer.md)
 
 **Do:** nothing.
+
+## 2026-10-14: Secret scan reads every staged name
+
+The pre-commit secret scan now checks files whose names have a space in them
+and files renamed in the commit. Before, a name like `a b.txt` was split into
+two names that didn't exist, and a renamed file was skipped, so a key in
+either got through. Accented names come through as written. Names holding a
+newline, a quote, a backslash or a control character are still not handled.
+
+Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.py`](tests/test_pre_commit.py)
+
+**Do:** nothing.
+
+## 2026-10-14: Review mode refuses a reader it can't confine
+
+`python3 scripts/loop.py review` now starts only a `reader_agent` that is
+`claude` itself, and always holds it to `--restricted --strict-mcp-config
+--tools Read,Grep,Glob`, replacing any tools or permission flags `loop.json`
+gave it. With any other command (`npx`, `env claude`, Codex) it reviews
+nothing and logs why, where before it ran that command unconfined on a
+stranger's checkout. The posted comment opens with a line saying an agent
+wrote it from the pull request's own text, and an `@` in the report no longer
+mentions anyone. The issue loop still takes any agent command.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** if `loop.json` sets `reader_agent` to anything but a `claude` command,
+review mode stops reviewing: point it at `claude`, or run review elsewhere.
 
 ## 2026-10-14: The loop checks whose issue it builds from
 
