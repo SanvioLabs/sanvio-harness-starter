@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
+import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -20,6 +20,9 @@ const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean 
   fail: { color: 'red', bold: true },
   quiet: { dimColor: true },
 }
+
+// A job's rows: its title, where it is, two for the last round's results, and its pull request.
+const JOB_ROWS = 5
 
 const EMPTY: Record<Tab, string> = {
   queue: 'Nothing waiting. Label an issue loop-ready to queue it.',
@@ -155,23 +158,32 @@ export const register: Register = on => {
     const { above, below } = jobs ?? queue
     const isEmpty = (jobs ?? queue).shown.length === 0
 
+    // Every job takes the same rows, and the list always takes three jobs' worth, so nothing below it
+    // moves as jobs scroll by or gain a result.
     const job = (row: Row) => {
       const { head: state, detail } = describe(row, seen.isLocked)
       return (
-        <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1}>
+        <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={JOB_ROWS}>
           <Text bold>{clip(`#${row.number} ${row.title}`, width)}</Text>
           <Text {...COLORS[state.tone]}>{clip(state.text, width)}</Text>
-          {detail && <Text dimColor>{clip(detail, width * 2)}</Text>}
-          {row.pr && (
+          <Box height={2} overflow="hidden">
+            <Text dimColor>{detail ? clip(detail, width * 2) : ' '}</Text>
+          </Box>
+          {row.pr ? (
             <Button
               key={`pr-${row.number}`}
               label={clip('Copy pull request link', width)}
               onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
             />
+          ) : (
+            <Text> </Text>
           )}
         </Box>
       )
     }
+    const gap = (n: number, rows: number) =>
+      Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
+    const shownCount = (jobs ?? queue).shown.length
 
     return (
       <Box flexDirection="column">
@@ -216,10 +228,15 @@ export const register: Register = on => {
         ) : (
           <Text> </Text>
         )}
-        {isEmpty && <Text dimColor>{clip(EMPTY[view.tab], width * 2)}</Text>}
+        {isEmpty && (
+          <Box marginTop={jobs ? 1 : 0} height={jobs ? JOB_ROWS : 1} overflow="hidden">
+            <Text dimColor>{clip(EMPTY[view.tab], width)}</Text>
+          </Box>
+        )}
         {jobs
           ? jobs.shown.map(job)
           : queue.shown.map(q => <Text key={`queue-${q.number}`}>{clip(`#${q.number} ${q.title}`, width)}</Text>)}
+        {gap(PAGE - shownCount - (isEmpty ? 1 : 0), jobs ? JOB_ROWS : 1)}
         {below > 0 ? (
           <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1)} />
         ) : (
