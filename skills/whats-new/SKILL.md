@@ -23,16 +23,27 @@ it, and the starter's copy, and tells the person what's new for them.
    ```
 
    If it fails (offline, no git), say so and report from the local log only.
-3. **Compare by heading, not by date.** Several entries can share a date. An
-   entry is new to them when its heading (`## <date>: <name>`) is in the
-   starter's log and not in theirs. A heading only in theirs is their own
-   change, not something missing.
-4. **Answer what was asked.**
-   - "What's new" or "am I up to date": the entries they don't have, newest
-     first. If there are none, say they're up to date and show the latest
-     three entries they do have.
-   - "What changed since <date>" or "lately": entries in their own log from
-     that date on.
+3. **List the entries with a command, not by reading.** Several entries can
+   share a date, and a long log is easy to miscount by eye, so let the shell
+   make the list and answer from it.
+   - "What's new" or "am I up to date": the headings in the starter's log that
+     aren't in theirs, in the starter's order, newest first. A heading only in
+     theirs is their own change, not something missing.
+
+     ```bash
+     git show FETCH_HEAD:CHANGELOG.md | grep '^## ' | grep -vxF -f <(grep '^## ' CHANGELOG.md 2>/dev/null)
+     ```
+
+   - "What changed since <date>" or "lately": the headings in their own log
+     dated on or after that day (`YYYY-MM-DD`; for "lately", the last 14 days).
+
+     ```bash
+     grep '^## ' CHANGELOG.md | awk -v d=2026-10-12 'substr($2, 1, 10) >= d'
+     ```
+4. **Answer what was asked,** from that list. Say how many entries it has and
+   give every one of them. If it's empty for "what's new", say they're up to
+   date and show the latest three entries they do have. For a date, say "on or
+   after" so the reader knows the day itself is included.
 5. **For each entry**, give the name, one line on what it adds, and its
    **Do:** line as written. If they want to take it, show what would change
    first, for the files the entry names:
@@ -57,6 +68,8 @@ it, and the starter's copy, and tells the person what's new for them.
   merge either refuses or tries to merge everything. The way in is one file at
   a time, with the commands in step 5.
 - Quote the **Do:** line as written. Don't add steps it doesn't have.
+- Every entry on the list is in the answer, and the count you give is the
+  list's length. To be brief, shorten each line, never drop an entry.
 - Never call a copy up to date when step 2 failed. Say the starter couldn't be
   read.
 
