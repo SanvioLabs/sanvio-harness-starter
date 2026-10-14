@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
+import { attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -12,8 +12,8 @@ function status(rows: Row[], queue = [{ number: 12, title: 'a' }, { number: 15, 
   return { running, updated: '2026-10-09T18:19:55', tmux, queue, issues: rows }
 }
 
-function seen(s: Status | null, isLocked: boolean, isStopping = false, isStaleLock = false): Seen {
-  return { root: '/h/starter', status: s, isLocked, isStaleLock, isStopping }
+function seen(s: Status | null, isLocked: boolean, isStopping = false, isStaleLock = false, hasWatchFile = false): Seen {
+  return { root: '/h/starter', status: s, isLocked, isStaleLock, isStopping, hasWatchFile }
 }
 
 group('the status file', () => {
@@ -21,8 +21,8 @@ group('the status file', () => {
     const text = JSON.stringify({ running: false, updated: 'x', queue: [{ number: 3, title: 't' }], issues: [ROW] })
     const parsed = parseStatus(text)
     expect(parsed?.queue).toEqual([{ number: 3, title: 't' }])
-    expect(parsed?.issues[0].round).toBe(2)
-    expect(parsed?.issues[0].tests).toBe('failed (1)')
+    expect(parsed?.issues[0]?.round).toBe(2)
+    expect(parsed?.issues[0]?.tests).toBe('failed (1)')
   })
   test('no file, broken JSON or the wrong shape is null or empty, never a throw', () => {
     expect(parseStatus(null)).toBeNull()
@@ -68,6 +68,24 @@ group('the tmux session', () => {
   test('no session, or a run that is no longer alive, offers nothing', () => {
     expect(attach(seen(status([ROW]), true))).toBeNull()
     expect(attach(seen(status([ROW], undefined, true, 'loop-starter'), false))).toBeNull()
+  })
+})
+
+group('watching it', () => {
+  const inTmux = (isLocked: boolean, hasWatchFile: boolean, name = 'loop-starter') =>
+    seen(status([ROW], undefined, true, name), isLocked, false, false, hasWatchFile)
+  test('a running loop with a watch file offers it', () => {
+    expect(watch(inTmux(true, true))).toBe('/h/starter/.loop/watch.command')
+  })
+  test('no watch file (not macOS, or an older loop.py), no session, or not running: no button', () => {
+    expect(watch(inTmux(true, false))).toBeNull()
+    expect(watch(seen(status([ROW]), true, false, false, true))).toBeNull()
+    expect(watch(inTmux(false, true))).toBeNull()
+  })
+  test('the fallback command is read-only, exact and always quoted', () => {
+    expect(watchCommand(inTmux(true, true))).toBe("tmux attach -r -t '=loop-starter'")
+    expect(watchCommand(inTmux(true, true, "it's"))).toBe("tmux attach -r -t '=it'\\''s'")
+    expect(watchCommand(inTmux(false, true))).toBeNull()
   })
 })
 

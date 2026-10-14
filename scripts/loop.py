@@ -24,7 +24,8 @@ request, edited in place on later commits. It never approves, merges or pushes.
 Watch it with:  tail -f .loop/loop.log
 The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
 issue is on, and how its last round went. Run inside tmux, a START line in the log and the
-status name the session, so `tmux attach -t <name>` opens it.
+status name the session, so `tmux attach -t <name>` opens it. On macOS the run also writes
+.loop/watch.command, which opens a read-only Terminal window on it (the loop pane's Watch it).
 Everything a round produced is in .loop/issue-N/. Checkouts live outside the clone, in
 ~/.harness-loop/. It never merges.
 Standard library only; needs git and the gh CLI, signed in.
@@ -315,6 +316,29 @@ class Loop:
         name = out.strip()
         return name if code == 0 and name else None
 
+    def write_watch(self, session):
+        """On macOS, .loop/watch.command: opened, it attaches a new Terminal window to the session, read-only.
+
+        The loop pane's Watch it button opens it. The tmux path is absolute because Terminal's PATH
+        can differ from this shell's, and the socket is this run's, so a non-default server still
+        attaches. "=" makes tmux match the name exactly; it's quoted by hand because shlex leaves it bare.
+        """
+        tmux = shutil.which("tmux")
+        if sys.platform != "darwin" or not tmux:
+            return
+        argv = [tmux]
+        socket = os.environ.get("TMUX", "").split(",")[0]
+        if socket:
+            argv += ["-S", socket]
+        argv += ["attach", "-r", "-t"]
+        target = "'=" + session.replace("'", "'\\''") + "'"
+        path = self.dir / "watch.command"
+        try:
+            path.write_text("#!/bin/sh\nexec {} {}\n".format(" ".join(shlex.quote(a) for a in argv), target))
+            path.chmod(0o755)
+        except OSError:
+            path.unlink(missing_ok=True)  # the pane falls back to copying the attach command
+
     def agent(self, which, prompt, cwd, untrusted=False, stderr=True):
         """Run a fresh agent session. Returns (exit code, what it said).
 
@@ -501,16 +525,19 @@ class Loop:
         code = None
         try:
             (self.dir / "STOP").unlink(missing_ok=True)  # no other loop holds the lock, so an old stop is stale
+            (self.dir / "watch.command").unlink(missing_ok=True)  # and so is a killed run's
             tmux = self.tmux_session()
             self.save_status(running=True, pid=os.getpid(), tmux=tmux)
             if tmux:
                 self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
+                self.write_watch(tmux)
             code = work()
             if self.stopped():
                 self.log("STOPPED", "stop file found")
                 (self.dir / "STOP").unlink()
         finally:
             self.save_status(running=False, pid=None, tmux=None, reviewing=None)
+            (self.dir / "watch.command").unlink(missing_ok=True)
             (self.dir / "lock").unlink(missing_ok=True)
         return code or 0
 

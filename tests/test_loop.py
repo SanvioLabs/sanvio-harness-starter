@@ -3,6 +3,8 @@ import contextlib
 import io
 import json
 import os
+import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -373,6 +375,38 @@ class TestAPass(unittest.TestCase):
         with mock.patch.object(loop.Loop, "process", process):
             self.go()
         self.assertEqual(seen, ["loop-work"])
+
+    def watch_while_running(self, platform):
+        """What .loop/watch.command held, and its mode, while the issue was worked; None when absent."""
+        seen = []
+        original = loop.Loop.process
+        def process(this, issue):
+            path = this.dir / "watch.command"
+            seen.append((path.read_text(), stat.S_IMODE(path.stat().st_mode)) if path.exists() else None)
+            return original(this, issue)
+        with mock.patch.object(loop.Loop, "process", process), mock.patch.object(loop.sys, "platform", platform):
+            self.go()
+        return seen[0]
+
+    def test_on_macos_in_tmux_a_watch_file_attaches_read_only_while_running(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        text, mode = self.watch_while_running("darwin")
+        tmux = shlex.quote(shutil.which("tmux"))
+        self.assertEqual(text, "#!/bin/sh\nexec {} -S /tmp/tmux-501/default attach -r -t '=loop-work'\n".format(tmux))
+        self.assertEqual(mode, 0o755)
+        self.assertFalse((self.work / ".loop" / "watch.command").exists())  # gone once the run ends
+
+    def test_no_watch_file_off_macos_or_outside_tmux(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        self.assertIsNone(self.watch_while_running("linux"))
+        for k in ("TMUX", "TMUX_PANE"):
+            os.environ.pop(k)
+        self.assertIsNone(self.watch_while_running("darwin"))
+
+    def test_a_killed_runs_watch_file_is_cleared_at_the_next_start(self):
+        (self.work / ".loop").mkdir(exist_ok=True)
+        (self.work / ".loop" / "watch.command").write_text("#!/bin/sh\n")
+        self.assertIsNone(self.watch_while_running("darwin"))
 
     def test_outside_tmux_nothing_extra_is_logged_or_asked(self):
         self.go()
