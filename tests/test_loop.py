@@ -279,6 +279,22 @@ class TestAPass(unittest.TestCase):
         self.assertLess(calls.index("issue edit 12 --add-label loop:blocked"),
                         next(i for i, c in enumerate(calls) if c.startswith("issue comment 12")))
 
+    def test_a_refused_commit_blocks_the_issue_before_the_tests_run(self):
+        hooks = Path(self.tmp.name) / "hooks"
+        hooks.mkdir()
+        hook = hooks / "pre-commit"
+        hook.write_text("#!/bin/sh\necho HOOK-SAID-NO >&2\nexit 1\n")
+        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)
+        git(self.work, "config", "core.hooksPath", str(hooks))
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["note"]), ("blocked", "commit refused (git exit 1)"))
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertNotIn("VALIDATE", steps)
+        self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
+        self.assertFalse(any("HOOK-SAID-NO" in c for c in self.comments()))
+        self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+
     def test_a_comment_that_fails_is_logged_and_the_pull_request_stands(self):
         (self.state / "comment-fails").write_text("")
         self.assertEqual(self.go(), 0)
