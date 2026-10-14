@@ -34,6 +34,8 @@ export type Seen = {
   // A lock left by a process that's gone: the last run was killed. The next run replaces it.
   isStaleLock: boolean
   isStopping: boolean
+  // .loop/watch.command is there: loop.py wrote it, on macOS inside tmux, for the Watch it button.
+  hasWatchFile: boolean
 }
 
 declare module 'claude-code' {

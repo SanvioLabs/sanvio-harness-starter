@@ -7,6 +7,7 @@ export type Line = { tone: Tone; text: string }
 export const STATUS_FILE = '.loop/status.json'
 export const LOCK_FILE = '.loop/lock'
 export const STOP_FILE = '.loop/STOP'
+export const WATCH_FILE = '.loop/watch.command'
 export const SCRIPT = 'scripts/loop.py'
 
 const STEPS: Record<string, string> = {
@@ -76,6 +77,19 @@ export function attach(seen: Seen): string | null {
   const name = seen.status?.tmux
   if (!seen.isLocked || !name) return null
   return /^[\w.@%+=:,-]+$/.test(name) ? `tmux attach -t ${name}` : `tmux attach -t '${name.replace(/'/g, `'\\''`)}'`
+}
+
+// The file that opens a window on the running loop's tmux session, read-only, or null. loop.py
+// writes it only on macOS inside tmux, so elsewhere, or with an older loop.py, there's no button.
+export function watch(seen: Seen): string | null {
+  return attach(seen) && seen.hasWatchFile ? `${seen.root}/${WATCH_FILE}` : null
+}
+
+// What the window runs, to copy when it can't open: read-only, and the name matched exactly. Always
+// quoted, because zsh reads a word starting with = as a command lookup.
+export function watchCommand(seen: Seen): string | null {
+  const name = seen.status?.tmux
+  return attach(seen) && name ? `tmux attach -r -t '=${name.replace(/'/g, `'\\''`)}'` : null
 }
 
 // Ready issues not already being worked on.

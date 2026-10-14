@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Loop pane opens a window on the loop
+
+On a Mac, the loop pane (0.3.0) has a **Watch it** button while the loop runs
+in tmux. It opens a new Terminal window attached to the loop's session,
+read-only, so you watch without typing into it; closing the window leaves the
+loop running. [`scripts/loop.py`](scripts/loop.py) writes `.loop/watch.command` for it when a run
+starts inside tmux on macOS, and removes it when the run ends. Elsewhere the
+pane copies the attach command as before. The pane also stops reading the
+loop's files once it's closed, which it was meant to and didn't.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/mods/loop-pane/`](examples/mods/loop-pane/),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing. The button arrives with your next session, from the next
+loop run started in tmux.
+
 ## 2026-10-13: Standup reads only cleared sources
 
 [`skills/standup/`](skills/standup/) reads a calendar, email or tracker only when `company/DATA.md` clears it, as [`AGENTS.md`](AGENTS.md)

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, STATUS_FILE, STOP_FILE, attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting } from './logic'
+import { LOCK_FILE, STATUS_FILE, STOP_FILE, WATCH_FILE, attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
 import type { Tone } from './logic'
 import type { Seen } from '../types'
 
@@ -48,6 +48,7 @@ async function look($: EngineInterface, root: string): Promise<Seen> {
     isLocked: alive === true,
     isStaleLock: alive === false,
     isStopping: await $.fs.exists(`${root}/${STOP_FILE}`),
+    hasWatchFile: await $.fs.exists(`${root}/${WATCH_FILE}`),
   }
 }
 
@@ -65,7 +66,8 @@ async function refresh($: EngineInterface): Promise<void> {
 // Poll only while the pane is up, so a session that never opens it reads nothing.
 function startPolling($: EngineInterface): void {
   if (stopPolling) return
-  stopPolling = $.clock.every(POLL_MS, () => {
+  // every() hands back a timer, not a function: calling it threw, so the poll outlived the pane.
+  const timer = $.clock.every(POLL_MS, () => {
     void (async () => {
       const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
       if (!isUp) {
@@ -76,6 +78,7 @@ function startPolling($: EngineInterface): void {
       await refresh($)
     })().catch(() => {})
   })
+  stopPolling = () => timer.cancel()
 }
 
 export const register: Register = on => {
@@ -113,6 +116,7 @@ export const register: Register = on => {
 
     const head = headline(seen)
     const tmux = attach(seen)
+    const watchFile = watch(seen)
     const queue = waiting(seen.status)
     const rows = seen.status?.issues ?? []
 
@@ -120,6 +124,21 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Text {...COLORS[head.tone]}>{clip(head.text, width)}</Text>
         {tmux && <Text>{clip(`tmux ${seen.status?.tmux}: ${tmux}`, width * 2)}</Text>}
+        {watchFile && (
+          <Button
+            key="watch"
+            label={clip('Watch it', width)}
+            onPress={press => {
+              // A new Terminal window, attached read-only; closing it leaves the loop running.
+              void (async () => {
+                const ran = await $.process.run(['open', watchFile]).catch(() => null)
+                if (ran?.exitCode === 0) return
+                await $.ui.copy({ text: watchCommand(seen) ?? '', surface: press.surface })
+                $.ui.toast("Couldn't open a window, so the read-only attach command is copied")
+              })().catch(() => {})
+            }}
+          />
+        )}
         {tmux && (
           <Button
             key="tmux"
