@@ -55,13 +55,16 @@ gives the command and the person runs it.
    source and say so in step 4.
 3. **Gather from optional sources.** Calendar (today's meetings), email (what
    needs an answer) and a ticket tracker (what's assigned) are used only when a
-   connector for them is available in this session and `company/DATA.md`, if it
-   exists, clears it. List and search calls only. Never an accept, decline,
+   connector for them is available in this session and `company/DATA.md` lists
+   that source as cleared for this tool. No `company/DATA.md` means none is
+   cleared: skip all three and say `/orientation` writes it. A connector being
+   there isn't permission to read it. List and search calls only. Never an accept, decline,
    reply, label, draft or update call. Today's meetings go in as one line each
    with their time.
 4. **Name what was skipped.** One line per source that wasn't read, saying why:
    `Calendar: skipped, no calendar connector in this session.` or
-   `GitHub: skipped, gh isn't signed in.` Never leave a
+   `GitHub: skipped, gh isn't signed in.` or
+   `Calendar: skipped, company/DATA.md doesn't clear it.` Never leave a
    source out silently, and never invent an item for one you couldn't reach.
 5. **Report.** Lead with one line:
 

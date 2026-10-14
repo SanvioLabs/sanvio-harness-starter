@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: Standup reads only cleared sources
+
+[`skills/standup/`](skills/standup/) reads a calendar, email or tracker only when `company/DATA.md` clears it, as [`AGENTS.md`](AGENTS.md)
+already requires. A connector being there isn't enough.
+
+Files: [`skills/standup/SKILL.md`](skills/standup/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** nothing. To include your calendar or email, run `/orientation` so `company/DATA.md` lists them.
+
 ## 2026-10-13: What's new lists every entry
 
 [`skills/whats-new/`](skills/whats-new/) makes its list with a command and gives every entry on it, with the count. "Since a date" includes that day.
