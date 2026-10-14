@@ -169,7 +169,7 @@ every day.
 | Guards inside the agent | [`.claude/settings.json`](.claude/settings.json), [`.claude/hooks/`](.claude/hooks/) | Claude Code runs `guard.py` before every tool call: it refuses credential files, asks you before any connector tool whose name doesn't say it's a plain read, and holds the security reviewer's shell to read-only audits. A session-start check says out loud when the git hook is off |
 | Your repos, inside it | [`projects/`](projects/) | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. [`projects/README.md`](projects/README.md) has the catch we measured: start inside a project and the hooks and skills don't load |
 | Review skills | [`skills/review-pr/`](skills/review-pr/), [`skills/review-tests/`](skills/review-tests/) | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
-| Specs and tickets | The Stelliad plugin, switched on in [`.claude/settings.json`](.claude/settings.json) | `stelliad:create-spec`, `stelliad:plan-spec`, `stelliad:implement-spec` and `stelliad:review-spec` take a feature from idea to spec, to plan, to code one tested task at a time, then review it. `stelliad:create-ticket` and `stelliad:review-ticket` write and grade issues, and [`skills/loop-control/`](skills/loop-control/) puts a ready one on the loop. `claude plugin disable stelliad@stelliad --scope local` switches it off for you; `"stelliad@stelliad": false` there switches it off for everyone |
+| Specs and tickets | The Stelliad plugin, switched on in [`.claude/settings.json`](.claude/settings.json) | `stelliad:create-spec`, `stelliad:plan-spec`, `stelliad:implement-spec` and `stelliad:review-spec` take a feature from idea to spec, to plan, to code one tested task at a time, then review it. `stelliad:create-ticket` and `stelliad:review-ticket` write and grade issues, and [`skills/loop-control/`](skills/loop-control/) puts a ready one on the loop. It's pinned to one Stelliad commit in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). `claude plugin disable stelliad@sanvio-harness-starter --scope local` switches it off for you; `"stelliad@sanvio-harness-starter": false` there switches it off for everyone |
 | A way to learn | [`skills/learn/`](skills/learn/) | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
 | A morning read | [`skills/standup/`](skills/standup/) | Say "standup" or "what's on me today": one pass over the pull requests waiting on your review, your own with their checks, issues assigned to you, what the loop opened or blocked in the last day, and your calendar, email and tracker where a connector exists. It names any source it skipped, asks about each item, and ends with an order for the day. It reads only and changes nothing |
 | A release log | [`CHANGELOG.md`](CHANGELOG.md), [`skills/whats-new/`](skills/whats-new/) | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
@@ -256,12 +256,13 @@ on, with no separate prompt. The starter's spec and ticket steps run on it, so i
 installed rather than copied. Its skills are built the same way as this
 starter's: each one ends in a verdict backed by evidence, and ships a
 `CUSTOMIZE.md` for adapting it. Trusting the folder trusts its authors too, which is the
-trade step 3 of [`STARTER-SKILLS.md`](STARTER-SKILLS.md) warns about. It isn't pinned to a release:
-you get what's on Stelliad's main branch when your copy fetches it, and
-`claude plugin marketplace update stelliad` fetches it again. If that's more
-trust than you want, set `"stelliad@stelliad": false` in
+trade step 3 of [`STARTER-SKILLS.md`](STARTER-SKILLS.md) warns about. It's pinned to one commit: the
+`sha` on its entry in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) is what everyone
+installs, so a new commit on Stelliad's main branch reaches nobody until
+someone reads the diff and moves the pin in a pull request. If that's more
+trust than you want, set `"stelliad@sanvio-harness-starter": false` in
 [`.claude/settings.json`](.claude/settings.json) before you first trust the folder, or switch it off
-afterwards with `claude plugin disable stelliad@stelliad --scope local`. Then
+afterwards with `claude plugin disable stelliad@sanvio-harness-starter --scope local`. Then
 run the skills you need through `review-skill` like anyone else's.
 
 ## People to follow

@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Stelliad pinned to a commit
+
+The Stelliad plugin now installs from one Stelliad commit instead of whatever
+is on Stelliad's main branch. It comes through the starter's own marketplace,
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), whose entry names the commit; the separate
+`stelliad` marketplace is gone from [`.claude/settings.json`](.claude/settings.json). A new Stelliad
+commit reaches nobody until someone reads the diff and moves the `sha` in a
+pull request. Its name is now `stelliad@sanvio-harness-starter`; the skills
+still run as `stelliad:<name>`.
+
+Files: [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`.claude/settings.json`](.claude/settings.json), [`tests/test_plugins.py`](tests/test_plugins.py),
+[`README.md`](README.md), [`STARTER-SKILLS.md`](STARTER-SKILLS.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** if you had it before, remove the unpinned copy so only the pinned one
+loads: `claude plugin uninstall stelliad@stelliad` and
+`claude plugin marketplace remove stelliad`, then accept the install prompt the
+next time you start in the harness.
+
 ## 2026-10-14: Connectors ask unless the name says read
 
 The guard now asks before any connector call whose name doesn't say it's a

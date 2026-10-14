@@ -81,7 +81,7 @@ steps in order.
 These come from the Stelliad plugin, which [`.claude/settings.json`](.claude/settings.json) switches on.
 Installing it is the one install that doesn't go through `review-skill`; the
 README says why. In Claude Code, invoke them by name, and if one isn't
-installed, say so and point at `/plugin install stelliad@stelliad`. In a tool
+installed, say so and point at `/plugin install stelliad@sanvio-harness-starter`. In a tool
 without plugins, write tickets from [`steering/tickets.md`](steering/tickets.md) and
 [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), and say there's no spec procedure here
 without Stelliad.

@@ -50,8 +50,8 @@ which skills you pick.
 **Stelliad is the exception.** [`.claude/settings.json`](.claude/settings.json) switches its plugin on, so
 every skill below marked Stelliad arrives when you trust the folder, with no
 separate prompt. They run as `stelliad:<name>`: `/stelliad:create-ticket`,
-`/stelliad:create-spec`. That skips steps 1 and 3, and with them the
-protection step 3 gives: Stelliad can change under you. The [README](README.md#borrowing-other-peoples-skills)
+`/stelliad:create-spec`. That skips steps 1 and 3. It's pinned to one Stelliad
+commit, so it can't change under you until someone moves the pin. The [README](README.md#borrowing-other-peoples-skills)
 says what that trusts and how to keep it off. Where this repo has a skill of
 the same name, such as `review-skill`, the one in [`skills/`](skills/) is the one
 [`AGENTS.md`](AGENTS.md) points at. Everything else here goes through the four steps above.
