@@ -109,6 +109,7 @@ keeps its default:
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
+| `review_query` | `review-requested:@me` | The GitHub search `loop.py review` runs to find pull requests that ask for you |
 
 **Before the first run,** run `python3 scripts/check_setup.py` and fix any FAIL. A
 warning the harness's session-start hook prints (an unset `core.hooksPath`, for
@@ -142,6 +143,46 @@ file stops two loops running in one clone. On your machine it uses your own
 agent sign-in and holds no credentials; in [GitHub Actions](#off-your-laptop) the
 agent needs a key, held as a repository secret. A ticket is an instruction to an
 agent, so label only issues you wrote or have read.
+
+**Reviewing pull requests.** The issues are half the queue; pull requests waiting
+on your review are the other half. Start it on the machine the loop runs on, in
+its own tmux session. It takes the same lock as `run`, so one process works a
+clone at a time: to run both at once, give each its own clone.
+
+    python3 scripts/loop.py review --once    # review what is waiting, then stop
+    python3 scripts/loop.py review           # then keep watching, every poll_seconds
+
+It lists the open, non-draft pull requests that match `review_query`. For each
+new head commit it checks the pull request out detached, outside your clone, in
+`~/.harness-loop/`, and has a fresh `reader_agent` follow
+[`skills/review-pr/`](skills/review-pr/) for the change between the base and the
+head. The script, not the agent, posts the report: one comment per pull
+request, marked, and edited in place on the next commit. It's the same
+comment-edited-in-place pattern as [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), on the machine
+that already runs the loop and with no CI minutes. It writes one line per
+review to the same log:
+
+    2026-10-13T09:02:11 - REVIEW #31 4f2a9c1 posted
+    2026-10-13T09:02:12 - REVIEW #32 7be03d8 skipped (draft)
+    2026-10-13T09:11:40 - REVIEW #33 c19e5a2 failed: agent exit 1
+
+A commit is reviewed once. The result goes in `.loop/status.json` under
+`reviews`, so a poll that sees the same commit again starts no agent. A review
+whose agent exits non-zero or times out posts nothing, and it isn't tried again
+until the pull request has a new commit; neither is a diff that can't be made,
+such as a base with no history in common. A fetch, checkout or GitHub error is
+logged once with `(will retry)` and tried again on the next poll.
+
+**What it never does:** approve, request changes, merge, push, or ask the agent
+to post. The comment goes up under your own GitHub identity. A pull request's
+diff, commit messages and files are written by whoever opened it, so the prompt
+calls them material to review, never instructions. The agent is told not to
+edit, and whatever it edits is thrown away with the checkout. A `claude`
+`reader_agent` runs with `--restricted --strict-mcp-config --tools Read,Grep,Glob`:
+it can read the checkout and nothing outside it, so a pull request written to
+steer it can't get your keys or tokens into the comment, and the checkout's own
+[`.claude/`](.claude/) settings and hooks never load. If your `reader_agent` isn't Claude
+Code, give it the same limits. `loop.py stop` ends it at its next step, as it does `run`.
 
 **Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
 a dashboard, model-tier routing. Each can be added by whoever needs it, reading

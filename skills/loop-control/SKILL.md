@@ -1,6 +1,6 @@
 ---
 name: loop-control
-description: Drive the loop in scripts/loop.py from a conversation. Put an issue on it after checking it's ready, start it, say what it did, or stop it in the right order. Use when someone says "put #12 on the loop", "is this ready for the loop", "start the loop", "run the loop on #12", "what did the loop do", "why is #12 blocked", or "stop the loop".
+description: Drive the loop in scripts/loop.py from a conversation. Put an issue on it after checking it's ready, start it, say what it did, or stop it in the right order, or start the pull-request reviewer. Use when someone says "put #12 on the loop", "is this ready for the loop", "start the loop", "run the loop on #12", "what did the loop do", "why is #12 blocked", "stop the loop", or "review the pull requests waiting on me".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
@@ -10,7 +10,7 @@ license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLab
 runs the tests, has a fresh agent review it and opens a pull request.
 [`HOW-IT-WORKS.md`](../../HOW-IT-WORKS.md) (*The loop*) says how. This skill is the conversation
 around it: what goes on the loop, when it starts, what it did and how it
-stops. Four jobs. Do the one asked for.
+stops, and the pull-request reviewer beside it. Five jobs. Do the one asked for.
 
 ## Put an issue on the loop
 
@@ -84,6 +84,33 @@ it gets read before it's labelled.
 4. **A pull request:** suggest reading its diff before merging. The loop never
    merges, and neither does this skill.
 
+## Review pull requests
+
+`python3 scripts/loop.py review` is the other half of the queue: it reviews
+each open pull request that asks for the person (`review_query`, by default
+`review-requested:@me`), once per head commit, with
+[`skills/review-pr/`](../review-pr/SKILL.md), and posts the report as one comment per pull request,
+edited in place on later commits. Start it only when asked.
+
+1. Run `python3 scripts/check_setup.py`, then say what it will do: which pull
+   requests match, and that the comments go up under the person's own GitHub
+   identity. Ask before starting.
+2. `python3 scripts/loop.py review --once` reviews what is waiting and exits;
+   without `--once` it keeps watching. Start it in tmux as under *Start it*,
+   with that command in place of `run <flags>`.
+3. It takes the same lock as `run`, so one process works a clone at a time. If
+   the loop is running here, say so: the review needs its own clone, or waits.
+4. Say what it did from `.loop/loop.log`: one `REVIEW #N <sha> posted`,
+   `skipped` or `failed: <why>` line per pull request and commit. A review
+   whose agent exited non-zero or timed out, or whose diff couldn't be made,
+   posted nothing and isn't retried until the pull request has a new commit. A
+   fetch, checkout or post error ends in `(will retry)` and is tried again on
+   the next poll. `loop.py stop` ends it at its next step.
+
+It never approves, requests changes, merges or pushes, and the agent is never
+asked to post: the script does. A person decides what happens to the pull
+request.
+
 ## Stop it
 
 The order matters. Stopping alone lets the loop take the issue straight back.
@@ -98,7 +125,8 @@ The order matters. Stopping alone lets the loop take the issue straight back.
 ## Rules
 
 - Never label an issue the person hasn't read or written.
-- Never merge a pull request the loop opened, or approve one.
+- Never merge a pull request the loop opened, or approve one. `loop.py review`
+  doesn't approve or merge either, and nothing here makes it.
 - Never take `loop:blocked` off an issue without the person: it's the record
   that the loop gave up.
 - Never edit anything under `.loop/`. The loop writes it; you read it.
