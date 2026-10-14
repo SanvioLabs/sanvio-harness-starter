@@ -8,12 +8,18 @@ Running
 tmux loop-starter: tmux attach -t loop-starter
 [ Watch it ]
 [ Copy attach command ]
-1 waiting: #15
+
+[ Queue 1 ] [ Active 1 ] [ Finished 4 ]
 
 #14 Gate: an empty Role cell passes
 building, round 2 of 5
 tests failed (1), review FIX
+```
 
+Pick **Finished** and it lists the last day's jobs, three at a time:
+
+```
+▲ 1 more
 #1 Gate: a fee row with 0 hours passes
 pull request open
 tests passed, review PASS
@@ -22,6 +28,11 @@ tests passed, review PASS
 #9 README: link the loop section
 blocked
 tests passed, review FIX. still failing after 5 rounds, see .loop/issue-9/
+
+#7 Gate: a blank fee cell passes
+pull request open
+tests passed, review PASS
+[ Copy pull request link ]
 ```
 
 It's a Claude Code mod, so it works in Claude Code only, and it was built and
@@ -58,9 +69,16 @@ it.
 | The first line | **Running** while a live loop holds its lock, **Stopping after this step** after `loop.py stop`, **Not running** otherwise. Red when the last run was killed: its lock is still there but its process isn't, and the next run replaces it |
 | **tmux** | While a loop started in tmux is running, its session and the command that opens it, with a button that copies the command. `loop-control` starts the loop that way when tmux is installed |
 | **Watch it** | On a Mac, opens a new Terminal window attached to that session, read-only: you see the loop work and can't type into it. Close the window and the loop keeps running. If the window can't open, it copies the read-only attach command instead. It shows only while the loop runs in tmux on macOS |
-| **waiting** | Ready issues the loop will take next, lowest first |
-| An issue | Its title, then what it's on (planning, building, checking, opening the pull request) with the round, or how it ended: a pull request, blocked, stopped or skipped |
-| Under it | The last round's test and review results, and why it was blocked |
+| **Queue** | Ready issues the loop will take next, lowest first |
+| **Active** | Issues being worked: what each is on (planning, building, checking, opening the pull request) with the round. One left part way by a run that stopped shows where it was left |
+| **Finished** | Issues that reached an end in the last 24 hours: a pull request, blocked, stopped or skipped. Older ones drop off; `.loop/status.json` still has them |
+| Under an issue | The last round's test and review results, and why it was blocked |
+
+Each tab shows its count. The pane opens on **Active** when something is
+being worked, else **Queue**, else **Finished**, and stays on the tab you pick.
+A tab shows three jobs at a time. Scroll over the pane, or press the
+**▲ more** and **▼ more** lines, to move through the rest; the header and the
+tabs stay put.
 
 While the pane is open, an issue that reaches an end also pops up a short
 notice, so you hear about it without reading the pane.

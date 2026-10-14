@@ -38,8 +38,12 @@ export type Seen = {
   hasWatchFile: boolean
 }
 
+// Which tab the pane shows, and the first job of its list in view. Null until the person picks a tab.
+export type Tab = 'queue' | 'active' | 'finished'
+export type View = { tab: Tab; start: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    'loop-pane': { launch: string | null; seen: Seen | null }
+    'loop-pane': { launch: string | null; seen: Seen | null; view: View | null }
   }
 }

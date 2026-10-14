@@ -1,5 +1,5 @@
 // The pane's decisions as plain functions, so they can be tested without a session.
-import type { QueueItem, Row, Seen, Status } from '../types'
+import type { QueueItem, Row, Seen, Status, Tab } from '../types'
 
 export type Tone = 'now' | 'pass' | 'fail' | 'quiet'
 export type Line = { tone: Tone; text: string }
@@ -90,6 +90,45 @@ export function watch(seen: Seen): string | null {
 export function watchCommand(seen: Seen): string | null {
   const name = seen.status?.tmux
   return attach(seen) && name ? `tmux attach -r -t '=${name.replace(/'/g, `'\\''`)}'` : null
+}
+
+// Jobs in view at once; the rest scroll.
+export const PAGE = 3
+// How long a finished job stays on the Finished tab.
+export const FINISHED_MS = 24 * 60 * 60 * 1000
+
+export const TABS: { tab: Tab; label: string }[] = [
+  { tab: 'queue', label: 'Queue' },
+  { tab: 'active', label: 'Active' },
+  { tab: 'finished', label: 'Finished' },
+]
+
+export type Lists = { queue: QueueItem[]; active: Row[]; finished: Row[] }
+
+// The three tabs' lists. A finished job counts from its last update, which loop.py writes in local
+// time; one with no time, or older than a day, is left out.
+export function lists(status: Status | null, now: number): Lists {
+  const rows = status?.issues ?? []
+  const finished = rows.filter(r => {
+    if (!ENDED[r.state]) return false
+    const at = r.updated ? Date.parse(r.updated) : Number.NaN
+    return Number.isFinite(at) && now - at <= FINISHED_MS
+  })
+  return { queue: waiting(status), active: rows.filter(r => !ENDED[r.state]), finished }
+}
+
+// The tab to open on: what's being worked, else what's waiting, else what finished.
+export function firstTab(l: Lists): Tab {
+  if (l.active.length) return 'active'
+  if (l.queue.length) return 'queue'
+  return 'finished'
+}
+
+// Up to PAGE items from `start`, with `start` kept inside the list, and how many sit either side.
+export function page<T>(items: T[], start: number): { shown: T[]; start: number; above: number; below: number } {
+  const from = Math.max(0, Math.min(Math.trunc(start) || 0, items.length - PAGE))
+  const shown = items.slice(from, from + PAGE)
+  return { shown, start: from, above: from, below: items.length - from - shown.length }
 }
 
 // Ready issues not already being worked on.

@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, STATUS_FILE, STOP_FILE, WATCH_FILE, attach, changes, clip, describe, findRoot, headline, lockPid, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
-import type { Tone } from './logic'
-import type { Seen } from '../types'
+import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
+import type { Lists, Tone } from './logic'
+import type { Row, Seen, Tab, View } from '../types'
 
 const PANE = 'loop'
 // Not /loop: that's Claude Code's own command for running a prompt on a schedule.
@@ -12,6 +12,7 @@ const POLL_MS = 2000
 
 const launchAtom = atom({ plugin: 'loop-pane', key: 'launch' } as const, null)
 const seenAtom = atom({ plugin: 'loop-pane', key: 'seen' } as const, null)
+const viewAtom = atom({ plugin: 'loop-pane', key: 'view' } as const, null)
 
 const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean }> = {
   now: { color: 'cyan', bold: true },
@@ -20,7 +21,33 @@ const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean 
   quiet: { dimColor: true },
 }
 
+// A job's rows: its title, where it is, two for the last round's results, and its pull request.
+const JOB_ROWS = 5
+
+const EMPTY: Record<Tab, string> = {
+  queue: 'Nothing waiting. Label an issue loop-ready to queue it.',
+  active: 'Nothing being worked on.',
+  finished: 'Nothing finished in the last 24 hours.',
+}
+
 let stopPolling: (() => void) | null = null
+
+// The tab in view and its first job, kept inside the list. Before the person picks, the busiest tab.
+function current(view: View | null, l: Lists): View {
+  const tab = view?.tab ?? firstTab(l)
+  return { tab, start: page(l[tab], view?.tab ? view.start : 0).start }
+}
+
+// Move the tab's list by `by` jobs. Says whether it moved: at either end it doesn't.
+async function move($: EngineInterface, by: number): Promise<boolean> {
+  const seen = await read($, seenAtom)
+  const l = lists(seen?.status ?? null, Date.now())
+  const now = current(await read($, viewAtom), l)
+  const next = page(l[now.tab], now.start + by).start
+  if (next === now.start) return false
+  await update($, viewAtom, () => ({ tab: now.tab, start: next }))
+  return true
+}
 
 async function rootOf($: EngineInterface): Promise<string | null> {
   const launch = await read($, launchAtom)
@@ -107,6 +134,13 @@ export const register: Register = on => {
     }
   })
 
+  // The wheel and scroll keys move the job list, under a header that stays put. At either end of the
+  // list, or with nothing to move, the pane scrolls as usual.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const moved = e.by !== 0 && (await move($, Math.sign(e.by)).catch(() => false))
+    return moved ? {} : next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const seen = await read($, seenAtom)
@@ -117,8 +151,39 @@ export const register: Register = on => {
     const head = headline(seen)
     const tmux = attach(seen)
     const watchFile = watch(seen)
-    const queue = waiting(seen.status)
-    const rows = seen.status?.issues ?? []
+    const l = lists(seen.status, Date.now())
+    const view = current(await read($, viewAtom), l)
+    const queue = page(l.queue, view.start)
+    const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start)
+    const { above, below } = jobs ?? queue
+    const isEmpty = (jobs ?? queue).shown.length === 0
+
+    // Every job takes the same rows, and the list always takes three jobs' worth, so nothing below it
+    // moves as jobs scroll by or gain a result.
+    const job = (row: Row) => {
+      const { head: state, detail } = describe(row, seen.isLocked)
+      return (
+        <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={JOB_ROWS}>
+          <Text bold>{clip(`#${row.number} ${row.title}`, width)}</Text>
+          <Text {...COLORS[state.tone]}>{clip(state.text, width)}</Text>
+          <Box height={2} overflow="hidden">
+            <Text dimColor>{detail ? clip(detail, width * 2) : ' '}</Text>
+          </Box>
+          {row.pr ? (
+            <Button
+              key={`pr-${row.number}`}
+              label={clip('Copy pull request link', width)}
+              onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
+            />
+          ) : (
+            <Text> </Text>
+          )}
+        </Box>
+      )
+    }
+    const gap = (n: number, rows: number) =>
+      Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
+    const shownCount = (jobs ?? queue).shown.length
 
     return (
       <Box flexDirection="column">
@@ -146,27 +211,37 @@ export const register: Register = on => {
             onPress={press => $.ui.copy({ text: tmux, surface: press.surface })}
           />
         )}
-        <Text dimColor>{clip(`${queue.length} waiting${queue.length ? `: ${queue.map(q => `#${q.number}`).join(' ')}` : ''}`, width)}</Text>
-        {rows.length === 0 && (
-          <Text dimColor>{clip('No issue taken yet. Label one loop-ready, then: python3 scripts/loop.py run --once', width * 3)}</Text>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
+          {TABS.map(({ tab, label }) => (
+            <Button
+              key={`tab-${tab}`}
+              label={`${label} ${l[tab].length}`}
+              variant={tab === view.tab ? 'primary' : undefined}
+              dimColor={tab !== view.tab}
+              onPress={() => update($, viewAtom, () => ({ tab, start: 0 }))}
+            />
+          ))}
+        </Box>
+        {/* The lines above and below the list are always there, so it doesn't jump as it scrolls. */}
+        {above > 0 ? (
+          <Button key="up" plain label={`▲ ${above} more`} dimColor onPress={() => move($, -1)} />
+        ) : (
+          <Text> </Text>
         )}
-        {rows.map(row => {
-          const { head: state, detail } = describe(row, seen.isLocked)
-          return (
-            <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1}>
-              <Text bold>{clip(`#${row.number} ${row.title}`, width)}</Text>
-              <Text {...COLORS[state.tone]}>{clip(state.text, width)}</Text>
-              {detail && <Text dimColor>{clip(detail, width * 2)}</Text>}
-              {row.pr && (
-                <Button
-                  key={`pr-${row.number}`}
-                  label={clip('Copy pull request link', width)}
-                  onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
-                />
-              )}
-            </Box>
-          )
-        })}
+        {isEmpty && (
+          <Box marginTop={jobs ? 1 : 0} height={jobs ? JOB_ROWS : 1} overflow="hidden">
+            <Text dimColor>{clip(EMPTY[view.tab], width)}</Text>
+          </Box>
+        )}
+        {jobs
+          ? jobs.shown.map(job)
+          : queue.shown.map(q => <Text key={`queue-${q.number}`}>{clip(`#${q.number} ${q.title}`, width)}</Text>)}
+        {gap(PAGE - shownCount - (isEmpty ? 1 : 0), jobs ? JOB_ROWS : 1)}
+        {below > 0 ? (
+          <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1)} />
+        ) : (
+          <Text> </Text>
+        )}
       </Box>
     )
   })
