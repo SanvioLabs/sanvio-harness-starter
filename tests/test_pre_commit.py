@@ -61,6 +61,37 @@ class PreCommitHook(unittest.TestCase):
         self.assertNotEqual(code, 0, out)
         self.assertIn("BLOCKED: new.txt contains", out)
 
+    def test_a_name_git_quotes_is_blocked_unread(self):
+        self.stage('q"x.txt', "key = " + FAKE_KEY + "\n")
+        code, out = self.commit()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("could not be read for scanning", out)
+        self.assertIn("q", out)
+
+    def test_a_secret_in_a_symlink_turned_file_is_blocked(self):
+        os.symlink("target.txt", self.root / "link")
+        self.assertEqual(self.git("add", "link").returncode, 0)
+        self.assertEqual(self.commit()[0], 0)
+        os.remove(self.root / "link")
+        self.stage("link", "key = " + FAKE_KEY + "\n")
+        self.assertIn("T\tlink", self.git("diff", "--cached", "--name-status").stdout)
+        code, out = self.commit()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("BLOCKED: link contains", out)
+
+    def test_a_secret_in_a_name_with_a_colon_is_blocked(self):
+        self.stage("0:x.txt", "key = " + FAKE_KEY + "\n")
+        code, out = self.commit()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("BLOCKED: 0:x.txt contains", out)
+
+    def test_a_staged_deletion_commits(self):
+        self.stage("gone.txt", "Nothing secret here.\n")
+        self.assertEqual(self.commit()[0], 0)
+        self.assertEqual(self.git("rm", "-q", "gone.txt").returncode, 0)
+        code, out = self.commit()
+        self.assertEqual(code, 0, out)
+
     def test_a_staged_env_file_is_blocked_by_name(self):
         self.stage(".env", "NAME=value\n")
         code, out = self.commit()

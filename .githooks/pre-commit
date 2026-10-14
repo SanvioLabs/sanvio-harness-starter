@@ -4,9 +4,11 @@
 # From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 
 status=0
-# One name per line. R lists a renamed file under its new name, and
-# quotePath=false keeps accented names as written instead of escaped.
-staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)
+# One name per line. R lists a renamed file under its new name, T a file whose
+# type changed (a symlink now a file), and quotePath=false keeps accented names
+# as written instead of escaped. Git still quotes a name holding a quote, a
+# backslash, a tab or a newline; block 1 blocks those, since it can't read them.
+staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMRT)
 
 # 1. Credentials never get committed.
 # A heredoc, not a pipe, so the loop runs in this shell and status=1 survives it.
@@ -19,7 +21,14 @@ while IFS= read -r f; do
       continue
       ;;
   esac
-  if git show ":$f" | grep -Eq 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+  # :0: names the staged copy, so a file called 0:x.txt isn't read as x.txt.
+  # A name the index doesn't hold (one git quoted) is blocked, not passed unread.
+  if ! git rev-parse -q --verify ":0:$f" >/dev/null; then
+    echo "BLOCKED: $f could not be read for scanning. Rename it."
+    status=1
+    continue
+  fi
+  if git show ":0:$f" | grep -Eq 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
     echo "BLOCKED: $f contains something that looks like a secret. Remove it and use an environment variable."
     status=1
   fi
