@@ -219,6 +219,7 @@ class Loop:
         self.dir.mkdir(exist_ok=True)
         self.me = None
         self.said = set()  # skips already logged by this process, so a poll doesn't repeat them
+        self.unposted = {}  # pull request number -> (sha, comment) the agent wrote and GitHub refused
         self.status = self.read_status()
 
     # -- plumbing ---------------------------------------------------------
@@ -271,8 +272,11 @@ class Loop:
             self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
         self.save_status()
 
-    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False):
-        """(exit code, combined output). A missing command or a timeout is a code, not a crash."""
+    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True):
+        """(exit code, combined output, or stdout alone with stderr=False).
+
+        A missing command or a timeout is a code, not a crash.
+        """
         try:
             done = subprocess.run(cmd, cwd=str(cwd or self.root), input=stdin, shell=shell,
                                   capture_output=True, text=True, timeout=timeout)
@@ -280,7 +284,7 @@ class Loop:
             return 127, "command not found: {}".format(cmd if shell else cmd[0])
         except subprocess.TimeoutExpired:
             return 124, "timed out after {}s".format(timeout)
-        return done.returncode, (done.stdout or "") + (done.stderr or "")
+        return done.returncode, (done.stdout or "") + ((done.stderr or "") if stderr else "")
 
     def git(self, *args, cwd=None):
         return self.sh(["git"] + list(args), cwd=cwd)
@@ -306,8 +310,10 @@ class Loop:
         name = out.strip()
         return name if code == 0 and name else None
 
-    def agent(self, which, prompt, cwd, untrusted=False):
+    def agent(self, which, prompt, cwd, untrusted=False, stderr=True):
         """Run a fresh agent session. Returns (exit code, what it said).
+
+        stderr=False keeps its warnings and traces out of what it said, for text that gets posted.
 
         untrusted means cwd holds someone else's files. Claude Code would load that folder's own
         .claude/ settings, hooks included, and run them on this machine, so it's told to read the
@@ -316,7 +322,7 @@ class Loop:
         cmd = shlex.split(self.cfg[which])
         if untrusted and cmd and Path(cmd[0]).name == "claude" and "--setting-sources" not in cmd:
             cmd += ["--setting-sources", "user"]
-        return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"])
+        return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
 
     # -- the flywheel -----------------------------------------------------
 
@@ -582,7 +588,14 @@ class Loop:
             return False
 
         self.save_status(reviewing={"number": number, "sha": sha[:7]})
-        ran, sha, why, record = self.review_run(pr)
+        held = self.unposted.get(number)
+        if held and held[0] == sha:
+            # The agent finished and only the post failed: post again, don't pay for another review.
+            ran, why, record = False, self.post_review(number, held[1]), False
+            if why is None:
+                del self.unposted[number]
+        else:
+            ran, sha, why, record = self.review_run(pr)
         if why is None or record:
             self.status["reviews"][str(number)] = {
                 "number": number, "title": pr["title"], "sha": sha,
@@ -599,7 +612,8 @@ class Loop:
     def review_run(self, pr):
         """(an agent ran, the commit reviewed, why it failed or None, whether the failure is the agent's).
 
-        On success the report is posted. A failure that isn't the agent's isn't recorded, so it's retried.
+        On success the report is posted. A failure that isn't the agent's isn't recorded, so it's retried:
+        a failed post keeps the comment in self.unposted, so the retry posts it without another agent run.
         """
         number, sha, base = pr["number"], pr["headRefOid"], pr["baseRefName"]
         code, out = self.git("fetch", "-q", "origin", "pull/{}/head".format(number))
@@ -631,7 +645,8 @@ class Loop:
             skill_file = self.root / "skills" / "review-pr" / "SKILL.md"
             skill = skill_file.read_text() if skill_file.exists() else ""
             prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
-            code, report = self.agent("reader_agent", prompt, tree, untrusted=True)
+            # stdout only: stderr is the agent's warnings and paths, and the report is posted publicly.
+            code, report = self.agent("reader_agent", prompt, tree, untrusted=True, stderr=False)
             # Fixed reasons only: the report is text someone else could shape, and these go in a one-line log.
             if code == 124:
                 return True, sha, "timed out after {}s".format(self.cfg["agent_timeout"]), True
@@ -641,7 +656,11 @@ class Loop:
                 return True, sha, "agent exit {}".format(code), True
             if not report.strip():
                 return True, sha, "the agent said nothing", True
-            return (True, sha, self.post_review(number, review_comment(report, sha)), False)
+            body = review_comment(report, sha)
+            why = self.post_review(number, body)
+            if why is not None:
+                self.unposted[number] = (sha, body)
+            return True, sha, why, False
         finally:
             # Whatever the reviewer edited goes with the checkout: nothing is committed or pushed.
             self.git("worktree", "remove", "--force", str(tree))

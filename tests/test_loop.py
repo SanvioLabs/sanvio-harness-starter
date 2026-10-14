@@ -705,18 +705,51 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.comments(), [])
         self.assertIn("REVIEW #7 {} failed: timed out after 1s".format(sha[:7]), self.reviews()[-1])
 
-    def test_a_github_failure_is_not_recorded_so_the_next_poll_tries_again(self):
+    def test_a_failed_post_is_retried_on_the_next_poll_without_another_agent_run(self):
+        (self.state / "gh-fails").write_text("")
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        runner = loop.Loop(self.work, self.cfg)  # one process: it remembers what the agent wrote
+
+        def poll():
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return runner.review(once=True)
+
+        poll()
+        self.assertEqual(self.comments(), [])
+        self.assertIn("REVIEW #7 {} failed: could not post the comment".format(sha[:7]), self.reviews()[-1])
+        self.assertNotIn("7", self.status()["reviews"])
+        poll()  # GitHub still refuses: only the post is tried again
+        self.assertEqual(self.agents_started(), 1)
+        (self.state / "gh-fails").unlink()
+        poll()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("Review number 1.", self.comments()[0]["body"])
+        self.assertEqual(self.status()["reviews"]["7"]["state"], "posted")
+
+    def test_a_failed_post_in_one_process_is_reviewed_again_in_the_next(self):
         (self.state / "gh-fails").write_text("")
         sha = self.push(7, "thing.txt")
         self.list_prs(self.pr(7, sha))
         self.go()
-        self.assertEqual(self.comments(), [])
-        self.assertIn("REVIEW #7 {} failed: could not post the comment".format(sha[:7]), self.reviews()[-1])
-        self.assertNotIn("7", self.status()["reviews"])
         (self.state / "gh-fails").unlink()
-        self.go()  # the same commit: the agent failed nowhere, so it's tried again and posted
+        self.go()  # a restart forgets the report, and nothing was recorded, so it's reviewed again
+        self.assertEqual(self.agents_started(), 2)
         self.assertEqual(len(self.comments()), 1)
-        self.assertEqual(self.status()["reviews"]["7"]["state"], "posted")
+
+    def test_what_the_agent_writes_to_stderr_is_not_posted(self):
+        noisy = self.bin / "noisy"
+        noisy.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdin.read()\n"
+                         "print('/Users/pat/secret/path: warning', file=sys.stderr)\nprint('The report.')\n")
+        noisy.chmod(noisy.stat().st_mode | stat.S_IEXEC)
+        self.cfg["reader_agent"] = "{} {}".format(sys.executable, noisy)
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        body = self.comments()[0]["body"]
+        self.assertIn("The report.", body)
+        self.assertNotIn("/Users/pat/secret/path", body)
 
     def test_an_agent_that_exits_124_gets_a_fixed_reason_not_its_own_words(self):
         script = self.bin / "odd"
