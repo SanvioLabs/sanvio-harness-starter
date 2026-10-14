@@ -13,7 +13,7 @@ staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACM
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   case "$f" in
-    .env|.env.*|*/.env|*.pem|*.key|id_rsa*)
+    .env|.env.*|*/.env|*/.env.*|*.pem|*.key|id_rsa*|*/id_rsa*)
       echo "BLOCKED: $f looks like a credential file. Unstage it: git reset -- \"$f\""
       status=1
       continue
