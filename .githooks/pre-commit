@@ -4,13 +4,17 @@
 # From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 
 status=0
-staged=$(git diff --cached --name-only --diff-filter=ACM)
+# One name per line. R lists a renamed file under its new name, and
+# quotePath=false keeps accented names as written instead of escaped.
+staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)
 
 # 1. Credentials never get committed.
-for f in $staged; do
+# A heredoc, not a pipe, so the loop runs in this shell and status=1 survives it.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
   case "$f" in
     .env|.env.*|*/.env|*.pem|*.key|id_rsa*)
-      echo "BLOCKED: $f looks like a credential file. Unstage it: git reset -- $f"
+      echo "BLOCKED: $f looks like a credential file. Unstage it: git reset -- \"$f\""
       status=1
       continue
       ;;
@@ -19,10 +23,12 @@ for f in $staged; do
     echo "BLOCKED: $f contains something that looks like a secret. Remove it and use an environment variable."
     status=1
   fi
-done
+done <<EOF
+$staged
+EOF
 
 # 2. A proposal only gets committed if the gate passes (examples/proposal/).
-proposals=$(printf '%s\n' $staged | grep '^examples/proposal/proposals/.*\.md$')
+proposals=$(printf '%s\n' "$staged" | grep '^examples/proposal/proposals/.*\.md$')
 if [ -n "$proposals" ]; then
   python3 examples/proposal/gates/proposal_gate.py $proposals || status=1
 fi

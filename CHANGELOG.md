@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Secret scan reads every staged name
+
+The pre-commit secret scan now checks files whose names have a space in them
+and files renamed in the commit. Before, a name like `a b.txt` was split into
+two names that didn't exist, and a renamed file was skipped, so a key in
+either got through. Accented names come through as written. Names holding a
+newline, a quote, a backslash or a control character are still not handled.
+
+Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.py`](tests/test_pre_commit.py)
+
+**Do:** nothing.
+
 ## 2026-10-14: The security reviewer runs pip-audit and bandit
 
 On a Python project, the `security-reviewer` agent now runs `pip-audit` on
