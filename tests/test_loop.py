@@ -420,7 +420,8 @@ class TestAPass(unittest.TestCase):
 
     def run_issue_flag(self):
         """A run with --issue 12 and no --once. Sleeping means it went on polling, so that fails at once."""
-        with mock.patch.object(loop.time, "sleep", side_effect=AssertionError("polled")), \
+        # loop.time is patched, not time.sleep itself, which subprocess.run's own wait uses.
+        with mock.patch.object(loop, "time", mock.Mock(sleep=mock.Mock(side_effect=AssertionError("polled")))), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=False, only=12)
 
@@ -813,7 +814,7 @@ class TestReview(unittest.TestCase):
             return result
 
         runner.review_run = run_then_stop
-        with mock.patch.object(loop.time, "sleep", side_effect=AssertionError("slept after a stop")):
+        with mock.patch.object(loop, "time", mock.Mock(sleep=mock.Mock(side_effect=AssertionError("slept after a stop")))):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(runner.review(once=False), 0)
         self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
