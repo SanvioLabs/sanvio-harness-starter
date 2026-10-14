@@ -39,6 +39,23 @@ Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.p
 
 **Do:** nothing.
 
+## 2026-10-14: Tighter guard on the security reviewer and on credential names
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) closes gaps the security reviewer found in its own
+fence. Git and `gitleaks` don't run in a repo whose `.git/config` can make a
+read run a command (a pager, an external or textconv diff, a filesystem
+monitor, an include), which a repo handed over as an archive can carry.
+`git log` and `git show` can't print old file contents (`show` needs
+`--stat` or `--name-only`, and no `rev:path`), and `gitleaks` takes only a
+bare `--redact`. For every agent, `git show HEAD:.env` now counts as reading
+a credential. [`.githooks/pre-commit`](.githooks/pre-commit) blocks `.env.*` and `id_rsa*` in a folder
+too, not only at the root.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`.githooks/pre-commit`](.githooks/pre-commit),
+[`tests/test_pre_commit.py`](tests/test_pre_commit.py), [`agents/security-reviewer.md`](agents/security-reviewer.md)
+
+**Do:** nothing.
+
 ## 2026-10-14: The loop checks whose issue it builds from
 
 [`scripts/loop.py`](scripts/loop.py) now reads each issue fresh before it takes it, and builds

@@ -22,12 +22,13 @@ command built to dodge it can.
 Claude Code only. The git hook in .githooks/ is the check every tool shares.
 """
 import json
+import os
 import re
 import shlex
 import sys
 
 CREDENTIAL = re.compile(
-    r"(^|[\s/'\"=<])("
+    r"(^|[\s/'\"=<:])("  # : as well, for git show HEAD:.env
     r"\.env(\.(?!example\b|sample\b|template\b)[\w.-]+)?"  # .env, .env.local, not .env.example
     r"|[\w.-]*\.pem|[\w.-]*\.key|id_(rsa|ed25519|ecdsa)[\w.-]*"
     r"|\.aws/credentials|\.ssh/[\w.-]+|\.netrc|\.npmrc|\.pypirc"
@@ -56,29 +57,131 @@ AUDITOR = "security-reviewer"
 CD_PREFIX = re.compile(r"^\s*cd\s+[^\s;&|`$<>()]+\s*&&\s*")
 SHELL_MAGIC = re.compile(r"[;&|`$<>()\n\\]")
 GIT_READS = {"log", "diff", "show", "ls-files", "blame", "status", "rev-parse", "shortlog"}
+# Flags that make log or show print file contents, history's secrets included. Finding those is the
+# secret scan's job, and it redacts what it finds.
+PATCH_FLAGS = {"-p", "-u", "--patch", "--patch-with-stat", "--patch-with-raw", "--cc", "-c", "-m", "-W",
+               "--function-context", "--full-diff", "--textconv", "--ext-diff"}
+PATCH_PREFIXES = ("-U", "--unified", "--word-diff", "--color-words", "--output")
+NO_PATCH = {"--stat", "--shortstat", "--numstat", "--name-only", "--name-status", "--no-patch", "-s", "--summary"}
+# What a repo's own git config can make a read run: a filesystem monitor, a pager, an external or
+# textconv diff, an ssh command, or another file pulled in. A clone never copies config, but a repo
+# handed over as an archive brings its .git/config, and git reads it.
+RISKY_GIT_CONFIG = re.compile(
+    r"^\s*(fsmonitor|external|textconv|pager|sshcommand|askpass|command)\s*="
+    r"|^\s*\[\s*(include|includeif|filter|pager)\b", re.I | re.M)
 
 
-def audit_allowed(command):
-    """Whether a command is one the security reviewer may run: a read-only audit or git read."""
+def git_dir_configs(start):
+    """The config files git reads for the repo holding `start`, nearest repo first."""
+    here = os.path.abspath(start)
+    while True:
+        dot = os.path.join(here, ".git")
+        if os.path.isdir(dot):
+            gitdir = dot
+            break
+        if os.path.isfile(dot):
+            try:
+                with open(dot) as handle:
+                    line = handle.read().strip()
+            except OSError:
+                return []
+            if not line.startswith("gitdir:"):
+                return []
+            gitdir = os.path.join(here, line[len("gitdir:"):].strip())
+            break
+        parent = os.path.dirname(here)
+        if parent == here:
+            return []
+        here = parent
+    found = [os.path.join(gitdir, "config"), os.path.join(gitdir, "config.worktree")]
+    try:
+        with open(os.path.join(gitdir, "commondir")) as handle:
+            found.append(os.path.join(gitdir, handle.read().strip(), "config"))
+    except OSError:
+        pass
+    return [f for f in found if os.path.isfile(f)]
+
+
+def risky_git_config(start):
+    """The config file that could make a git read run a command, or None."""
+    for path in git_dir_configs(start):
+        try:
+            with open(path, errors="replace") as handle:
+                if RISKY_GIT_CONFIG.search(handle.read()):
+                    return path
+        except OSError:
+            return path
+    return None
+
+
+def git_read_allowed(args):
+    """Whether git with these arguments, after any -C, is a read that prints no old file contents."""
+    if not args or args[0] not in GIT_READS:
+        return False
+    sub, rest = args[0], args[1:]
+    if any(a in PATCH_FLAGS or a.startswith(PATCH_PREFIXES) for a in rest):
+        return False
+    if sub == "show":
+        # show prints a patch unless told not to, and rev:path prints a file as it was.
+        return any(a in NO_PATCH for a in rest) and not any(":" in a for a in rest if not a.startswith("-"))
+    return True
+
+
+def audit_refusal(command, cwd=None):
+    """Why the security reviewer may not run this command, or None when it may."""
+    listed = ("The security reviewer's shell runs audits only: osv-scanner, npm audit, pip-audit (flags "
+              "only, or --disable-pip), trivy fs or config, govulncheck, bundle-audit, bandit, gitleaks "
+              "with a bare --redact, and git reads that print no old file contents (show needs --stat or "
+              "--name-only). One command, no pipes. List anything else under Not checked for a person "
+              "to run.")
+    where = cwd or os.getcwd()
+    moved = CD_PREFIX.match(command)
+    if moved:
+        where = os.path.join(where, os.path.expanduser(moved.group(0).strip()[2:].rstrip("&").strip()))
     command = CD_PREFIX.sub("", command, count=1)
     if SHELL_MAGIC.search(command):
-        return False
+        return listed
     try:
         words = shlex.split(command)
     except ValueError:
-        return False
+        return listed
     if not words:
-        return False
+        return listed
     tool, args = words[0], words[1:]
+    first = args[0] if args else ""
+    uses_git = False
     if tool == "git":
         if args[:1] == ["-C"] and len(args) > 2:
+            where = os.path.join(where, os.path.expanduser(args[1]))
             args = args[2:]
-        if not args or args[0] not in GIT_READS:
-            return False
-        # A patch prints file contents, history's secrets included: that's the secret scan's job.
-        if args[0] == "log" and any(a in ("-p", "-u", "--patch") for a in args):
-            return False
-        return not any(a.startswith("--output") for a in args)
+        if not git_read_allowed(args):
+            return listed
+        uses_git = True
+    elif tool == "gitleaks":
+        # A bare --redact is 100%. --redact=N shows the rest of each secret.
+        if first not in ("detect", "git", "dir", "protect") or not any(a in ("--redact", "--redact=100") for a in args):
+            return listed
+        if first != "dir" and "--no-git" not in args:
+            uses_git = True
+            for flag in ("--source", "-s"):
+                if flag in args and args.index(flag) + 1 < len(args):
+                    where = os.path.join(where, os.path.expanduser(args[args.index(flag) + 1]))
+            paths = [a for a in args[1:] if not a.startswith("-")]
+            if first == "git" and paths:
+                where = os.path.join(where, os.path.expanduser(paths[-1]))
+    elif not audit_tool_allowed(tool, args):
+        return listed
+    if uses_git:
+        risky = risky_git_config(where)
+        if risky:
+            return ("{} sets something that makes git run a command on a read (a pager, an external "
+                    "diff, a filesystem monitor, an include). Don't run git here; list it under Not "
+                    "checked and say why.".format(risky))
+    return None
+
+
+def audit_tool_allowed(tool, args):
+    """Whether a non-git audit tool with these arguments reads without installing or running the code."""
     first = args[0] if args else ""
     # Only tools that read a lock file or the code without running it. yarn and pnpm are left
     # out because a checkout can carry plugins or hooks they run, and osv-scanner reads their
@@ -98,8 +201,6 @@ def audit_allowed(command):
         return first in ("fs", "filesystem", "config")
     if tool in ("govulncheck", "bandit", "bundle-audit", "bundler-audit"):
         return True
-    if tool == "gitleaks":
-        return first in ("detect", "git", "dir", "protect") and any(a.startswith("--redact") for a in args)
     return False
 
 
@@ -121,12 +222,10 @@ def decide(event):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
         if event.get("agent_type") == AUDITOR:
-            if audit_allowed(command):
-                return ("allow", "a read-only audit on the security reviewer's list")
-            return ("deny", "The security reviewer's shell runs audits only: osv-scanner, npm audit, "
-                    "pip-audit (flags only, or --disable-pip), trivy fs or config, govulncheck, "
-                    "bundle-audit, bandit, gitleaks with --redact, and git reads without a patch. One "
-                    "command, no pipes. List anything else under Not checked for a person to run.")
+            why = audit_refusal(command, event.get("cwd"))
+            if why:
+                return ("deny", why)
+            return ("allow", "a read-only audit on the security reviewer's list")
 
     if tool.startswith("mcp__"):
         # create_draft, notion-create-pages and createIssue all read as create_...

@@ -13,9 +13,13 @@ anything yourself.
   nothing else. In Claude Code, [`.claude/hooks/guard.py`](../.claude/hooks/guard.py) holds your shell to a
   list: `osv-scanner`, `npm audit`, `pip-audit` (flags only, or with
   `--disable-pip`), `trivy fs` or `trivy config`, `govulncheck`,
-  `bundle-audit`, `bandit`, `gitleaks` with `--redact`, and git reads without
-  a patch (`log`, `diff`, `show`, `blame`, `ls-files`, `status`). One command
-  at a time, optionally after one `cd <dir> &&`, with no pipes or redirects.
+  `bundle-audit`, `bandit`, `gitleaks` with a bare `--redact`, and git reads
+  that print no old file contents (`log`, `diff`, `blame`, `ls-files`,
+  `status`, and `show` with `--stat` or `--name-only`). One command at a time,
+  optionally after one `cd <dir> &&`, with no pipes or redirects. A repo
+  whose own `.git/config` can make a git read run a command (a pager, an
+  external diff, a filesystem monitor, an include) gets no git at all: list
+  it under Not checked.
   Anything that installs, builds or runs the code under review is out,
   because that's how code you're reading would get to run. In another tool,
   hold yourself to the same list.
