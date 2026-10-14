@@ -800,12 +800,25 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.agents_started(), 1)
         self.assertFalse(marker.exists())
 
-    def test_a_failed_diff_is_a_failed_review_not_a_review_of_the_error(self):
+    def test_a_base_the_clone_does_not_track_is_still_reviewed(self):
         sha = self.push(7, "thing.txt")
         git(self.work, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main")
         git(self.work, "push", "-q", "origin", "main:other")
         row = self.pr(7, sha)
-        row["baseRefName"] = "other"  # fetched, but never tracked here, so origin/other doesn't exist
+        row["baseRefName"] = "other"  # outside the clone's fetch refspec, so only an explicit fetch makes origin/other
+        self.list_prs(row)
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("REVIEW #7 {} posted".format(sha[:7]), self.reviews()[-1])
+
+    def test_a_failed_diff_is_a_failed_review_not_a_review_of_the_error(self):
+        sha = self.push(7, "thing.txt")
+        empty = git(self.work, "hash-object", "-t", "tree", "-w", "/dev/null").stdout.strip()
+        root = git(self.work, "commit-tree", empty, "-m", "Unrelated root").stdout.strip()
+        git(self.work, "push", "-q", "origin", root + ":refs/heads/other")
+        row = self.pr(7, sha)
+        row["baseRefName"] = "other"  # no history in common, so there's no merge base to diff from
         self.list_prs(row)
         self.go()
         self.assertEqual(self.agents_started(), 0)

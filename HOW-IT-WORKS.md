@@ -168,8 +168,9 @@ review to the same log:
 
 A commit is reviewed once. The result goes in `.loop/status.json` under
 `reviews`, so a poll that sees the same commit again starts no agent. A review
-that fails (the agent exits non-zero or times out) posts nothing, and it isn't
-tried again until the pull request has a new commit.
+whose agent exits non-zero or times out posts nothing, and it isn't tried again
+until the pull request has a new commit. A git or GitHub error is logged
+`(will retry)` and tried again on the next poll.
 
 **What it never does:** approve, request changes, merge, push, or ask the agent
 to post. The comment goes up under your own GitHub identity. A pull request's

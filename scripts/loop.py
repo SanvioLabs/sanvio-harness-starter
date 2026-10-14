@@ -622,7 +622,9 @@ class Loop:
         code, out = self.git("rev-parse", "FETCH_HEAD")
         if code == 0 and out.strip():
             sha = out.strip()  # the commit this checkout is, if the branch moved since the list
-        code, out = self.git("fetch", "-q", "origin", base)
+        # Into the ref the diff reads: a single-branch or shallow clone's refspec doesn't cover every base.
+        code, out = self.git("fetch", "-q", "origin",
+                             "+refs/heads/{0}:refs/remotes/origin/{0}".format(base))
         if code != 0:
             return False, sha, "could not fetch {}: {}".format(base, out.strip()[:200]), False
 
