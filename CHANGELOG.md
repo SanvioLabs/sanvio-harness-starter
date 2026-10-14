@@ -39,6 +39,22 @@ Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.p
 
 **Do:** nothing.
 
+## 2026-10-14: Review mode refuses a reader it can't confine
+
+`python3 scripts/loop.py review` now starts only a `reader_agent` that is
+`claude` itself, and always holds it to `--restricted --strict-mcp-config
+--tools Read,Grep,Glob`, replacing any tools or permission flags `loop.json`
+gave it. With any other command (`npx`, `env claude`, Codex) it reviews
+nothing and logs why, where before it ran that command unconfined on a
+stranger's checkout. The posted comment opens with a line saying an agent
+wrote it from the pull request's own text, and an `@` in the report no longer
+mentions anyone. The issue loop still takes any agent command.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** if `loop.json` sets `reader_agent` to anything but a `claude` command,
+review mode stops reviewing: point it at `claude`, or run review elsewhere.
+
 ## 2026-10-14: The loop checks whose issue it builds from
 
 [`scripts/loop.py`](scripts/loop.py) now reads each issue fresh before it takes it, and builds
