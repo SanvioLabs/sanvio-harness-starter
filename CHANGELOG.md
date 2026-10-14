@@ -39,6 +39,24 @@ Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.p
 
 **Do:** nothing.
 
+## 2026-10-14: The loop checks whose issue it builds from
+
+[`scripts/loop.py`](scripts/loop.py) now reads each issue fresh before it takes it, and builds
+from an issue written outside the repo's collaborators only if nothing in it
+changed after it was labelled `loop-ready` and it hides no HTML comment.
+Otherwise it blocks the issue and says why. The planner and the reviewer run
+in the build checkout with read tools only, commits run with git hooks off,
+and the test command runs without tokens, keys or passwords in its
+environment. [`examples/ci/loop.yml`](examples/ci/loop.yml) leaves no token in `.git/config`, pushes
+through `gh auth setup-git`, and pins the agent CLI.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/ci/loop.yml`](examples/ci/loop.yml),
+[`tests/test_ci_example.py`](tests/test_ci_example.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** if you copied [`examples/ci/loop.yml`](examples/ci/loop.yml), copy it again. If your test
+command needs a token or key from the environment, it no longer gets one:
+have the tests read a test-only value instead.
+
 ## 2026-10-14: The security reviewer runs pip-audit and bandit
 
 On a Python project, the `security-reviewer` agent now runs `pip-audit` on
