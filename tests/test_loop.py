@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -24,6 +25,11 @@ def issue(number, labels=("loop-ready",), assignees=(), title="Add the thing"):
     return {"number": number, "title": title, "body": "body",
             "labels": [{"name": n} for n in labels],
             "assignees": [{"login": a} for a in assignees]}
+
+
+def no_loop_sleep(msg):
+    """Fail if loop.py itself sleeps. Swaps only loop's `time`, so subprocess keeps the real sleep."""
+    return mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=mock.Mock(side_effect=AssertionError(msg))))
 
 
 class TestPureParts(unittest.TestCase):
@@ -531,11 +537,17 @@ class TestAPass(unittest.TestCase):
 
     def run_issue_flag(self):
         """A run with --issue 12 and no --once. Sleeping means it went on polling, so that fails at once."""
-        with mock.patch.object(loop.time, "sleep", side_effect=AssertionError("polled")), \
+        with no_loop_sleep("polled"), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=False, only=12)
 
     def test_issue_flag_exits_after_that_issue(self):
+        self.assertEqual(self.run_issue_flag(), 0)
+        self.assertEqual(self.lines()[-1].split()[2], "SCALE")
+
+    def test_issue_flag_exits_after_a_slow_test_command(self):
+        # output closed first, so subprocess waits by sleeping rather than on the pipes
+        self.cfg["test_command"] = "exec >/dev/null 2>&1; sleep 1; test -f feature.txt"
         self.assertEqual(self.run_issue_flag(), 0)
         self.assertEqual(self.lines()[-1].split()[2], "SCALE")
 
@@ -916,7 +928,7 @@ class TestReview(unittest.TestCase):
             return result
 
         runner.review_run = run_then_stop
-        with mock.patch.object(loop.time, "sleep", side_effect=AssertionError("slept after a stop")):
+        with no_loop_sleep("slept after a stop"):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(runner.review(once=False), 0)
         self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
