@@ -31,8 +31,8 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
    load only when a request matches it, so twenty skills cost little until one
    is used.
 2. The agent follows the skill's steps. Before each tool call, the guard
-   checks it: credential files are refused, and a connector that would send,
-   edit or delete asks you first.
+   checks it: credential files are refused, and a connector call that isn't
+   named as a plain read asks you first.
 3. The skill ends at a gate. The agent runs it, fixes what it names, and runs
    it again until it passes. That's the first loop.
 4. A review agent reads the result in its own fresh context and reports
@@ -315,7 +315,7 @@ and branch protection ask for:
 
 | | Reads only | Writes to something people use |
 |---|---|---|
-| Connectors | Read tools are fine | Every write asks first. The guard already asks for send, edit, delete and share |
+| Connectors | Read tools are fine | Every write asks first. The guard asks for any connector call not named as a plain read |
 | Gates | The harness's own | Plus the project's, in its hook and its CI, required before merge |
 | Agents working alone | Fine on a ready ticket | Never against production. Staging only, with that permission written in [`AGENTS.md`](AGENTS.md) |
 | Merging | Anyone the owner trusts | The project's owner, after `review-pr` |

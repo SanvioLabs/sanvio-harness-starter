@@ -71,6 +71,18 @@ class Guard(unittest.TestCase):
                      "mcp__claude_ai_Gmail__list_labels", "mcp__linear__getIssue"):
             self.assertIsNone(call(tool), tool)
 
+    def test_connector_reads_by_name_pass(self):
+        for tool in ("mcp__claude_ai_Notion__notion-search", "mcp__claude_ai_Notion__notion-fetch",
+                     "mcp__skippy__skippy_knowledge_search"):
+            self.assertIsNone(call(tool), tool)
+
+    def test_any_connector_not_named_as_a_read_asks(self):
+        for tool in ("mcp__claude_ai_Google_Drive__copy_file", "mcp__skippy__skippy_save_note",
+                     "mcp__skippy__skippy_schedule_job", "mcp__db__run_query",
+                     "mcp__claude_ai_Google_Calendar__respond_to_event", "mcp__x__search_and_delete",
+                     "mcp__git__git_status", "mcp__skippy__skippy_usage", "mcp__linear__createIssue"):
+            self.assertEqual((call(tool) or ("none",))[0], "ask", tool)
+
     def test_the_hook_prints_a_deny_decision(self):
         event = json.dumps({"tool_name": "Read", "tool_input": {"file_path": ".env"}})
         out = subprocess.run([sys.executable, str(HOOKS / "guard.py")], input=event,

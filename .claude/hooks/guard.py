@@ -7,9 +7,12 @@ Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
 
 1. Credentials stay unread. A Read, Edit or Write on a credential file, or a
    shell command that names one, is refused.
-2. A connector that changes something asks first. Any MCP tool whose name says
-   it sends, creates, edits, deletes or shares is put to the human. It goes by
-   the tool's name, so a write tool with a name like run_query gets through.
+2. A connector call that isn't a plain read asks first. An MCP tool runs
+   unasked only when its name says it gets, lists, searches, reads, finds,
+   queries, fetches or views, and nothing in it says it sends, creates, edits,
+   deletes, shares, runs or executes. Any other is put to the human, so a tool
+   nobody has seen yet asks rather than slips through. It goes by the name, so
+   a read tool with an odd name (git_status) asks too.
 3. The security-reviewer agent's shell runs audits and nothing else. It reads
    code someone else may have written, and that code can carry text meant to
    steer it. A command on the audit list runs without a prompt; any other is
@@ -46,9 +49,11 @@ EXISTENCE_CHECK = re.compile(
 )
 WRITE_VERBS = re.compile(
     r"(^|_)(send|create|update|edit|write|delete|remove|trash|share|post|publish"
-    r"|upload|move|rename|archive|invite|reply|forward|comment|label|assign|merge|close)(_|$)",
+    r"|upload|move|rename|archive|invite|reply|forward|comment|label|assign|merge|close"
+    r"|run|execute)(_|$)",
     re.I,
 )
+READ_VERBS = re.compile(r"(^|_)(get|list|search|read|find|query|fetch|view)(_|$)", re.I)
 
 # The agent whose shell is held to AUDITS, by its name in .claude/agents/.
 AUDITOR = "security-reviewer"
@@ -230,9 +235,9 @@ def decide(event):
     if tool.startswith("mcp__"):
         # create_draft, notion-create-pages and createIssue all read as create_...
         action = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", tool.split("__")[-1]).replace("-", "_")
-        if WRITE_VERBS.search(action):
-            return ("ask", "{} changes something outside this repo. A human says yes to each "
-                    "one.".format(tool))
+        if WRITE_VERBS.search(action) or not READ_VERBS.search(action):
+            return ("ask", "{} isn't named as a plain read, so it may change something outside "
+                    "this repo. A human says yes to each one.".format(tool))
 
     return None
 
