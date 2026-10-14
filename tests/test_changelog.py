@@ -69,5 +69,40 @@ class Changelog(unittest.TestCase):
         self.assertTrue(problems("# What's new\n\nNothing yet.\n"))
 
 
+class WhatsNewCommands(unittest.TestCase):
+    """The listing commands in skills/whats-new/SKILL.md, run as written against a sample log."""
+
+    LOG = "# What's new\n\nIntro.\n\n## 2026-10-13: Third\n\nx\n\n## 2026-10-13: Second\n\nx\n\n## 2026-10-12: First\n\nx\n\n## 2026-10-11: Older\n\nx\n"
+
+    def command(self, starts):
+        skill = (ROOT / "skills" / "whats-new" / "SKILL.md").read_text()
+        found = [line.strip() for line in skill.splitlines() if line.strip().startswith(starts)]
+        self.assertEqual(len(found), 1, "one command starting " + starts)
+        return found[0]
+
+    def run_in(self, folder, cmd):
+        import subprocess
+        done = subprocess.run(["bash", "-c", cmd], cwd=folder, capture_output=True, text=True)
+        return [line for line in done.stdout.splitlines() if line]
+
+    def test_since_a_date_lists_every_entry_on_or_after_it(self):
+        import tempfile
+        cmd = self.command("grep '^## ' CHANGELOG.md | awk")
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "CHANGELOG.md").write_text(self.LOG)
+            got = self.run_in(tmp, cmd)
+        self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second", "## 2026-10-12: First"])
+
+    def test_whats_new_lists_the_starters_headings_missing_here_in_order(self):
+        import tempfile
+        cmd = self.command("git show FETCH_HEAD:CHANGELOG.md | grep").replace("git show FETCH_HEAD:CHANGELOG.md", "cat starter.md")
+        mine = self.LOG.replace("## 2026-10-13: Third\n\nx\n\n## 2026-10-13: Second\n\nx\n\n", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "starter.md").write_text(self.LOG)
+            (Path(tmp) / "CHANGELOG.md").write_text(mine)
+            got = self.run_in(tmp, cmd)
+        self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second"])
+
+
 if __name__ == "__main__":
     unittest.main()

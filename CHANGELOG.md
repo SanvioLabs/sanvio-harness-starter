@@ -27,6 +27,14 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: What's new lists every entry
+
+[`skills/whats-new/`](skills/whats-new/) makes its list with a command and gives every entry on it, with the count. "Since a date" includes that day.
+
+Files: [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md), [`tests/test_changelog.py`](tests/test_changelog.py)
+
+**Do:** nothing.
+
 ## 2026-10-13: The PR review workflow runs restricted
 
 [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) runs the agent in Claude Code's restricted mode: read tools only, confined
