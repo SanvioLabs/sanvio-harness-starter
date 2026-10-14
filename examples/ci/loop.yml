@@ -51,16 +51,16 @@ jobs:
       # The installs come before checkout, and no token is set at job level, so
       # the package install and its scripts see neither the repo token nor the
       # copy checkout saves in .git/config.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
       - name: Install the agent
         # Pinned: a new release changes what runs here. Move the pin after a test run.
         run: npm install -g @anthropic-ai/claude-code@2.1.296
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           # No token left in .git/config, where the tests could read it. The push
@@ -84,7 +84,7 @@ jobs:
           python3 scripts/loop.py run --once
       - name: Keep what the pass wrote
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: loop
           path: .loop/
