@@ -560,8 +560,11 @@ class Loop:
             changed = self.git("diff", "--cached", "--name-only", cwd=tree)[1].split()
             if changed:
                 # Hooks off: the agent can write .githooks/ in the worktree, and git would run it.
-                self.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", issue["title"],
-                         "-m", "Loop: issue #{}, round {}.".format(number, round_no), cwd=tree)
+                ccode = self.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", issue["title"],
+                                 "-m", "Loop: issue #{}, round {}.".format(number, round_no), cwd=tree)[0]
+                if ccode != 0:
+                    # git's output stays out: it lands on the issue.
+                    return self.block(number, "commit refused (git exit {})".format(ccode))
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
             self.mark(number, step="VALIDATE")

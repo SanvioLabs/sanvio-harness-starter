@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: The loop blocks an issue whose commit is refused
+
+When a build round's `git commit` fails (no git identity set, say, or a locked index),
+[`scripts/loop.py`](scripts/loop.py) now blocks the issue straight away with "commit refused
+(git exit N)", instead of running the tests and review on a change that was
+never committed. git's own output stays out of the issue comment.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing.
+
 ## 2026-10-14: Tighter guard on the security reviewer and on credential names
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) closes gaps the security reviewer found in its own

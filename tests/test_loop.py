@@ -321,6 +321,22 @@ class TestAPass(unittest.TestCase):
         self.assertLess(calls.index("issue edit 12 --add-label loop:blocked"),
                         next(i for i, c in enumerate(calls) if c.startswith("issue comment 12")))
 
+    def test_a_refused_commit_blocks_the_issue_before_the_tests_run(self):
+        # Hooks are off for the loop's commit, so a signing program that says no stands in.
+        signer = Path(self.tmp.name) / "signer"
+        signer.write_text("#!/bin/sh\necho SIGNER-SAID-NO >&2\nexit 1\n")
+        signer.chmod(signer.stat().st_mode | stat.S_IEXEC)
+        git(self.work, "config", "commit.gpgSign", "true")
+        git(self.work, "config", "gpg.program", str(signer))
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["note"]), ("blocked", "commit refused (git exit 128)"))
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertNotIn("VALIDATE", steps)
+        self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
+        self.assertFalse(any("SIGNER-SAID-NO" in c for c in self.comments()))
+        self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+
     def test_a_comment_that_fails_is_logged_and_the_pull_request_stands(self):
         (self.state / "comment-fails").write_text("")
         self.assertEqual(self.go(), 0)
