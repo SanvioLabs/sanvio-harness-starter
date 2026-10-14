@@ -3,7 +3,7 @@
   "owner": {
     "name": "Sanvio Labs"
   },
-  "description": "Mods that ship with the harness starter",
+  "description": "Mods that ship with the harness starter, and the Stelliad plugin pinned to a commit",
   "plugins": [
     {
       "name": "harness-lens",
@@ -14,6 +14,15 @@
       "name": "loop-pane",
       "source": "./examples/mods/loop-pane",
       "description": "A pane beside the conversation showing the loop: what's waiting, what each issue is on, and its pull request"
+    },
+    {
+      "name": "stelliad",
+      "source": {
+        "source": "github",
+        "repo": "Stelliad/stelliad-skills",
+        "sha": "9f0b8cf498eb2a60e21bccdca6ac4d09876d13ed"
+      },
+      "description": "Stelliad's skills, pinned to a reviewed commit. Move the pin by editing sha after reading the diff"
     }
   ]
 }

@@ -25,10 +25,20 @@ class Plugins(unittest.TestCase):
                     "enabledPlugins": {"stelliad@stelliad": True, "sanvio-studio@sanviolabs": True}}
         self.assertEqual(unreachable(settings), ["sanvio-studio@sanviolabs"])
 
-    def test_stelliad_comes_from_its_public_repo(self):
+    def test_stelliad_comes_from_its_public_repo_pinned_to_a_commit(self):
         # Not whether it's on: switching it off in settings.json is a documented choice.
-        source = self.settings["extraKnownMarketplaces"]["stelliad"]["source"]
-        self.assertEqual(source, {"source": "github", "repo": "Stelliad/stelliad-skills"})
+        market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
+        source = next(p["source"] for p in market["plugins"] if p["name"] == "stelliad")
+        self.assertEqual({k: source[k] for k in ("source", "repo")},
+                         {"source": "github", "repo": "Stelliad/stelliad-skills"})
+        # A full commit, not a branch or tag: those move, and the plugin moves with them.
+        self.assertRegex(source.get("sha", ""), r"^[0-9a-f]{40}$")
+        self.assertNotIn("ref", source)
+
+    def test_no_marketplace_fetches_a_branch(self):
+        # A marketplace from GitHub serves whatever its branch holds now. Only this repo's own does.
+        for name, market in self.settings.get("extraKnownMarketplaces", {}).items():
+            self.assertEqual(market["source"]["source"], "directory", name)
 
     def test_the_lens_counts_stelliad_skills_as_harness_skills(self):
         lens = json.loads((ROOT / ".claude" / "harness-lens.json").read_text())
