@@ -37,7 +37,7 @@ class Steering(unittest.TestCase):
 SHIPPED = ["steering/*.md", "examples/**/*", "skills/orientation/*", "skills/learn/*",
            "skills/review-pr/*", "skills/review-tests/*", "skills/review-skill/*",
            "skills/whats-new/*", "CHANGELOG.md",
-           "agents/reviewer.md", "gates/README.md", "company/README.md",
+           "agents/reviewer.md", "agents/security-reviewer.md", "gates/README.md", "company/README.md",
            "company/COMPANY.example.md", "projects/README.md", "README.md", "HOW-IT-WORKS.md",
            "EXERCISES.md", "STARTER-SKILLS.md", "scripts/*", "tests/*", ".claude/**/*",
            ".githooks/*", ".github/**/*"]
