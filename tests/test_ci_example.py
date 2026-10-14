@@ -33,7 +33,14 @@ class LoopWorkflowExample(unittest.TestCase):
         self.text = WORKFLOW.read_text()
 
     def test_it_runs_one_pass_of_the_loop(self):
-        self.assertRegex(self.text, r"(?m)^\s*run:\s*python3 scripts/loop\.py run --once\s*$")
+        self.assertRegex(self.text, r"(?m)^\s*python3 scripts/loop\.py run --once\s*$")
+
+    def test_no_token_is_left_where_the_tests_could_read_it(self):
+        self.assertRegex(self.text, r"(?m)^\s*persist-credentials:\s*false\s*$")
+        self.assertRegex(self.text, r"(?m)^\s*gh auth setup-git\s*$")
+
+    def test_the_agent_cli_is_pinned(self):
+        self.assertRegex(self.text, r"@anthropic-ai/claude-code@\d+\.\d+\.\d+")
 
     def test_it_runs_on_a_schedule_and_by_hand(self):
         triggers = top_level_block(self.text, "on")

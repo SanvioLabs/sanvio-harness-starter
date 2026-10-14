@@ -29,12 +29,29 @@ fine).
 
 ## 2026-10-14: The loop blocks an issue whose commit is refused
 
-When a build round's `git commit` fails, a pre-commit hook refusing it say,
+When a build round's `git commit` fails (no git identity set, say, or a locked index),
 [`scripts/loop.py`](scripts/loop.py) now blocks the issue straight away with "commit refused
 (git exit N)", instead of running the tests and review on a change that was
 never committed. git's own output stays out of the issue comment.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing.
+
+## 2026-10-14: Tighter guard on the security reviewer and on credential names
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) closes gaps the security reviewer found in its own
+fence. Git and `gitleaks` don't run in a repo whose `.git/config` can make a
+read run a command (a pager, an external or textconv diff, a filesystem
+monitor, an include), which a repo handed over as an archive can carry.
+`git log` and `git show` can't print old file contents (`show` needs
+`--stat` or `--name-only`, and no `rev:path`), and `gitleaks` takes only a
+bare `--redact`. For every agent, `git show HEAD:.env` now counts as reading
+a credential. [`.githooks/pre-commit`](.githooks/pre-commit) blocks `.env.*` and `id_rsa*` in a folder
+too, not only at the root.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`.githooks/pre-commit`](.githooks/pre-commit),
+[`tests/test_pre_commit.py`](tests/test_pre_commit.py), [`agents/security-reviewer.md`](agents/security-reviewer.md)
 
 **Do:** nothing.
 
@@ -49,6 +66,40 @@ newline, a quote, a backslash or a control character are still not handled.
 Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.py`](tests/test_pre_commit.py)
 
 **Do:** nothing.
+
+## 2026-10-14: Review mode refuses a reader it can't confine
+
+`python3 scripts/loop.py review` now starts only a `reader_agent` that is
+`claude` itself, and always holds it to `--restricted --strict-mcp-config
+--tools Read,Grep,Glob`, replacing any tools or permission flags `loop.json`
+gave it. With any other command (`npx`, `env claude`, Codex) it reviews
+nothing and logs why, where before it ran that command unconfined on a
+stranger's checkout. The posted comment opens with a line saying an agent
+wrote it from the pull request's own text, and an `@` in the report no longer
+mentions anyone. The issue loop still takes any agent command.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** if `loop.json` sets `reader_agent` to anything but a `claude` command,
+review mode stops reviewing: point it at `claude`, or run review elsewhere.
+
+## 2026-10-14: The loop checks whose issue it builds from
+
+[`scripts/loop.py`](scripts/loop.py) now reads each issue fresh before it takes it, and builds
+from an issue written outside the repo's collaborators only if nothing in it
+changed after it was labelled `loop-ready` and it hides no HTML comment.
+Otherwise it blocks the issue and says why. The planner and the reviewer run
+in the build checkout with read tools only, commits run with git hooks off,
+and the test command runs without tokens, keys or passwords in its
+environment. [`examples/ci/loop.yml`](examples/ci/loop.yml) leaves no token in `.git/config`, pushes
+through `gh auth setup-git`, and pins the agent CLI.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/ci/loop.yml`](examples/ci/loop.yml),
+[`tests/test_ci_example.py`](tests/test_ci_example.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** if you copied [`examples/ci/loop.yml`](examples/ci/loop.yml), copy it again. If your test
+command needs a token or key from the environment, it no longer gets one:
+have the tests read a test-only value instead.
 
 ## 2026-10-14: The security reviewer runs pip-audit and bandit
 

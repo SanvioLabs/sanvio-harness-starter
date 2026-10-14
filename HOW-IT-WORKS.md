@@ -106,7 +106,7 @@ keeps its default:
 | Key | Default | Is |
 |---|---|---|
 | `agent` | `claude -p --permission-mode acceptEdits` | The command that builds. The prompt arrives on stdin, so Codex or Kiro work the same way |
-| `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away |
+| `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
@@ -146,6 +146,23 @@ agent sign-in and holds no credentials; in [GitHub Actions](#off-your-laptop) th
 agent needs a key, held as a repository secret. A ticket is an instruction to an
 agent, so label only issues you wrote or have read.
 
+**Whose issues it builds from.** An issue written by the repo's owner, a member
+or a collaborator is taken as it stands. Anyone else's is taken only as it was
+when it was labelled `loop-ready`: if its title or body changed after the label
+went on, or it holds an HTML comment (text the issue's page doesn't show), the
+loop blocks it and says why on the issue. Read it again and label it again, or
+copy what it asks into an issue of your own. The loop reads the issue fresh at
+that check, so the text it checked is the text the agents get.
+
+**What the issue's text can reach.** The planner and the reviewer run in the
+build checkout with read tools only, so they can't read the rest of your clone
+([`company/`](company/), [`projects/`](projects/)) into a plan that ends up in a pull request. The loop
+commits with git hooks off, so a hook the agent writes doesn't run. It runs your
+test command without anything named like a secret in its environment (tokens,
+keys, passwords, `AWS_*`, the SSH agent). The tests still run code the agent
+wrote, as you, so they can reach whatever your user can on disk. Run the loop
+as a user, or on a machine, with nothing you'd mind a test reading.
+
 **Reviewing pull requests.** The issues are half the queue; pull requests waiting
 on your review are the other half. Start it on the machine the loop runs on, in
 its own tmux session. It takes the same lock as `run`, so one process works a
@@ -179,12 +196,22 @@ logged once with `(will retry)` and tried again on the next poll.
 to post. The comment goes up under your own GitHub identity. A pull request's
 diff, commit messages and files are written by whoever opened it, so the prompt
 calls them material to review, never instructions. The agent is told not to
-edit, and whatever it edits is thrown away with the checkout. A `claude`
-`reader_agent` runs with `--restricted --strict-mcp-config --tools Read,Grep,Glob`:
-it can read the checkout and nothing outside it, so a pull request written to
-steer it can't get your keys or tokens into the comment, and the checkout's own
-[`.claude/`](.claude/) settings and hooks never load. If your `reader_agent` isn't Claude
-Code, give it the same limits. `loop.py stop` ends it at its next step, as it does `run`.
+edit, and whatever it edits is thrown away with the checkout. The
+`reader_agent` runs with `--restricted --strict-mcp-config --tools Read,Grep,Glob`,
+whatever tools or permissions `loop.json` gave it: it can read the checkout and
+nothing outside it, so a pull request written to steer it can't get your keys
+or tokens into the comment, and the checkout's own [`.claude/`](.claude/) settings and
+hooks never load. That's why review mode needs `reader_agent` to be `claude`
+itself (a path is fine, `npx` or `env` in front isn't): nothing here knows how
+to confine another tool, so with any other command it reviews nothing and logs
+why. The issue loop still takes Codex or Kiro, because the issues it builds
+from are checked first.
+
+The comment opens with a line saying an agent wrote it from the pull request's
+own text, and an `@` in the report can't mention anyone, so text planted in a
+pull request can't page your team through your account. It still posts as you:
+to post as a bot, sign `gh` in as one on the machine that runs the review.
+`loop.py stop` ends it at its next step, as it does `run`.
 
 **Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
 a dashboard, model-tier routing. Each can be added by whoever needs it, reading

@@ -67,6 +67,14 @@ class PreCommitHook(unittest.TestCase):
         self.assertNotEqual(code, 0, out)
         self.assertIn("BLOCKED: .env looks like a credential file", out)
 
+    def test_an_env_file_in_a_folder_is_blocked_by_name(self):
+        for name in ("config/.env.local", "deploy/id_rsa"):
+            self.stage(name, "NAME=value\n")
+            code, out = self.commit()
+            self.assertNotEqual(code, 0, out)
+            self.assertIn("BLOCKED: {} looks like a credential file".format(name), out)
+            self.git("reset", "-q", "--", name)
+
     def test_a_clean_file_with_a_space_commits(self):
         self.stage("notes file.txt", "Nothing secret here.\n")
         code, out = self.commit()
