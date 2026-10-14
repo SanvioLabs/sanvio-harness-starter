@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-13: The PR review workflow runs restricted
+
+[`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) runs the agent in Claude Code's restricted mode: read tools only, confined
+to the checkout, with the diff in its prompt. That replaces the allow and deny lists.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
+
+**Do:** copied it already? Copy it again.
+
 ## 2026-10-13: loop.py review
 
 `python3 scripts/loop.py review` watches the open pull requests that ask for
