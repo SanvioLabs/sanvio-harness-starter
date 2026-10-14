@@ -3,13 +3,17 @@
 
 From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 
-Wired in .claude/settings.json as a PreToolUse hook. Two jobs:
+Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
 
 1. Credentials stay unread. A Read, Edit or Write on a credential file, or a
    shell command that names one, is refused.
 2. A connector that changes something asks first. Any MCP tool whose name says
    it sends, creates, edits, deletes or shares is put to the human. It goes by
    the tool's name, so a write tool with a name like run_query gets through.
+3. The security-reviewer agent's shell runs audits and nothing else. It reads
+   code someone else may have written, and that code can carry text meant to
+   steer it. A command on the audit list runs without a prompt; any other is
+   refused.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -19,6 +23,7 @@ Claude Code only. The git hook in .githooks/ is the check every tool shares.
 """
 import json
 import re
+import shlex
 import sys
 
 CREDENTIAL = re.compile(
@@ -44,6 +49,59 @@ WRITE_VERBS = re.compile(
     re.I,
 )
 
+# The agent whose shell is held to AUDITS, by its name in .claude/agents/.
+AUDITOR = "security-reviewer"
+# One `cd <dir> &&` in front is fine; anything else that chains, pipes,
+# redirects or substitutes is refused.
+CD_PREFIX = re.compile(r"^\s*cd\s+[^\s;&|`$<>()]+\s*&&\s*")
+SHELL_MAGIC = re.compile(r"[;&|`$<>()\n\\]")
+GIT_READS = {"log", "diff", "show", "ls-files", "blame", "status", "rev-parse", "shortlog"}
+
+
+def audit_allowed(command):
+    """Whether a command is one the security reviewer may run: a read-only audit or git read."""
+    command = CD_PREFIX.sub("", command, count=1)
+    if SHELL_MAGIC.search(command):
+        return False
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    if not words:
+        return False
+    tool, args = words[0], words[1:]
+    if tool == "git":
+        if args[:1] == ["-C"] and len(args) > 2:
+            args = args[2:]
+        if not args or args[0] not in GIT_READS:
+            return False
+        # A patch prints file contents, history's secrets included: that's the secret scan's job.
+        if args[0] == "log" and any(a in ("-p", "-u", "--patch") for a in args):
+            return False
+        return not any(a.startswith("--output") for a in args)
+    first = args[0] if args else ""
+    # Only tools that read a lock file or the code without running it. yarn and pnpm are left
+    # out because a checkout can carry plugins or hooks they run, and osv-scanner reads their
+    # lock files anyway, as it does Cargo, Go, Ruby and uv ones.
+    if tool == "npm":
+        return first == "audit" and "fix" not in args
+    if tool == "pip-audit":
+        # Given a requirements file or a project, pip-audit installs the packages to resolve
+        # them, and an install can run their code. --disable-pip reads the file as it is; with
+        # flags only, it audits the environment it's run in.
+        installs = any(a in ("-r", "--requirement") or a.startswith(("--requirement=", "-r"))
+                       or not a.startswith("-") for a in args)
+        return "--fix" not in args and (not installs or "--disable-pip" in args)
+    if tool == "osv-scanner":
+        return first != "fix"
+    if tool == "trivy":
+        return first in ("fs", "filesystem", "config")
+    if tool in ("govulncheck", "bandit", "bundle-audit", "bundler-audit"):
+        return True
+    if tool == "gitleaks":
+        return first in ("detect", "git", "dir", "protect") and any(a.startswith("--redact") for a in args)
+    return False
+
 
 def decide(event):
     """(decision, reason) for one tool call, or None to let it through untouched."""
@@ -62,6 +120,13 @@ def decide(event):
         if CREDENTIAL.search(" " + named) or SECRET_COMMANDS.search(command):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
+        if event.get("agent_type") == AUDITOR:
+            if audit_allowed(command):
+                return ("allow", "a read-only audit on the security reviewer's list")
+            return ("deny", "The security reviewer's shell runs audits only: osv-scanner, npm audit, "
+                    "pip-audit (flags only, or --disable-pip), trivy fs or config, govulncheck, "
+                    "bundle-audit, bandit, gitleaks with --redact, and git reads without a patch. One "
+                    "command, no pipes. List anything else under Not checked for a person to run.")
 
     if tool.startswith("mcp__"):
         # create_draft, notion-create-pages and createIssue all read as create_...
