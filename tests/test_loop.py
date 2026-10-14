@@ -453,7 +453,8 @@ elif args[:2] == ["api", "--paginate"]:
         print("\\t".join([str(c["id"]), c["user"], str(marked).lower()]))
 elif args[:3] == ["api", "--method", "PATCH"]:
     cid = int(args[3].rsplit("/", 1)[1])
-    body = args[args.index("-f") + 1].split("=", 1)[1]
+    assert args[args.index("-F") + 1] == "body=@-"
+    body = sys.stdin.read()
     for c in comments:
         if c["id"] == cid:
             c["body"] = body
@@ -462,7 +463,8 @@ elif args[:2] == ["pr", "comment"]:
     if os.path.exists(os.path.join(state, "gh-fails")):
         print("HTTP 502", file=sys.stderr)
         sys.exit(1)
-    comments.append({"id": len(comments) + 100, "user": "pat", "body": args[args.index("--body") + 1]})
+    assert args[args.index("--body-file") + 1] == "-"
+    comments.append({"id": len(comments) + 100, "user": "pat", "body": sys.stdin.read()})
     save()
 """
 
@@ -824,7 +826,11 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.agents_started(), 0)
         self.assertEqual(self.comments(), [])
         self.assertIn("REVIEW #7 {} failed: could not diff against other".format(sha[:7]), self.reviews()[-1])
-        self.assertNotIn("7", self.status()["reviews"])
+        self.assertNotIn("will retry", self.reviews()[-1])
+        # No merge base won't appear before a new commit, so it's recorded and not retried every poll.
+        self.assertEqual(self.status()["reviews"]["7"]["state"], "failed")
+        self.go()
+        self.assertIn("skipped (already reviewed)", self.reviews()[-1])
 
     def test_a_review_holds_the_same_lock_as_run(self):
         (self.work / ".loop").mkdir(exist_ok=True)
@@ -853,12 +859,34 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
         self.assertFalse((runner.dir / "STOP").exists())
 
-    def test_a_claude_reader_is_told_to_ignore_the_checkouts_own_settings(self):
+    def test_a_claude_reader_runs_restricted_to_the_checkout_with_read_tools_only(self):
         self.cfg["reader_agent"] = str(self.bin / "claude") + " -p"
         sha = self.push(7, "thing.txt")
         self.list_prs(self.pr(7, sha))
         self.go()
-        self.assertEqual((self.state / "argv").read_text(), "-p --setting-sources user")
+        self.assertEqual((self.state / "argv").read_text(),
+                         "-p --restricted --strict-mcp-config --tools Read,Grep,Glob")
+
+    def test_a_diff_that_is_not_utf8_is_still_reviewed(self):
+        self.push(7, "latin1.txt")
+        git(self.work, "checkout", "-q", "pr-7")
+        (self.work / "latin1.txt").write_bytes(b"caf\xe9\n")
+        git(self.work, "commit", "-q", "-am", "caf\xe9")
+        git(self.work, "push", "-q", "-f", "origin", "HEAD:refs/pull/7/head")
+        sha = git(self.work, "rev-parse", "HEAD").stdout.strip()
+        git(self.work, "checkout", "-q", "main")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("posted", self.lines()[-1])
+
+    def test_the_comment_body_goes_on_stdin_not_in_the_arguments(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        calls = (self.state / "gh-calls").read_text()
+        self.assertIn("pr comment 7 --body-file -", calls)
+        self.assertNotIn("Review number", calls)
 
 
 if __name__ == "__main__":

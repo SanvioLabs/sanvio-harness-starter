@@ -70,6 +70,8 @@ REVIEW_MARKER = "<!-- loop-review-pr-report -->"  # first line of the one commen
 REVIEW_CAP = 60_000  # a report is cut here: a GitHub comment holds 65,536 characters
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
+# For an agent reading someone else's pull request: read tools only, confined to the checkout.
+UNTRUSTED_CLAUDE = ["--restricted", "--strict-mcp-config", "--tools", "Read,Grep,Glob"]
 
 
 def load_config(root):
@@ -278,19 +280,22 @@ class Loop:
         A missing command or a timeout is a code, not a crash.
         """
         try:
+            # errors="replace": a pull request's diff or commit message needn't be UTF-8.
             done = subprocess.run(cmd, cwd=str(cwd or self.root), input=stdin, shell=shell,
-                                  capture_output=True, text=True, timeout=timeout)
+                                  capture_output=True, text=True, errors="replace", timeout=timeout)
         except FileNotFoundError:
             return 127, "command not found: {}".format(cmd if shell else cmd[0])
         except subprocess.TimeoutExpired:
             return 124, "timed out after {}s".format(timeout)
+        except OSError as err:
+            return 126, "could not run {}: {}".format(cmd if shell else cmd[0], err.strerror or err)
         return done.returncode, (done.stdout or "") + ((done.stderr or "") if stderr else "")
 
     def git(self, *args, cwd=None):
         return self.sh(["git"] + list(args), cwd=cwd)
 
-    def gh(self, *args):
-        return self.sh(["gh"] + list(args))
+    def gh(self, *args, stdin=None):
+        return self.sh(["gh"] + list(args), stdin=stdin)
 
     def stopped(self):
         return (self.dir / "STOP").exists()
@@ -315,13 +320,14 @@ class Loop:
 
         stderr=False keeps its warnings and traces out of what it said, for text that gets posted.
 
-        untrusted means cwd holds someone else's files. Claude Code would load that folder's own
-        .claude/ settings, hooks included, and run them on this machine, so it's told to read the
-        user's settings only.
+        untrusted means cwd holds someone else's files, and its text may be written to steer the agent.
+        Claude Code then runs restricted: the read tools only, confined to that folder, so nothing
+        outside it (keys, tokens, other repos) can end up in a posted report, and no settings, hooks
+        or MCP servers are loaded from anywhere.
         """
         cmd = shlex.split(self.cfg[which])
-        if untrusted and cmd and Path(cmd[0]).name == "claude" and "--setting-sources" not in cmd:
-            cmd += ["--setting-sources", "user"]
+        if untrusted and cmd and Path(cmd[0]).name == "claude" and "--restricted" not in cmd:
+            cmd += UNTRUSTED_CLAUDE
         return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
 
     # -- the flywheel -----------------------------------------------------
@@ -604,9 +610,12 @@ class Loop:
         self.save_status(reviewing=None)
         if why is None:
             self.log("REVIEW", "#{} {} posted".format(number, sha[:7]))
-        else:
-            # Not recorded when the agent never failed (GitHub or git did), so the next poll tries again.
-            self.log("REVIEW", "#{} {} failed: {}{}".format(number, sha[:7], why, "" if record else " (will retry)"))
+        elif record:
+            self.log("REVIEW", "#{} {} failed: {}".format(number, sha[:7], why))
+        elif (number, sha, why) not in self.said:
+            # Not recorded (GitHub or git failed, not the agent), so the next poll tries again, quietly.
+            self.said.add((number, sha, why))
+            self.log("REVIEW", "#{} {} failed: {} (will retry)".format(number, sha[:7], why))
         return ran
 
     def review_run(self, pr):
@@ -643,7 +652,8 @@ class Loop:
             diff_code, diff = self.git("diff", "origin/{}...HEAD".format(base), cwd=tree)
             log_code, commits = self.git("log", "--format=%h %s%n%b", "origin/{}..HEAD".format(base), cwd=tree)
             if diff_code != 0 or log_code != 0:
-                return False, sha, "could not diff against {}".format(base), False
+                # Recorded: a base with no common history doesn't fix itself before a new commit.
+                return False, sha, "could not diff against {}".format(base), True
             skill_file = self.root / "skills" / "review-pr" / "SKILL.md"
             skill = skill_file.read_text() if skill_file.exists() else ""
             prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
@@ -678,11 +688,12 @@ class Loop:
         rows = [line.split("\t") for line in out.strip().splitlines()]
         ids = [r[0] for r in rows if len(r) == 3 and r[1] == self.whoami() and r[2] == "true"]
         if ids:
+            # The body goes on stdin: as an argument, a long report can pass the OS's size limit.
             code, out = self.gh("api", "--method", "PATCH",
                                 "repos/{{owner}}/{{repo}}/issues/comments/{}".format(ids[-1]),
-                                "-f", "body=" + body)
+                                "-F", "body=@-", stdin=body)
         else:
-            code, out = self.gh("pr", "comment", str(number), "--body", body)
+            code, out = self.gh("pr", "comment", str(number), "--body-file", "-", stdin=body)
         return None if code == 0 else "could not post the comment: " + out.strip()[:200]
 
 

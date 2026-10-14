@@ -102,10 +102,10 @@ edited in place on later commits. Start it only when asked.
    the loop is running here, say so: the review needs its own clone, or waits.
 4. Say what it did from `.loop/loop.log`: one `REVIEW #N <sha> posted`,
    `skipped` or `failed: <why>` line per pull request and commit. A review
-   whose agent exited non-zero or timed out posted nothing and isn't retried
-   until the pull request has a new commit. A git or GitHub error (fetch,
-   checkout, diff or post) ends in `(will retry)` and is tried again on the
-   next poll. `loop.py stop` ends it at its next step.
+   whose agent exited non-zero or timed out, or whose diff couldn't be made,
+   posted nothing and isn't retried until the pull request has a new commit. A
+   fetch, checkout or post error ends in `(will retry)` and is tried again on
+   the next poll. `loop.py stop` ends it at its next step.
 
 It never approves, requests changes, merges or pushes, and the agent is never
 asked to post: the script does. A person decides what happens to the pull

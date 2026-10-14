@@ -169,18 +169,20 @@ review to the same log:
 A commit is reviewed once. The result goes in `.loop/status.json` under
 `reviews`, so a poll that sees the same commit again starts no agent. A review
 whose agent exits non-zero or times out posts nothing, and it isn't tried again
-until the pull request has a new commit. A git or GitHub error is logged
-`(will retry)` and tried again on the next poll.
+until the pull request has a new commit; neither is a diff that can't be made,
+such as a base with no history in common. A fetch, checkout or GitHub error is
+logged once with `(will retry)` and tried again on the next poll.
 
 **What it never does:** approve, request changes, merge, push, or ask the agent
 to post. The comment goes up under your own GitHub identity. A pull request's
 diff, commit messages and files are written by whoever opened it, so the prompt
 calls them material to review, never instructions. The agent is told not to
 edit, and whatever it edits is thrown away with the checkout. A `claude`
-`reader_agent` also runs with `--setting-sources user`, so the checkout's own
-[`.claude/`](.claude/) hooks never run on your machine. If your `reader_agent` isn't
-Claude Code, check that it doesn't load settings or run hooks from the folder it
-starts in. `loop.py stop` ends it at its next step, as it does `run`.
+`reader_agent` runs with `--restricted --strict-mcp-config --tools Read,Grep,Glob`:
+it can read the checkout and nothing outside it, so a pull request written to
+steer it can't get your keys or tokens into the comment, and the checkout's own
+[`.claude/`](.claude/) settings and hooks never load. If your `reader_agent` isn't Claude
+Code, give it the same limits. `loop.py stop` ends it at its next step, as it does `run`.
 
 **Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
 a dashboard, model-tier routing. Each can be added by whoever needs it, reading

@@ -33,9 +33,9 @@ fine).
 your review (`review_query`, by default `review-requested:@me`), has a fresh
 `reader_agent` review each new head commit with [`skills/review-pr/`](skills/review-pr/), and posts the report as one
 comment per pull request, edited in place on later commits. A commit is reviewed
-once, an agent that fails or times out is retried only on a new commit (a
-GitHub or git error is retried on the next poll), and it never approves,
-merges or pushes. It shares the loop's lock, log, status file and stop file.
+once, the agent can read the checkout and nothing else, and it never
+approves, merges or pushes. It shares the loop's lock, log, status file and
+stop file.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
 
