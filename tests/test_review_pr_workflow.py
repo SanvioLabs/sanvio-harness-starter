@@ -91,26 +91,27 @@ class ReviewPrWorkflow(unittest.TestCase):
         self.assertIn("${{ secrets.ANTHROPIC_API_KEY }}", scope)
         self.assertRegex(scope, r'-z "\$ANTHROPIC_API_KEY"')
 
-    def test_the_agent_gets_no_git_command_that_matches_by_prefix(self):
-        allowed = re.search(r'--allowedTools "([^"]*)"', self.code)
-        self.assertIsNotNone(allowed, "no --allowedTools list")
-        self.assertNotIn(":*", allowed.group(1), "a prefix match lets git diff --no-index read the environment")
-        self.assertNotIn("git show", allowed.group(1))
+    def test_the_agent_runs_restricted_with_read_tools_only(self):
+        review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
+        call = re.search(r"claude -p[^<]*", review)
+        self.assertIsNotNone(call, "no claude -p call")
+        flags = call.group(0).split()
+        for flag in ("--restricted", "--strict-mcp-config"):
+            self.assertIn(flag, flags, flag + " keeps the agent inside the checkout")
+        self.assertEqual(flags[flags.index("--tools") + 1], "Read,Grep,Glob")
+        for loose in ("--allowedTools", "--setting-sources", "--dangerously-skip-permissions"):
+            self.assertNotIn(loose, review)
 
-    def test_proc_is_denied_with_a_read_rule(self):
-        denied = re.search(r'--disallowedTools "([^"]*)"', self.code)
-        self.assertIsNotNone(denied, "no --disallowedTools list")
-        self.assertIn("Read(//proc/**)", denied.group(1).split(","))
-
-    def test_no_grep_or_glob_path_rule_which_the_cli_refuses(self):
-        for flag in ("--allowedTools", "--disallowedTools"):
-            rules = re.search(flag + r' "([^"]*)"', self.code).group(1)
-            self.assertNotRegex(rules, r"(Grep|Glob)\(", flag + ": a Read rule covers Grep and Glob")
+    def test_the_diff_reaches_the_agent_in_the_prompt(self):
+        review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
+        self.assertIn('git diff "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/diff.patch"', review)
+        self.assertRegex(review, r'head -c \d+ "\$RUNNER_TEMP/diff\.patch" >> "\$RUNNER_TEMP/prompt\.md"')
+        self.assertNotIn("| head", review, "a pipe into head fails under pipefail on a big diff")
 
     def test_a_failed_run_says_why_only_after_the_key_check(self):
         review = self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
         self.assertIn("code=$?", review)
-        self.assertLess(review.index('grep -qF -e "$ANTHROPIC_API_KEY"'), review.index("head -c"))
+        self.assertLess(review.index('grep -qF -e "$ANTHROPIC_API_KEY"'), review.index('head -c 2000 "$RUNNER_TEMP/report.md"'))
 
     def test_the_cli_is_pinned(self):
         self.assertRegex(self.code, r"npm install -g @anthropic-ai/claude-code@\d+\.\d+\.\d+")
