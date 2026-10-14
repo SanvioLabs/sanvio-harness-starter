@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Workflow actions pinned to commits
+
+Every action in [`.github/workflows/`](.github/workflows/) and [`examples/ci/`](examples/ci/) is now named by
+a full commit SHA, with its version in a comment, instead of a tag like `@v4`
+that its owner can move to other code. The review prompt in
+[`examples/ci/review-pr.yml`](examples/ci/review-pr.yml) is now written with a quoted heredoc, so nothing in
+its body is ever expanded; the base branch goes in through `printf`. A new test
+fails on an unpinned action or an unquoted heredoc in any workflow.
+
+To move a pin, look up the commit the new release tag points at and change the
+SHA and the comment together.
+
+Files: [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/secrets.yml`](.github/workflows/secrets.yml), [`examples/ci/loop.yml`](examples/ci/loop.yml),
+[`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`tests/test_ci_example.py`](tests/test_ci_example.py)
+
+**Do:** if you copied an example workflow into your own [`.github/workflows/`](.github/workflows/),
+copy it again, or pin its actions the same way.
+
 ## 2026-10-14: Secret scan blocks what it can't read
 
 The pre-commit secret scan now reads a file whose type changed, such as a

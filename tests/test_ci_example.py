@@ -78,5 +78,38 @@ class LoopWorkflowExample(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN", text)
 
 
+WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml")) + sorted((ROOT / "examples" / "ci").glob("*.yml"))
+
+
+def unpinned_actions(text):
+    """Every `uses:` that names an action by tag or branch rather than a full commit SHA."""
+    refs = re.findall(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", text, re.M)
+    return [r for r in refs if not r.startswith("./") and not re.search(r"@[0-9a-f]{40}$", r)]
+
+
+def unquoted_heredocs(text):
+    """Every heredoc opened with a bare delimiter, whose body the shell would expand."""
+    return re.findall(r"<<-?\s*([A-Za-z_]\w*)\b", text)
+
+
+class EveryWorkflow(unittest.TestCase):
+    def test_every_action_is_pinned_to_a_commit(self):
+        # A tag can be moved to other code; a commit can't.
+        for path in WORKFLOWS:
+            self.assertEqual(unpinned_actions(path.read_text()), [], path.name)
+
+    def test_the_pin_check_catches_a_tag(self):
+        self.assertEqual(unpinned_actions("      - uses: actions/checkout@v4\n"), ["actions/checkout@v4"])
+        self.assertEqual(unpinned_actions("      - uses: actions/checkout@" + "a" * 40 + " # v4\n"), [])
+
+    def test_every_heredoc_is_quoted(self):
+        for path in WORKFLOWS:
+            self.assertEqual(unquoted_heredocs(path.read_text()), [], path.name)
+
+    def test_the_heredoc_check_catches_a_bare_delimiter(self):
+        self.assertEqual(unquoted_heredocs('cat > f <<EOF\n'), ["EOF"])
+        self.assertEqual(unquoted_heredocs("cat > f <<'EOF'\n"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

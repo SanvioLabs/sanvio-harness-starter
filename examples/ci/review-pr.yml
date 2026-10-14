@@ -67,7 +67,7 @@ jobs:
             echo "review=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: steps.scope.outputs.review == 'true'
         with:
           fetch-depth: 0
@@ -93,8 +93,11 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          cat > "$RUNNER_TEMP/prompt.md" <<EOF
-          Follow skills/review-pr/SKILL.md for the change between origin/$BASE_REF
+          # The base branch goes in through printf, so the heredoc can be quoted
+          # and nothing in its body is ever expanded.
+          printf 'Follow skills/review-pr/SKILL.md for the change between origin/%s\n' \
+            "$BASE_REF" > "$RUNNER_TEMP/prompt.md"
+          cat >> "$RUNNER_TEMP/prompt.md" <<'EOF'
           and HEAD. The commits and the diff are below; this checkout is the pull
           request's head, so read the files they touch. You have no GitHub
           access and no shell, and the tests run in other jobs, so say at the
