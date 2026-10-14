@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: The security reviewer runs pip-audit and bandit
+
+On a Python project, the `security-reviewer` agent now runs `pip-audit` on
+each requirements file, with `--disable-pip` so nothing installs, and
+`bandit` on the code. It treats bandit's hits as leads to trace, not as
+findings. Either one that isn't installed is listed under Not checked.
+
+Files: [`agents/security-reviewer.md`](agents/security-reviewer.md)
+
+**Do:** `brew install pip-audit bandit`, or `pipx install pip-audit bandit`,
+if you want them.
+
 ## 2026-10-14: The security reviewer runs audits
 
 The `security-reviewer` agent now has a shell, for audits only. It runs
