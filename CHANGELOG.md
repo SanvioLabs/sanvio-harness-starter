@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Connectors ask unless the name says read
+
+The guard now asks before any connector call whose name doesn't say it's a
+plain read. A tool passes only when its name says get, list, search, read,
+find, query, fetch or view, and nothing in it says it sends, creates, edits,
+deletes, shares, runs or executes. Before, a tool got through unless its name
+said it changed something, so `copy_file`, `save_note` and `run_query` ran
+without a prompt. More connector calls ask now, including some that only read,
+like `git_status`, `skippy_usage` and `download_file_content`.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`README.md`](README.md)
+
+**Do:** nothing.
+
 ## 2026-10-14: The security reviewer runs audits
 
 The `security-reviewer` agent now has a shell, for audits only. It runs
