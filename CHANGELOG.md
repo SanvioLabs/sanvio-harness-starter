@@ -27,6 +27,25 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: The security reviewer runs audits
+
+The `security-reviewer` agent now has a shell, for audits only. It runs
+`osv-scanner` over the lock files, `npm audit`, `pip-audit`, `trivy fs`,
+`govulncheck`, `bundle-audit` or `bandit` where they fit, and `gitleaks
+--redact` over the history, and reports findings from them rather than
+naming them for you to run. [`.claude/hooks/guard.py`](.claude/hooks/guard.py) holds its shell to
+that list plus git reads: one command at a time, no pipes, nothing that
+installs, builds or runs the code under review. Any other command it tries is
+refused. The audits send package names and versions to their advisory
+services.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`agents/security-reviewer.md`](agents/security-reviewer.md),
+[`.claude/agents/security-reviewer.md`](.claude/agents/security-reviewer.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** install the scanners you want it to use. `osv-scanner` and `gitleaks`
+cover most projects (`brew install osv-scanner gitleaks`). One that's missing
+is listed under Not checked.
+
 ## 2026-10-14: A security reviewer
 
 A second agent, `security-reviewer`, reads code the way an attacker would and

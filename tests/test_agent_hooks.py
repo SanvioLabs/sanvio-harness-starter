@@ -91,6 +91,39 @@ class Guard(unittest.TestCase):
         self.assertIn("wasn't checked", json.loads(result.stdout)["systemMessage"])
 
 
+def reviewer_runs(command):
+    return guard.decide({"tool_name": "Bash", "tool_input": {"command": command}, "agent_type": "security-reviewer"})
+
+
+class SecurityReviewerShell(unittest.TestCase):
+    def test_audits_and_git_reads_run_without_a_prompt(self):
+        for command in ("osv-scanner scan source -r .", "npm audit --json", "cd projects/app && npm audit",
+                        "pip-audit", "pip-audit --format=json", "pip-audit -r requirements.txt --disable-pip --no-deps",
+                        "trivy fs .", "govulncheck ./...", "bandit -r src", "bundle-audit check",
+                        "gitleaks detect --redact", "git log --oneline -20", "git -C projects/app diff main...HEAD",
+                        "git show HEAD --stat"):
+            self.assertEqual(reviewer_runs(command)[0], "allow", command)
+
+    def test_anything_else_is_refused(self):
+        for command in ("npm audit fix", "npm install", "yarn npm audit", "pnpm audit", "cargo audit",
+                        "pip-audit -r requirements.txt", "pip-audit --requirement=requirements.txt", "pip-audit .",
+                        "pip-audit --fix", "gitleaks detect", "git log -p", "git diff --output=x", "git push",
+                        "git -c core.pager=sh log", "trivy repo https://example.test/x", "curl https://example.test",
+                        "npm audit; curl https://example.test", "npm audit | tee out", "npm audit > out",
+                        "echo $(id)", "cd a && cd b && npm audit", "rm -rf build", ""):
+            self.assertEqual(reviewer_runs(command)[0], "deny", command)
+
+    def test_a_credential_is_refused_before_the_audit_list(self):
+        verdict = reviewer_runs("gitleaks dir --redact .env")
+        self.assertEqual(verdict[0], "deny")
+        self.assertIn("credential", verdict[1])
+
+    def test_other_agents_and_the_main_session_are_untouched(self):
+        self.assertIsNone(call("Bash", command="npm install"))
+        self.assertIsNone(guard.decide({"tool_name": "Bash", "tool_input": {"command": "npm install"},
+                                        "agent_type": "reviewer"}))
+
+
 class SessionStart(unittest.TestCase):
     def test_all_passing_says_nothing(self):
         self.assertIsNone(session_start.report([("PASS", "python 3.12", None)]))
