@@ -35,7 +35,10 @@ which, ask. Also note which project under [`projects/`](../../projects/) it belo
 4. **Read the diff for what a script can't catch**, most expensive first:
    - Does it do what the ticket or description says, and nothing else?
    - Security: authorization skipped or done in the client, input trusted,
-     secrets in code or logs, a new dependency nobody asked for
+     secrets in code or logs, a new dependency nobody asked for. When the
+     diff touches auth, input handling, secrets, infrastructure or
+     dependencies, also hand it to the `security-reviewer` agent
+     ([`agents/security-reviewer.md`](../../agents/security-reviewer.md)) and fold its findings in
    - Data: a migration with no way back, a change that breaks callers
    - Error paths: what happens when the call fails, times out or returns
      nothing

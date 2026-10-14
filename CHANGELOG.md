@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: A security reviewer
+
+A second agent, `security-reviewer`, reads code the way an attacker would and
+reports what could be exploited. Each Critical or High finding carries its
+attack path from entry point to payoff, and the report opens with a READY or
+NOT-READY verdict. It only reads and has no shell, so text planted in the code
+it reviews can't make it run anything. It names the dependency audit and the
+history scan for a person to run instead. `review-pr` hands it changes that
+touch auth, input handling, secrets, infrastructure or dependencies.
+
+Files: [`agents/security-reviewer.md`](agents/security-reviewer.md), [`.claude/agents/security-reviewer.md`](.claude/agents/security-reviewer.md),
+[`AGENTS.md`](AGENTS.md), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing. Ask for a security review, or run the `security-reviewer`
+agent by name.
+
 ## 2026-10-14: Loop pane tabs
 
 The loop pane (0.4.0) splits its list into **Queue**, **Active** and
