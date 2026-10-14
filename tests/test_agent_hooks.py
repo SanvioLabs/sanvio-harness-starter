@@ -72,7 +72,7 @@ class Guard(unittest.TestCase):
 
     def test_connector_reads_by_name_pass(self):
         for tool in ("mcp__claude_ai_Notion__notion-search", "mcp__claude_ai_Notion__notion-fetch",
-                     "mcp__skippy__skippy_knowledge_search"):
+                     "mcp__skippy__skippy_knowledge_search", "mcp__linear__getIssue"):
             self.assertIsNone(call(tool), tool)
 
     def test_any_connector_not_named_as_a_read_asks(self):
