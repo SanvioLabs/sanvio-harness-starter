@@ -68,6 +68,11 @@ class Skills(unittest.TestCase):
         body = text.split("---", 2)[2]
         self.assertIn("changes nothing", body.lower())
 
+    def test_standup_reads_an_optional_source_only_when_data_md_clears_it(self):
+        text = (ROOT / "skills" / "standup" / "SKILL.md").read_text()
+        self.assertIn("No `company/DATA.md` means none is", text)
+        self.assertNotIn("`company/DATA.md`, if it\n   exists, clears it", text)
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 
