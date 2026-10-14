@@ -621,6 +621,44 @@ class Loop:
         if problems:
             self.lesson(number, rounds, problems, passed=True)
 
+    def tidy(self):
+        """Remove the worktree and branch of each issue whose pull request is merged or closed.
+
+        Only a clean worktree goes, and without --force, so nothing the loop didn't push is lost.
+        The branch goes with -D: after a squash merge it never looks merged here, and the loop
+        pushed every commit on it before it opened the pull request.
+        """
+        for row in list(self.status["issues"]):
+            number = row["number"]
+            path = self.worktrees() / "issue-{}".format(number)
+            if row.get("state") != "pr" or not row.get("pr") or not path.exists():
+                continue
+            # The exit code decides, not the output: gh prints its errors to stdout.
+            code, out = self.gh("pr", "view", row["pr"], "--json", "state", "-q", ".state")
+            if code != 0:
+                self.log("ERROR", "could not read the pull request's state: " + out.strip()[:200], number)
+                continue
+            state = out.strip()
+            if state not in ("MERGED", "CLOSED"):
+                continue
+            code, out = self.git("status", "--porcelain", cwd=path)
+            if code != 0:
+                self.log("ERROR", "could not check the worktree for changes: " + out.strip()[:200], number)
+                continue
+            if out.strip():
+                self.log("KEPT", "worktree has changes", number)
+                continue
+            branch = "loop/issue-{}".format(number)
+            code, out = self.git("worktree", "remove", str(path))
+            if code != 0:
+                self.log("ERROR", "could not remove the worktree: " + out.strip()[:200], number)
+                continue
+            code, out = self.git("branch", "-D", branch)
+            if code != 0:
+                self.log("ERROR", "removed the worktree but not {}: {}".format(branch, out.strip()[:200]), number)
+                continue
+            self.log("CLEANUP", "pull request {}, removed its worktree and {}".format(state.lower(), branch), number)
+
     # -- running ----------------------------------------------------------
 
     def take_lock(self):
@@ -671,6 +709,8 @@ class Loop:
                 if not idle:
                     self.log("IDLE", "nothing ready")
                     idle = True
+                    if not dry_run:
+                        self.tidy()
                 if once or dry_run or only is not None:
                     break
                 time.sleep(self.cfg["poll_seconds"])

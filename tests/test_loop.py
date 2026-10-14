@@ -164,6 +164,12 @@ elif args[:2] == ["issue", "view"]:
     print(open(path).read().strip() if os.path.exists(path) else "OPEN")
 elif args[:2] == ["pr", "create"]:
     print("https://example.test/pull/1")
+elif args[:2] == ["pr", "view"]:
+    if os.path.exists(os.path.join(state, "pr-view-fails")):
+        print("HTTP 502")  # on stdout, as gh prints its errors
+        sys.exit(1)
+    path = os.path.join(state, "pr-state")
+    print(open(path).read().strip() if os.path.exists(path) else "OPEN")
 elif args[:2] == ["issue", "comment"] and os.path.exists(os.path.join(state, "comment-fails")):
     print("HTTP 403: comments are locked", file=sys.stderr)
     sys.exit(1)
@@ -534,6 +540,60 @@ class TestAPass(unittest.TestCase):
         (self.state / "issues.json").write_text("[]")
         self.go()
         self.assertEqual([l.split()[2] for l in self.lines()], ["IDLE"])
+
+    def open_then_idle(self, pr_state="OPEN"):
+        """Open a pull request for #12, then run again with nothing ready. Returns the worktree path."""
+        self.go()
+        (self.state / "issues.json").write_text("[]")
+        (self.state / "pr-state").write_text(pr_state)
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        self.assertTrue(tree.exists())
+        return tree
+
+    def branch_exists(self):
+        return subprocess.run(["git", "-C", str(self.work), "rev-parse", "--verify", "-q", "loop/issue-12"],
+                              capture_output=True).returncode == 0
+
+    def test_a_merged_pull_requests_worktree_and_branch_are_removed_when_idle(self):
+        tree = self.open_then_idle("MERGED")
+        self.assertEqual(self.go(), 0)
+        self.assertFalse(tree.exists())
+        self.assertFalse(self.branch_exists())
+        cleanup = [l for l in self.lines() if l.split()[2] == "CLEANUP"]
+        self.assertEqual(len(cleanup), 1)
+        self.assertIn("#12", cleanup[0])
+
+    def test_a_worktree_with_changes_is_kept(self):
+        tree = self.open_then_idle("CLOSED")
+        (tree / "notes.txt").write_text("not pushed")
+        self.go()
+        self.assertTrue((tree / "notes.txt").exists())
+        self.assertTrue(self.branch_exists())
+        self.assertEqual(len([l for l in self.lines() if l.split()[2] == "KEPT"]), 1)
+        self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
+    def test_an_open_pull_request_or_a_blocked_issue_keeps_its_worktree(self):
+        tree = self.open_then_idle("OPEN")
+        self.go()
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        runner = loop.Loop(self.work, self.cfg)
+        runner.mark(12, state="blocked")
+        (self.state / "pr-state").write_text("MERGED")
+        with contextlib.redirect_stdout(io.StringIO()):
+            runner.run(once=True)
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
+    def test_a_failed_pull_request_read_removes_nothing(self):
+        tree = self.open_then_idle("MERGED")
+        (self.state / "pr-view-fails").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        self.assertIn("could not read the pull request's state: HTTP 502", "\n".join(self.lines()))
+        self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
 
     def run_issue_flag(self):
         """A run with --issue 12 and no --once. Sleeping means it went on polling, so that fails at once."""

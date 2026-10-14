@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Loop cleans up finished worktrees
+
+When the loop goes idle, it checks each issue it opened a pull request for. If
+the pull request is merged or closed and the issue's worktree has no changes,
+it removes the worktree and the local `loop/issue-N` branch and logs a
+`CLEANUP` line. A worktree with changes is kept and logged as `KEPT`. An open
+pull request, a blocked issue, or a pull request GitHub can't be asked about
+leaves everything as it was. Remote branches, `review-pr-N` checkouts and
+`.loop/issue-N/` stay.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing
+
 ## 2026-10-14: Workflow actions pinned to commits
 
 Every action in [`.github/workflows/`](.github/workflows/) and [`examples/ci/`](examples/ci/) is now named by
