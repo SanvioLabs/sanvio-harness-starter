@@ -2,6 +2,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -72,7 +73,7 @@ class Guard(unittest.TestCase):
 
     def test_connector_reads_by_name_pass(self):
         for tool in ("mcp__claude_ai_Notion__notion-search", "mcp__claude_ai_Notion__notion-fetch",
-                     "mcp__skippy__skippy_knowledge_search", "mcp__linear__getIssue"):
+                     "mcp__skippy__skippy_knowledge_search"):
             self.assertIsNone(call(tool), tool)
 
     def test_any_connector_not_named_as_a_read_asks(self):
@@ -103,8 +104,11 @@ class Guard(unittest.TestCase):
         self.assertIn("wasn't checked", json.loads(result.stdout)["systemMessage"])
 
 
-def reviewer_runs(command):
-    return guard.decide({"tool_name": "Bash", "tool_input": {"command": command}, "agent_type": "security-reviewer"})
+def reviewer_runs(command, cwd=None):
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "agent_type": "security-reviewer"}
+    if cwd:
+        event["cwd"] = str(cwd)
+    return guard.decide(event)
 
 
 class SecurityReviewerShell(unittest.TestCase):
@@ -112,14 +116,17 @@ class SecurityReviewerShell(unittest.TestCase):
         for command in ("osv-scanner scan source -r .", "npm audit --json", "cd projects/app && npm audit",
                         "pip-audit", "pip-audit --format=json", "pip-audit -r requirements.txt --disable-pip --no-deps",
                         "trivy fs .", "govulncheck ./...", "bandit -r src", "bundle-audit check",
-                        "gitleaks detect --redact", "git log --oneline -20", "git -C projects/app diff main...HEAD",
-                        "git show HEAD --stat"):
+                        "gitleaks detect --redact", "gitleaks dir --redact=100 .", "git log --oneline -20",
+                        "git -C projects/app diff main...HEAD", "git show HEAD --stat", "git show HEAD --name-only"):
             self.assertEqual(reviewer_runs(command)[0], "allow", command)
 
     def test_anything_else_is_refused(self):
         for command in ("npm audit fix", "npm install", "yarn npm audit", "pnpm audit", "cargo audit",
                         "pip-audit -r requirements.txt", "pip-audit --requirement=requirements.txt", "pip-audit .",
-                        "pip-audit --fix", "gitleaks detect", "git log -p", "git diff --output=x", "git push",
+                        "pip-audit --fix", "gitleaks detect", "gitleaks detect --redact=0",
+                        "gitleaks detect --redact=50", "git log -p", "git log --patch-with-stat", "git log -U3",
+                        "git log --cc", "git log -W", "git show HEAD", "git show HEAD:config.py --stat",
+                        "git diff --output=x", "git diff --ext-diff", "git push",
                         "git -c core.pager=sh log", "trivy repo https://example.test/x", "curl https://example.test",
                         "npm audit; curl https://example.test", "npm audit | tee out", "npm audit > out",
                         "echo $(id)", "cd a && cd b && npm audit", "rm -rf build", ""):
@@ -129,6 +136,41 @@ class SecurityReviewerShell(unittest.TestCase):
         verdict = reviewer_runs("gitleaks dir --redact .env")
         self.assertEqual(verdict[0], "deny")
         self.assertIn("credential", verdict[1])
+
+    def test_git_wont_run_in_a_repo_whose_config_runs_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "handed-over"
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            self.assertEqual(reviewer_runs("git status", cwd=repo)[0], "allow")
+            self.assertEqual(reviewer_runs("gitleaks detect --redact", cwd=repo)[0], "allow")
+            with open(repo / ".git" / "config", "a") as handle:
+                handle.write("[core]\n\tfsmonitor = touch /tmp/pwned\n")
+            for command in ("git status", "git log --oneline", "gitleaks detect --redact", "gitleaks git --redact ."):
+                verdict = reviewer_runs(command, cwd=repo)
+                self.assertEqual(verdict[0], "deny", command)
+                self.assertIn("makes git run a command", verdict[1])
+            self.assertEqual(reviewer_runs("cd handed-over && git status", cwd=tmp)[0], "deny")
+            self.assertEqual(reviewer_runs("git -C handed-over status", cwd=tmp)[0], "deny")
+            self.assertEqual(reviewer_runs("gitleaks dir --redact .", cwd=repo)[0], "allow")
+
+    def test_a_worktrees_shared_config_counts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            main = Path(tmp) / "main"
+            subprocess.run(["git", "init", "-q", "-b", "main", str(main)], check=True)
+            subprocess.run(["git", "-C", str(main), "-c", "user.email=t@example.test", "-c", "user.name=T",
+                            "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+            tree = Path(tmp) / "tree"
+            subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", str(tree)], check=True,
+                           capture_output=True)
+            self.assertEqual(reviewer_runs("git status", cwd=tree)[0], "allow")
+            with open(main / ".git" / "config", "a") as handle:
+                handle.write('[diff "bin"]\n\ttextconv = sh -c id\n')
+            self.assertEqual(reviewer_runs("git status", cwd=tree)[0], "deny")
+
+    def test_a_file_as_it_was_in_git_is_a_credential_read_for_every_agent(self):
+        self.assertEqual(call("Bash", command="git show HEAD:.env")[0], "deny")
+        self.assertEqual(call("Bash", command="git show main:config/server.key")[0], "deny")
+        self.assertIsNone(call("Bash", command="git show HEAD:README.md"))
 
     def test_other_agents_and_the_main_session_are_untouched(self):
         self.assertIsNone(call("Bash", command="npm install"))

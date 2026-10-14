@@ -73,6 +73,24 @@ REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
 UNTRUSTED_CLAUDE = ["--restricted", "--strict-mcp-config", "--tools", "Read,Grep,Glob"]
+# What agent() returns when it won't start a reader it can't confine on someone else's files.
+REFUSED = 125
+# Who may write an issue the loop builds from as it stands. Anyone else's issue is taken only as it
+# was when someone with triage rights labelled it, with nothing hidden in it.
+TRUSTED_AUTHORS = {"OWNER", "MEMBER", "COLLABORATOR"}
+ISSUE_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $n) {
+      title body authorAssociation lastEditedAt
+      timelineItems(last: 100, itemTypes: [LABELED_EVENT, RENAMED_TITLE_EVENT]) {
+        nodes { __typename ... on LabeledEvent { createdAt label { name } } ... on RenamedTitleEvent { createdAt } }
+      }
+    }
+  }
+}"""
+# Left out of the environment the test command runs in. It runs code the agent wrote, and the agent
+# wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
+SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
 
 
 def load_config(root):
@@ -111,6 +129,64 @@ def ready(issues, me, cfg):
             continue
         out.append(issue)
     return out
+
+
+def confined(cmd):
+    """A claude command held to UNTRUSTED_CLAUDE, whatever tools or permissions it was given; None if
+    the command isn't claude itself, since only claude's flags are known to confine it."""
+    if not cmd or Path(cmd[0]).name != "claude":
+        return None
+    out, skip = [], False
+    for word in cmd:
+        if skip:
+            skip = False
+            continue
+        if word in ("--tools", "--allowedTools", "--allowed-tools", "--permission-mode", "--mcp-config"):
+            skip = True
+            continue
+        if word.startswith(("--tools=", "--allowedTools=", "--allowed-tools=", "--permission-mode=", "--mcp-config=")) \
+                or word in ("--restricted", "--strict-mcp-config", "--dangerously-skip-permissions"):
+            continue
+        out.append(word)
+    return out + UNTRUSTED_CLAUDE
+
+
+def safe_to_post(report):
+    """A report as it may go out under your name: a mention can't ping anyone, since the report is
+    shaped by text the pull request's author wrote."""
+    return report.replace("@", "@\u200b")
+
+
+def vouch(data, ready_label):
+    """Why the loop won't build from this issue as it stands, or None when it may.
+
+    data is the issue from ISSUE_QUERY. An issue from the repo's owner, a member or a collaborator
+    may. Anyone else's may only if nothing in it changed after it was last labelled ready, and it
+    hides no text: an HTML comment doesn't show on the issue's page, so whoever labelled it never
+    read it.
+    """
+    if data.get("authorAssociation") in TRUSTED_AUTHORS:
+        return None
+    events = (data.get("timelineItems") or {}).get("nodes") or []
+    labelled = [e["createdAt"] for e in events if e.get("__typename") == "LabeledEvent"
+                and (e.get("label") or {}).get("name") == ready_label]
+    changed = [e["createdAt"] for e in events if e.get("__typename") == "RenamedTitleEvent"]
+    if data.get("lastEditedAt"):
+        changed.append(data["lastEditedAt"])
+    if not labelled:
+        return "written outside the repo's collaborators, and no {} label was found on it".format(ready_label)
+    if changed and max(changed) > max(labelled):
+        return ("written outside the repo's collaborators, and changed after it was labelled {}. "
+                "Read it again, then label it again".format(ready_label))
+    if "<!--" in (data.get("body") or ""):
+        return ("written outside the repo's collaborators, and it holds an HTML comment, which the "
+                "issue's page doesn't show. Copy what it asks into an issue of your own")
+    return None
+
+
+def env_for_tests(environ):
+    """The environment the test command gets: this one, less anything named like a secret."""
+    return {k: v for k, v in environ.items() if not SECRET_ENV.search(k)}
 
 
 def pick(issues, me, cfg, only=None):
@@ -194,10 +270,12 @@ def pr_review_prompt(number, title, base, diff, commits, skill=""):
 
 
 def review_comment(report, sha):
-    """The one comment a pull request gets: the marker, the report, and whose it is."""
-    return ("{marker}\n\n{report}\n\n---\nReviewed commit `{sha}` by `scripts/loop.py review`. It "
-            "reports only: a person decides what happens to this pull request.\n").format(
-        marker=REVIEW_MARKER, report=report.strip()[:REVIEW_CAP], sha=sha[:7])
+    """The one comment a pull request gets: the marker, a line saying what it is, the report, and whose it is."""
+    return ("{marker}\n> Written by an agent from this pull request's own diff and commits, which can "
+            "steer it. Read it as a second opinion, not a verdict.\n\n{report}\n\n---\nReviewed commit "
+            "`{sha}` by `scripts/loop.py review`. It reports only: a person decides what happens to this "
+            "pull request.\n").format(
+        marker=REVIEW_MARKER, report=safe_to_post(report.strip()[:REVIEW_CAP]), sha=sha[:7])
 
 
 def pr_comment(url, rounds):
@@ -275,14 +353,14 @@ class Loop:
             self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
         self.save_status()
 
-    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True):
+    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None):
         """(exit code, combined output, or stdout alone with stderr=False).
 
         A missing command or a timeout is a code, not a crash.
         """
         try:
             # errors="replace": a pull request's diff or commit message needn't be UTF-8.
-            done = subprocess.run(cmd, cwd=str(cwd or self.root), input=stdin, shell=shell,
+            done = subprocess.run(cmd, cwd=str(cwd or self.root), input=stdin, shell=shell, env=env,
                                   capture_output=True, text=True, errors="replace", timeout=timeout)
         except FileNotFoundError:
             return 127, "command not found: {}".format(cmd if shell else cmd[0])
@@ -339,19 +417,26 @@ class Loop:
         except OSError:
             path.unlink(missing_ok=True)  # the pane falls back to copying the attach command
 
-    def agent(self, which, prompt, cwd, untrusted=False, stderr=True):
+    def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True):
         """Run a fresh agent session. Returns (exit code, what it said).
 
         stderr=False keeps its warnings and traces out of what it said, for text that gets posted.
 
-        untrusted means cwd holds someone else's files, and its text may be written to steer the agent.
+        untrusted means cwd holds a stranger's files, and their text may be written to steer the agent.
         Claude Code then runs restricted: the read tools only, confined to that folder, so nothing
         outside it (keys, tokens, other repos) can end up in a posted report, and no settings, hooks
-        or MCP servers are loaded from anywhere.
+        or MCP servers are loaded from anywhere. Any other command is refused with REFUSED, because
+        nothing here knows how to confine it.
+
+        confine asks for the same where it can be had, and runs any other command as it is: for an
+        issue the loop has already checked the author of.
         """
         cmd = shlex.split(self.cfg[which])
-        if untrusted and cmd and Path(cmd[0]).name == "claude" and "--restricted" not in cmd:
-            cmd += UNTRUSTED_CLAUDE
+        held = confined(cmd)
+        if untrusted and held is None:
+            return REFUSED, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
+        if (untrusted or confine) and held is not None:
+            cmd = held
         return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
 
     # -- the flywheel -----------------------------------------------------
@@ -365,6 +450,29 @@ class Loop:
         waiting = ready(json.loads(out or "[]"), self.whoami(), self.cfg)
         self.save_status(queue=[{"number": i["number"], "title": i["title"]} for i in waiting])
         return pick(waiting, self.whoami(), self.cfg, only)
+
+    def fresh(self, issue):
+        """The issue as GitHub has it now, if the loop may build from it; None when it may not.
+
+        Reading it again here, rather than using the list from discover, means the text checked is
+        the text the agents get. A refusal blocks the issue and says why on it; a failed read skips
+        this pass and leaves the issue as it was.
+        """
+        number = issue["number"]
+        code, out = self.gh("api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+                            "-F", "n={}".format(number), "-f", "query=" + ISSUE_QUERY)
+        try:
+            data = json.loads(out)["data"]["repository"]["issue"]
+        except (ValueError, KeyError, TypeError):
+            data = None
+        if code != 0 or not data:
+            self.log("ERROR", "could not read the issue to check who wrote it: " + out.strip()[:200], number)
+            return None
+        why = vouch(data, self.cfg["ready_label"])
+        if why:
+            self.block(number, "not taken: " + why)
+            return None
+        return dict(issue, title=data.get("title") or issue["title"], body=data.get("body") or "")
 
     def worktrees(self):
         if self.cfg["worktree_dir"]:
@@ -411,6 +519,9 @@ class Loop:
             handle.write(entry)
 
     def process(self, issue):
+        issue = self.fresh(issue)
+        if issue is None:
+            return
         number = issue["number"]
         folder = self.dir / "issue-{}".format(number)
         folder.mkdir(exist_ok=True)
@@ -420,16 +531,18 @@ class Loop:
         self.mark(number, title=issue["title"], step="SHAPE", state="working", round=0,
                   tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"])
 
-        code, plan = self.agent("reader_agent", shape_prompt(issue), self.root)
-        if code != 0 or not plan.strip():
-            return self.block(number, "shape failed (agent exit {})".format(code))
-        (folder / "plan.md").write_text(plan)
-        self.log("SHAPE", "done plan.md", number)
-
         try:
             tree, branch = self.worktree(number)
         except RuntimeError as err:
             return self.block(number, str(err))
+
+        # The planner reads the issue's text, so it runs in the clean checkout with read tools
+        # only, not in this clone, which holds company/ and projects/ beside the harness.
+        code, plan = self.agent("reader_agent", shape_prompt(issue), tree, confine=True)
+        if code != 0 or not plan.strip():
+            return self.block(number, "shape failed (agent exit {})".format(code))
+        (folder / "plan.md").write_text(plan)
+        self.log("SHAPE", "done plan.md", number)
 
         problems = []
         for round_no in range(1, self.cfg["max_rounds"] + 1):
@@ -446,19 +559,25 @@ class Loop:
             self.git("add", "-A", cwd=tree)
             changed = self.git("diff", "--cached", "--name-only", cwd=tree)[1].split()
             if changed:
-                self.git("commit", "-q", "-m", issue["title"],
-                         "-m", "Loop: issue #{}, round {}.".format(number, round_no), cwd=tree)
+                # Hooks off: the agent can write .githooks/ in the worktree, and git would run it.
+                ccode = self.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", issue["title"],
+                                 "-m", "Loop: issue #{}, round {}.".format(number, round_no), cwd=tree)[0]
+                if ccode != 0:
+                    # git's output stays out: it lands on the issue.
+                    return self.block(number, "commit refused (git exit {})".format(ccode))
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
             self.mark(number, step="VALIDATE")
 
             tcode, tout = self.sh(self.cfg["test_command"], cwd=tree, shell=True,
-                                  timeout=self.cfg["test_timeout"])
+                                  timeout=self.cfg["test_timeout"], env=env_for_tests(os.environ))
             (folder / "test-output.txt").write_text(tout[-OUTPUT_CAP:])
             diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)[1]
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
-            rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode), tree)
+            # Read tools only: the worktree's settings and hooks are the build agent's to write.
+            rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode),
+                                       tree, confine=True)
             if self.git("status", "--porcelain", cwd=tree)[1].strip():
                 self.git("checkout", "--", ".", cwd=tree)
                 self.git("clean", "-fdq", cwd=tree)
@@ -691,6 +810,8 @@ class Loop:
                 return True, sha, "timed out after {}s".format(self.cfg["agent_timeout"]), True
             if code == 127:
                 return True, sha, "agent command not found", True
+            if code == REFUSED:
+                return True, sha, "not run: reader_agent isn't a claude command, so it can't be confined", True
             if code != 0:
                 return True, sha, "agent exit {}".format(code), True
             if not report.strip():

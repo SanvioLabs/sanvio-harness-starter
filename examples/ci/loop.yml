@@ -18,6 +18,13 @@
 # Also turn on Settings, Actions, General, "Allow GitHub Actions to create and
 # approve pull requests", or opening the pull request fails.
 #
+# What keeps the token away from code the agent writes: the loop builds only
+# from issues a collaborator wrote, or that nobody changed after they were
+# labelled; checkout saves no token in .git/config; and the loop runs the
+# tests without the token or the key in their environment. The tests still
+# run as the same user as the loop, so this narrows the reach, it doesn't
+# sandbox it. Label only what you've read.
+#
 # HOW-IT-WORKS.md, "Off your laptop", has what this costs and what it can't do.
 name: Loop
 
@@ -51,10 +58,14 @@ jobs:
         with:
           node-version: "22"
       - name: Install the agent
-        run: npm install -g @anthropic-ai/claude-code
+        # Pinned: a new release changes what runs here. Move the pin after a test run.
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # No token left in .git/config, where the tests could read it. The push
+          # goes through gh, below, which reads the token from its step alone.
+          persist-credentials: false
           # Swap both GITHUB_TOKEN lines for ${{ secrets.LOOP_GITHUB_TOKEN }} to
           # start the repo's checks on the pull request and to take issues
           # assigned to you.
@@ -68,7 +79,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python3 scripts/loop.py run --once
+        run: |
+          gh auth setup-git
+          python3 scripts/loop.py run --once
       - name: Keep what the pass wrote
         if: always()
         uses: actions/upload-artifact@v4
