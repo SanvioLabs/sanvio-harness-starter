@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-14: Secret scan blocks what it can't read
+
+The pre-commit secret scan now reads a file whose type changed, such as a
+symlink replaced by a regular file, and a file whose name starts like `0:`.
+Before, both went through unscanned. A file it can't read at all, such as one
+whose name holds a quote, a backslash, a tab or a newline, is now blocked with
+"could not be read for scanning" instead of passing as clean. A staged deletion
+still commits.
+
+Files: [`.githooks/pre-commit`](.githooks/pre-commit), [`tests/test_pre_commit.py`](tests/test_pre_commit.py)
+
+**Do:** nothing
+
 ## 2026-10-14: Stelliad pinned to a commit
 
 The Stelliad plugin now installs from one Stelliad commit instead of whatever
