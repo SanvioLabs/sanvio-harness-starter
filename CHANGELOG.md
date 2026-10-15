@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: Loop pane header and a Watch button per job
+
+`/loop-pane` opens on a header: the repo on the left, and on the right whether
+the loop is running, idle, stopping or not running, how many jobs it's on, and
+how long it has been up. Watch it and Copy attach command share one row, and
+the bare `tmux attach` line is gone. Each job with a tmux window has its own
+**Watch** button, which opens a read-only Terminal window on that job, or copies
+its attach command when it can't. A queued issue that depends on an open one
+says what it's waiting on. [`scripts/loop.py`](scripts/loop.py) writes `started` to
+`.loop/status.json` while a run holds the lock, and on macOS in tmux
+`.loop/issue-N/watch.command` while an issue's window is open. tmux has one
+current window per session, so a job's Watch also switches any other window
+attached to the loop's session.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/mods/loop-pane/`](examples/mods/loop-pane/), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** restart a running loop, and reopen `/loop-pane`, to pick it up.
+
 ## 2026-10-15: GitHub status mod
 
 A new mod, off unless you install it, draws one line above the prompt with the

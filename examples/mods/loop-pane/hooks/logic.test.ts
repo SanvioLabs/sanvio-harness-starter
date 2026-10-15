@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, headline, isPulsing, lists, lockPid, page, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, waiting, waitingOn, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -86,6 +86,80 @@ group('watching it', () => {
     expect(watchCommand(inTmux(true, true))).toBe("tmux attach -r -t '=loop-starter'")
     expect(watchCommand(inTmux(true, true, "it's"))).toBe("tmux attach -r -t '=it'\\''s'")
     expect(watchCommand(inTmux(false, true))).toBeNull()
+  })
+})
+
+group('the header', () => {
+  const NOW = Date.parse('2026-10-15T15:00:00Z')
+  // As loop.py writes it: UTC, with its offset. 1h 04m before NOW.
+  const STARTED = new Date(NOW - 64 * 60_000).toISOString().replace(/\.\d+Z$/, '+00:00')
+  const up = (s: Status): Status => ({ ...s, started: STARTED })
+  const two = [ROW, { ...ROW, number: 13 }]
+  test('the repo on the left, the state on the right, with its tone', () => {
+    const h = header(seen(up(status([ROW])), true), NOW, 60)
+    expect(h.left).toBe('starter')
+    expect(h.right).toEqual({ tone: 'now', text: '● Running · up 1h 04m' })
+  })
+  test('running says how many jobs past one', () => {
+    expect(header(seen(up(status(two)), true), NOW, 60).right.text).toBe('● Running 2 · up 1h 04m')
+  })
+  test('a live loop with nothing being worked is idle, in dim green', () => {
+    expect(header(seen(up(status([{ ...ROW, state: 'pr' }])), true), NOW, 60).right).toEqual({ tone: 'idle', text: '● Idle · up 1h 04m' })
+  })
+  test('stopping, not running, killed, unclean, and never run', () => {
+    expect(header(seen(up(status([ROW])), true, true), NOW, 60).right).toEqual({ tone: 'now', text: '● Stopping after this step' })
+    expect(header(seen(status([ROW], undefined, false), false), NOW, 60).right).toEqual({ tone: 'quiet', text: '○ Not running' })
+    const killed = header(seen(status([ROW], undefined, true), false, false, true), NOW, 80).right
+    expect(killed).toEqual({ tone: 'fail', text: '○ Not running. The last run was killed and left its lock behind' })
+    expect(header(seen(status([ROW], undefined, true), false), NOW, 80).right).toEqual({ tone: 'fail', text: "○ Not running. The last run didn't finish cleanly" })
+    expect(header(seen(null, false), NOW, 60).right.text).toBe("○ Hasn't run here yet")
+  })
+  test('an older loop.py, with no start, has no uptime', () => {
+    expect(header(seen(status([ROW]), true), NOW, 60).right.text).toBe('● Running')
+  })
+  test('two rows at any width: one when it fits, the state on the second when it does not, uncut', () => {
+    const s = seen(up(status(two)), true)
+    const wide = header(s, NOW, 60)
+    const narrow = header(s, NOW, 24)
+    expect(wide.rows.length).toBe(narrow.rows.length)
+    expect(wide.wraps).toBe(false)
+    expect(wide.rows[0]).toBe(`starter${' '.repeat(60 - 7 - 23)}● Running 2 · up 1h 04m`)
+    expect(wide.rows[1]).toBe('')
+    expect(narrow.wraps).toBe(true)
+    expect(narrow.rows).toEqual(['starter', '● Running 2 · up 1h 04m'])
+  })
+  test('the start survives the status file', () => {
+    expect(parseStatus(JSON.stringify({ started: STARTED, issues: [] }))?.started).toBe(STARTED)
+    expect(parseStatus('{"issues": []}')?.started).toBeNull()
+  })
+})
+
+group("a job's own window", () => {
+  const inTmux = (isLocked: boolean, name = 'loop-starter') => seen(status([ROW], undefined, true, name), isLocked)
+  test('its watch file, and the read-only command that opens its window', () => {
+    expect(jobWatchFile(12)).toBe('.loop/issue-12/watch.command')
+    expect(jobAttach(inTmux(true), { ...ROW, window: 'issue-12' })).toBe("tmux attach -r -t '=loop-starter:issue-12'")
+    expect(jobAttach(inTmux(true, "it's"), { ...ROW, window: 'issue-12' })).toBe("tmux attach -r -t '=it'\\''s:issue-12'")
+  })
+  test('no window, no session, or no live run: nothing to watch', () => {
+    expect(jobAttach(inTmux(true), ROW)).toBeNull()
+    expect(jobAttach(seen(status([ROW]), true), { ...ROW, window: 'issue-12' })).toBeNull()
+    expect(jobAttach(inTmux(false), { ...ROW, window: 'issue-12' })).toBeNull()
+  })
+  test('the window survives the status file', () => {
+    expect(parseStatus(JSON.stringify({ issues: [{ ...ROW, window: 'issue-12' }] }))?.issues[0]?.window).toBe('issue-12')
+  })
+})
+
+group('a waiting issue', () => {
+  test('names what it waits on', () => {
+    expect(waitingOn({ number: 16, title: 't', waiting_on: [14] })).toBe('waiting on #14')
+    expect(waitingOn({ number: 16, title: 't', waiting_on: [14, 15] })).toBe('waiting on #14, #15')
+    expect(waitingOn({ number: 16, title: 't' })).toBeNull()
+  })
+  test('what it waits on survives the status file', () => {
+    const text = JSON.stringify({ queue: [{ number: 16, title: 't', waiting_on: [14, 15] }, { number: 17, title: 'u' }], issues: [] })
+    expect(parseStatus(text)?.queue).toEqual([{ number: 16, title: 't', waiting_on: [14, 15] }, { number: 17, title: 'u' }])
   })
 })
 

@@ -96,7 +96,7 @@ first, nothing secret in it:
 
 Point a dashboard or a Slack post at that file and you have a monitor.
 `.loop/status.json` holds the same state for a tool to read rather than parse:
-`running`, the `tmux` session it's in (when it was started in one), the
+`running`, when the run `started` (UTC), the `tmux` session it's in (when it was started in one), the
 `queue` of ready issues waiting, and one row per issue, newest
 first, with its `step`, `round`, `state` (`working`, `pr`, `blocked`,
 `stopped` or `skipped`), the last `tests` and `review`, and the `pr` link.
@@ -112,7 +112,8 @@ on an issue still being worked waits for it. Each issue's agents write what
 they say to `.loop/issue-N/agent.log` as they say it. Run inside tmux, each
 issue also gets a window named `issue-N` that follows that file and closes
 when the issue ends, and while it's open the issue's row in `status.json`
-names it as `window`. A stop
+names it as `window`. On a Mac the run also writes `.loop/issue-N/watch.command`
+for that window, which the pane's **Watch** on the issue opens read-only. A stop
 starts nothing new and lets each running issue finish its step. Every worker
 runs its own agent sessions, so usage grows with the number of workers.
 
