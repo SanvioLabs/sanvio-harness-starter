@@ -32,9 +32,12 @@ Paths are from the harness root.
    the human rather than padding the hours.
 5. Run `python3 examples/proposal/gates/proposal_gate.py examples/proposal/proposals/<file>.md`.
 6. Fix what it names and run it again until it passes.
+7. Stamp it: `python3 examples/proposal/gates/stamp.py gate examples/proposal/proposals/<file>.md`.
+   That runs the gate once more and records that it passed on this text.
 
 ## Output
 
 The path of the proposal and the gate's output, pasted as it printed. Nothing
 else. Then hand it to the `reviewer` agent with [`examples/proposal/agents/proposal-reviewer.md`](../../agents/proposal-reviewer.md)
-as its brief.
+as its brief. Don't stamp it `reviewed` yourself: that stamp is the person's,
+once they've read the findings.

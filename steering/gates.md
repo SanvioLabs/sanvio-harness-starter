@@ -66,4 +66,6 @@ or two become scripts.
 | Scale | Can it run without you: written down, watched, with a named owner? | A person |
 
 Start with Build. It's the one a script decides best, and it's the one the
-starter already wires.
+starter already wires. [`examples/proposal/gates/phase_gate.py`](../examples/proposal/gates/phase_gate.py) is the script half for
+the proposal job: it names what's missing before Shape or Build and what closes
+each gap, and leaves the person's questions, and moving the phase, to a person.

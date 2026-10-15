@@ -45,6 +45,12 @@ decides what the agent knows, what it's allowed to do, and what counts as done.
 - **Fix and recheck**, inside a session: gate fails, agent fixes, gate runs.
 - **At commit and at push**: the same checks, run by git and CI rather than
   by the agent's good intentions.
+- **A stamp goes stale**, on one piece of work: each check stamps a fingerprint
+  of the text it passed, in order, and an edit sends it back through them.
+  [`examples/proposal/gates/stamp.py`](examples/proposal/gates/stamp.py) is the small version.
+- **Close the gap**, between phases: the phase gate names what's missing and
+  what closes it, you close it, and the gate runs again.
+  [`examples/proposal/gates/phase_gate.py`](examples/proposal/gates/phase_gate.py) is the small version.
 - **Mistake to rule**, across sessions: when the agent gets something wrong,
   [`skills/learn/`](skills/learn/) writes the rule into the file that governs it.
 - **Sprint report**, across people: each person's usage log records which
