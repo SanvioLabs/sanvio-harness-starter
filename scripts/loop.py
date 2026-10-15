@@ -328,6 +328,7 @@ class Loop:
         self.finished = set()
         self.session = None  # the tmux session this run is in, once locked() has asked
         self.windows = {}  # issue number -> the tmux window following its agent.log
+        self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
 
     # -- plumbing ---------------------------------------------------------
 
@@ -515,6 +516,7 @@ class Loop:
         timer.daemon = True
         said = []
         with proc:
+            self.agents.add(proc)
             threading.Thread(target=feed, daemon=True).start()
             timer.start()
             try:
@@ -528,6 +530,7 @@ class Loop:
                 proc.wait()
             finally:
                 timer.cancel()
+                self.agents.discard(proc)
         if expired.is_set():
             return 124, "timed out after {}s".format(timeout)
         return proc.returncode, "".join(said)
@@ -930,8 +933,20 @@ class Loop:
                 running[issue["number"]] = self.start(issue)
                 if once or only is not None:
                     break
+            while running:
+                self.reap(running, None)
+        except KeyboardInterrupt:
+            # Ends now, as it did with one issue: the agents run in sessions of their own, so the
+            # Ctrl-C never reached them, and waiting on them could take agent_timeout each.
+            for proc in list(self.agents):
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass  # it ended on its own meanwhile
+            running.clear()
+            raise
         finally:
-            for thread in running.values():
+            for thread in running.values():  # after any other error, still let each worker finish
                 thread.join()
 
     def reap(self, running, timeout=0):

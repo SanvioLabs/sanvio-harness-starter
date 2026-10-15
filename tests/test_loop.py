@@ -186,9 +186,10 @@ elif args[0] == "api" and args[1].startswith("repos/{owner}/{repo}/issues/"):
     print(json.dumps(found))
 elif args[:2] == ["issue", "list"]:
     print(open(os.path.join(state, "issues.json")).read())
-elif args[:2] == ["issue", "edit"] and "--remove-label" in args:
+elif args[:2] == ["issue", "edit"] and "--remove-label" in args and os.path.exists(os.path.join(state, "labels-follow")):
     # Off the listed issue too, as on GitHub, so a loop that keeps polling doesn't take it again.
-    # Locked and replaced whole: two workers can edit at once while the loop reads the list.
+    # Only when a test sets labels-follow. Locked and replaced whole: two workers can edit at once
+    # while the loop reads the list.
     import fcntl, json
     path = os.path.join(state, "issues.json")
     with open(os.path.join(state, "issues.lock"), "w") as lock:
@@ -881,6 +882,7 @@ class TestAPass(unittest.TestCase):
     def go_workers(self, workers=2):
         """A run without --once, with `workers` workers. The first idle poll stops it."""
         self.cfg["max_workers"] = workers
+        (self.state / "labels-follow").write_text("")  # a finished issue leaves the ready list
         def stop(seconds):
             (self.work / ".loop" / "STOP").write_text("")
         with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=stop)), \
@@ -966,6 +968,11 @@ class TestAPass(unittest.TestCase):
         self.assertIn("tail -n +1 -f " + shlex.quote(str(log)), calls[opened])
         self.assertGreater(calls.index("kill-window -t loop-work:issue-12"), opened)
         self.assertEqual(self.status()["issues"][0]["window"], "issue-12")
+
+    def test_outside_tmux_no_window_opens(self):
+        self.go()
+        self.assertFalse((self.state / "tmux-calls").exists())
+        self.assertIsNone(self.status()["issues"][0].get("window"))
 
     def test_a_stop_while_two_workers_run_lets_both_finish_and_starts_no_third(self):
         self.timed(issue(12), issue(13), issue(14))
