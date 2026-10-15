@@ -91,6 +91,7 @@ ISSUE_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
 # Left out of the environment the test command runs in. It runs code the agent wrote, and the agent
 # wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
 SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
+DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
 
 
 def load_config(root):
@@ -129,6 +130,14 @@ def ready(issues, me, cfg):
             continue
         out.append(issue)
     return out
+
+
+def depends_on(body):
+    """The issue numbers on an issue's "Depends on" lines, lowest first, each once."""
+    found = set()
+    for line in DEPENDS_ON.findall(body or ""):
+        found.update(int(n) for n in re.findall(r"#(\d+)", line))
+    return sorted(found)
 
 
 def confined(cmd):
@@ -447,7 +456,7 @@ class Loop:
 
     # -- the flywheel -----------------------------------------------------
 
-    def discover(self, only=None):
+    def discover(self, only=None, dry_run=False):
         code, out = self.gh("issue", "list", "--state", "open", "--limit", "50", "--json",
                             "number,title,body,labels,assignees")
         if code != 0:
@@ -455,7 +464,9 @@ class Loop:
             return None
         waiting = ready(json.loads(out or "[]"), self.whoami(), self.cfg)
         self.save_status(queue=[{"number": i["number"], "title": i["title"]} for i in waiting])
-        return pick(waiting, self.whoami(), self.cfg, only)
+        # Only an issue with nothing left to wait for may be picked; the queue still shows the rest.
+        free = [i for i in waiting if self.held(i, dry_run) == "ok"]
+        return pick(free, self.whoami(), self.cfg, only)
 
     def fresh(self, issue):
         """The issue as GitHub has it now, if the loop may build from it; None when it may not.
@@ -479,6 +490,86 @@ class Loop:
             self.block(number, "not taken: " + why)
             return None
         return dict(issue, title=data.get("title") or issue["title"], body=data.get("body") or "")
+
+    def dependencies(self, number, body):
+        """What this issue waits on, from its "Depends on" lines and the issues GitHub lists as blocking it.
+
+        ("ok", []) when nothing is left, ("wait", [open numbers]), ("block", why) when one can never be
+        met, or ("error", gh's output) when GitHub couldn't say. Each issue is read once per call.
+        """
+        found = {}  # number -> the issue as GitHub has it, or None for one that isn't there
+
+        def read(n):
+            if n not in found:
+                code, out = self.gh("api", "repos/{owner}/{repo}/issues/" + str(n))
+                if code != 0 and "HTTP 404" in out:
+                    found[n] = None
+                elif code != 0:
+                    raise LookupError(out)
+                else:
+                    found[n] = json.loads(out)
+            return found[n]
+
+        def needs(n, text):
+            code, out = self.gh("api", "--paginate", "repos/{owner}/{repo}/issues/" + str(n) +
+                                "/dependencies/blocked_by", "--jq", ".[].number")
+            if code != 0:
+                raise LookupError(out)
+            return sorted(set(depends_on(text)) | {int(w) for w in out.split() if w.isdigit()})
+
+        def is_open(got):
+            return bool(got) and not got.get("pull_request") and got.get("state") == "open"
+
+        try:
+            direct = needs(number, body)
+            if number in direct:
+                return "block", "it depends on itself"
+            for d in direct:
+                got = read(d)
+                if got is None or got.get("pull_request"):
+                    return "block", "#{} isn't an issue".format(d)
+                # No reason at all is an issue closed before GitHub recorded one: closed the plain way.
+                reason = got.get("state_reason")
+                if got.get("state") == "closed" and reason not in (None, "completed"):
+                    return "block", "#{} was closed as {}".format(d, reason.replace("_", " "))
+            waits = [d for d in direct if is_open(read(d))]
+            # Follow what each open dependency waits on in turn: if it comes back here, none can start.
+            seen, todo = set(waits), [(d, d) for d in waits]
+            while todo:
+                start, n = todo.pop()
+                for m in needs(n, read(n).get("body")):
+                    if m == number:
+                        return "block", "#{} depends back on #{}".format(start, number)
+                    if m not in seen:
+                        seen.add(m)
+                        if is_open(read(m)):
+                            todo.append((start, m))
+        except (LookupError, ValueError) as err:
+            return "error", str(err)
+        return ("wait", waits) if waits else ("ok", [])
+
+    def held(self, issue, dry_run=False):
+        """dependencies() for one issue, acted on. Returns "ok", "wait", "block" or "error".
+
+        One that can never be met is blocked, which takes its ready label off, so it's said once.
+        One that waits, or that GitHub couldn't answer for, is logged once per run and left as it is.
+        """
+        number = issue["number"]
+        verdict, detail = self.dependencies(number, issue.get("body"))
+        if verdict == "block":
+            if dry_run:
+                self.log_once("DISCOVER", "would block: not taken: " + detail, number)
+            else:
+                self.block(number, "not taken: " + detail)
+        elif verdict == "wait":
+            self.log_once("WAITING", "on " + ", ".join("#{}".format(d) for d in detail), number)
+            for row in self.status["queue"]:
+                if row["number"] == number:
+                    row["waiting_on"] = detail
+            self.save_status()
+        elif verdict == "error":
+            self.log_once("ERROR", "could not read its dependencies: " + detail.strip()[:200], number)
+        return verdict
 
     def worktrees(self):
         if self.cfg["worktree_dir"]:
@@ -526,7 +617,8 @@ class Loop:
 
     def process(self, issue):
         issue = self.fresh(issue)
-        if issue is None:
+        # Again on the text as it is now: a "Depends on" line added after discover saw it still counts.
+        if issue is None or self.held(issue) != "ok":
             return
         number = issue["number"]
         folder = self.dir / "issue-{}".format(number)
@@ -721,7 +813,7 @@ class Loop:
     def work(self, once, only, dry_run):
         idle = False
         while not self.stopped():
-            issue = self.discover(only)
+            issue = self.discover(only, dry_run)
             if issue is None:
                 if not idle:
                     self.log("IDLE", "nothing ready")
