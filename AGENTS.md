@@ -121,8 +121,13 @@ After the gate passes, hand the work to a reviewer before a human sees it.
 |---|---|---|
 | [`agents/reviewer.md`](agents/reviewer.md) | Reads finished work as the person who receives it would and reports what's unclear or over-promised, using the job's brief if it has one. Never edits | Any finished work, before it's sent or merged |
 | [`agents/security-reviewer.md`](agents/security-reviewer.md) | Reads code the way an attacker would and reports what could be exploited, each finding with its attack path, and a READY or NOT-READY verdict. Read-only; its shell runs dependency audits and a redacted secret scan, nothing else | Asked for a security review, or a change touches auth, input handling, secrets, infrastructure or dependencies |
+| [`agents/ceo.md`](agents/ceo.md) | Reads finished work from the chief executive's seat and reports what it commits the company to that nobody decided, what it costs, and anything the company says it won't do. Never edits | Work that commits money, time or people, or changes what the company is for |
+| [`agents/cto.md`](agents/cto.md) | Reads finished work from the chief technology officer's seat and reports what won't hold, what can't be run or undone, and technical claims it doesn't show. Sends vulnerabilities to `security-reviewer`. Never edits | Work that adds a design, a dependency or a technical claim |
+| [`agents/cmo.md`](agents/cmo.md) | Reads finished work from the chief marketing officer's seat and reports claims a customer could check and find wrong, and anything at odds with how the company presents itself. Never edits | Work a customer or the public will read |
+| [`agents/gc.md`](agents/gc.md) | Reads finished work from the general counsel's seat for licences, promises, other parties' names or content, and personal data, and ends with the findings that need a lawyer. Not a lawyer, not legal advice. Never edits | Work that makes a promise, uses someone else's code or content, or handles personal data |
 
-In Claude Code they run as the `reviewer` and `security-reviewer` subagents.
+In Claude Code they run as the `reviewer`, `security-reviewer`, `ceo`, `cto`,
+`cmo` and `gc` subagents.
 In other tools, run each as a separate session with its file as its
 instructions.
 

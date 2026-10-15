@@ -37,7 +37,8 @@ class Steering(unittest.TestCase):
 SHIPPED = ["steering/*.md", "examples/**/*", "skills/orientation/*", "skills/learn/*",
            "skills/review-pr/*", "skills/review-tests/*", "skills/review-skill/*",
            "skills/whats-new/*", "CHANGELOG.md",
-           "agents/reviewer.md", "agents/security-reviewer.md", "gates/README.md", "company/README.md",
+           "agents/reviewer.md", "agents/security-reviewer.md", "agents/ceo.md", "agents/cto.md",
+           "agents/cmo.md", "agents/gc.md", "gates/README.md", "company/README.md",
            "company/COMPANY.example.md", "projects/README.md", "README.md", "HOW-IT-WORKS.md",
            "EXERCISES.md", "STARTER-SKILLS.md", "scripts/*", "tests/*", ".claude/**/*",
            ".githooks/*", ".github/**/*"]
@@ -71,6 +72,24 @@ class HouseStyle(unittest.TestCase):
                 if EM_DASH in line:
                     found.append("{}:{}".format(path.relative_to(ROOT), number))
         self.assertEqual(found, [], "em dashes: use a colon, commas, parentheses or two sentences")
+
+
+class Agents(unittest.TestCase):
+    def test_every_agent_has_a_read_only_wrapper(self):
+        """Every agents/*.md runs in Claude Code from a .claude/agents/ file of the same name that can't
+        change anything: no Edit or Write, and Bash only for security-reviewer, whose shell guard.py
+        holds to a list. Every .md in agents/ counts as an agent, so a README there would need a wrapper."""
+        files = sorted((ROOT / "agents").glob("*.md"))
+        self.assertTrue(files)
+        for path in files:
+            wrapper = ROOT / ".claude" / "agents" / path.name
+            self.assertTrue(wrapper.is_file(), "no wrapper for agents/" + path.name)
+            # Without a tools line a subagent gets every tool.
+            line = re.search(r"^tools:(.*)$", wrapper.read_text(), re.M)
+            self.assertTrue(line, "no tools line in " + str(wrapper.relative_to(ROOT)))
+            tools = {tool.strip() for tool in line.group(1).split(",")}
+            banned = {"Edit", "Write"} | ({"Bash"} if path.stem != "security-reviewer" else set())
+            self.assertFalse(tools & banned, "{} can {}".format(wrapper.relative_to(ROOT), sorted(tools & banned)))
 
 
 if __name__ == "__main__":
