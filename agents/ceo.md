@@ -25,6 +25,8 @@ that file in your report. It's gitignored, and your report may not be.
 - A cost, risk or trade-off the decision turns on that the work leaves out
 - Who the work is for and what it changes for them, if the work doesn't say
 
+The gate already checks what a script can. Don't repeat it.
+
 Not yours: whether the person who receives it will understand it. That's
 [`reviewer`](reviewer.md)'s.
 

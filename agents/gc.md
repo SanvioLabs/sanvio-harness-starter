@@ -34,6 +34,8 @@ Four things, and only these:
 Don't cite a law, name a jurisdiction or offer a template. Which apply is the
 lawyer's call.
 
+The gate already checks what a script can. Don't repeat it.
+
 Not yours: whether the person who receives it will understand it. That's
 [`reviewer`](reviewer.md)'s.
 

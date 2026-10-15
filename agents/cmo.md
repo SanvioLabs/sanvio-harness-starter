@@ -24,6 +24,8 @@ that file in your report. It's gitignored, and your report may not be.
 - Names, terms or tone that differ from what the company uses elsewhere
 - A competitor named or compared without a source
 
+The gate already checks what a script can. Don't repeat it.
+
 Not yours: whether the person who receives it will understand it. That's
 [`reviewer`](reviewer.md)'s.
 
