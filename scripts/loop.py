@@ -110,6 +110,11 @@ class Interrupted(BaseException):
     """
 
 
+def interrupt(signum, frame):
+    """A SIGTERM or SIGHUP, taken as a Ctrl-C."""
+    raise KeyboardInterrupt()
+
+
 def workers(cfg):
     """max_workers from the config as a whole number, at least 1, or None when it isn't a number."""
     value = cfg.get("max_workers", 1)
@@ -941,6 +946,13 @@ class Loop:
             self.log("ERROR", "max_workers in loop.json isn't a number ({!r}), so it works one issue at a time".format(
                 self.cfg.get("max_workers"))[:200])
             most = 1
+        # The agents run in sessions of their own, so a closed terminal or a killed tmux session no
+        # longer reaches them. Its SIGHUP, or a SIGTERM, ends the run the way a Ctrl-C does, which
+        # kills them, rather than leaving them working an issue the next run may take again.
+        caught = {}
+        if threading.current_thread() is threading.main_thread():
+            for sig in (signal.SIGTERM, signal.SIGHUP):
+                caught[sig] = signal.signal(sig, interrupt)
         try:
             while not self.stopped():
                 self.reap(running)
@@ -984,6 +996,8 @@ class Loop:
             running.clear()
             raise
         finally:
+            for sig, before in caught.items():
+                signal.signal(sig, before)
             for thread in running.values():  # after any other error, still let each worker finish
                 thread.join()
 

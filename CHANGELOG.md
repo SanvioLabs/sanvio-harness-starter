@@ -38,7 +38,8 @@ inside tmux, each issue gets a window named `issue-N` that follows that file and
 closes when the issue ends; while it's open, the issue's row in
 `.loop/status.json` names it as `window`.
 Every worker runs its own agent sessions, so usage grows with the number of
-workers.
+workers. Closing the loop's terminal or tmux session, or a `kill`, now ends the
+run as a Ctrl-C does: its agents are stopped, not left working.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
 

@@ -5,6 +5,7 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -966,6 +967,42 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(self.comments(), [])
         self.assertNotIn("BLOCKED", [l.split()[2] for l in self.lines()])
         self.assertEqual({r["state"] for r in self.status()["issues"]}, {"working"})
+
+    def test_a_sigterm_or_sighup_ends_the_agents_as_a_ctrl_c_does(self):
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            with self.subTest(signal=sig.name):
+                self.timed(issue(12), seconds=30)
+                (self.state / "times").unlink(missing_ok=True)
+                self.cfg["max_workers"] = 1
+                original = loop.Loop.reap
+
+                def reap(this, running, timeout=0, sig=sig):
+                    times = self.state / "times"
+                    if missed:  # the loop didn't take it: stop, so the test fails rather than hangs
+                        (self.work / ".loop" / "STOP").write_text("")
+                    elif running and times.exists() and " build " in times.read_text():
+                        os.kill(os.getpid(), sig)
+                    return original(this, running, 0.05)
+
+                missed = []
+                before = signal.signal(sig, lambda *a: missed.append(a))  # if the loop doesn't take it
+                started = time.time()
+                try:
+                    with mock.patch.object(loop.Loop, "reap", reap), contextlib.redirect_stdout(io.StringIO()), \
+                            contextlib.redirect_stderr(io.StringIO()):
+                        with self.assertRaises(KeyboardInterrupt):
+                            loop.Loop(self.work, self.cfg).run()
+                        for thread in threading.enumerate():
+                            if thread.name == "issue-12":
+                                thread.join(10)
+                                self.assertFalse(thread.is_alive())
+                    self.assertEqual(missed, [])
+                    self.assertEqual(signal.getsignal(sig).__name__, "<lambda>")  # put back as it was
+                finally:
+                    signal.signal(sig, before)
+                self.assertLess(time.time() - started, 20)  # the agent was killed, not waited out
+                self.assertFalse((self.work / ".loop" / "lock").exists())
+                self.assertNotIn("BLOCKED", [l.split()[2] for l in self.lines()])
 
     def test_a_max_workers_that_isnt_a_number_works_one_at_a_time(self):
         self.cfg["max_workers"] = "lots"
