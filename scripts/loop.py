@@ -299,11 +299,17 @@ class Loop:
         self.dir = self.root / ".loop"
         self.dir.mkdir(exist_ok=True)
         self.me = None
-        self.said = set()  # skips already logged by this process, so a poll doesn't repeat them
+        self.said = set()  # skips and tidy lines already logged by this process, so a poll doesn't repeat them
         self.unposted = {}  # pull request number -> (sha, comment) the agent wrote and GitHub refused
         self.status = self.read_status()
 
     # -- plumbing ---------------------------------------------------------
+
+    def log_once(self, step, text, number=None):
+        """Log a line once per run, for checks repeated on every idle poll."""
+        if (step, text, number) not in self.said:
+            self.said.add((step, text, number))
+            self.log(step, text, number)
 
     def log(self, step, text, number=None):
         """One line per event: time, issue, step, detail. The whole monitor is tail -f."""
@@ -621,6 +627,53 @@ class Loop:
         if problems:
             self.lesson(number, rounds, problems, passed=True)
 
+    def tidy(self):
+        """Remove the worktree and branch of each issue whose pull request is merged or closed.
+
+        Only a clean worktree goes, and without --force. The branch goes with -D, since after a
+        squash merge it never looks merged here, so it goes only when every commit on it is in
+        the pull request: a commit made in the worktree and never pushed keeps both.
+        Runs on every idle poll, so a pull request merged while the loop sits idle is still
+        tidied. A worktree it keeps, or can't check, is logged once per run, not every poll.
+        """
+        for row in list(self.status["issues"]):
+            number = row["number"]
+            path = self.worktrees() / "issue-{}".format(number)
+            if row.get("state") != "pr" or not row.get("pr") or not path.exists():
+                continue
+            # The exit code decides, not the output: gh prints its errors to stdout.
+            code, out = self.gh("pr", "view", row["pr"], "--json", "state,headRefOid",
+                                "-q", '.state + " " + .headRefOid')
+            if code != 0:
+                self.log_once("ERROR", "could not read the pull request's state: " + out.strip()[:200], number)
+                continue
+            state, _, head = out.strip().partition(" ")
+            if state not in ("MERGED", "CLOSED"):
+                continue
+            code, out = self.git("status", "--porcelain", cwd=path)
+            if code != 0:
+                self.log_once("ERROR", "could not check the worktree for changes: " + out.strip()[:200], number)
+                continue
+            if out.strip():
+                self.log_once("KEPT", "worktree has changes", number)
+                continue
+            branch = "loop/issue-{}".format(number)
+            # Exit 1 means a commit on the branch isn't in the pull request; any other failure,
+            # such as a head this clone hasn't fetched, also keeps it.
+            code, _ = self.git("merge-base", "--is-ancestor", branch, head) if head else (1, "")
+            if code != 0:
+                self.log_once("KEPT", "{} has commits the pull request doesn't".format(branch), number)
+                continue
+            code, out = self.git("worktree", "remove", str(path))
+            if code != 0:
+                self.log("ERROR", "could not remove the worktree: " + out.strip()[:200], number)
+                continue
+            code, out = self.git("branch", "-D", branch)
+            if code != 0:
+                self.log("ERROR", "removed the worktree but not {}: {}".format(branch, out.strip()[:200]), number)
+                continue
+            self.log("CLEANUP", "pull request {}, removed its worktree and {}".format(state.lower(), branch), number)
+
     # -- running ----------------------------------------------------------
 
     def take_lock(self):
@@ -671,6 +724,8 @@ class Loop:
                 if not idle:
                     self.log("IDLE", "nothing ready")
                     idle = True
+                if not dry_run:
+                    self.tidy()
                 if once or dry_run or only is not None:
                     break
                 time.sleep(self.cfg["poll_seconds"])

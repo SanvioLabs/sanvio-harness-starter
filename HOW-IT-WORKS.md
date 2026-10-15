@@ -70,7 +70,7 @@ the next. Nothing runs until you start it, and it never merges.
 |---|---|---|
 | Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else | `ticket.md` |
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
-| Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`) | the commit |
+| Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`). Once the pull request is merged or closed, the loop removes the worktree and its branch while it's idle, unless the worktree has changes or the branch has commits the pull request doesn't | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
 | Scale | On PASS, and if the issue is still open, it opens a pull request that says `Closes #N` and comments the link on the issue. A blocked issue gets a comment saying why. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
 
