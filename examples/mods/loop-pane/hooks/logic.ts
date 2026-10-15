@@ -81,20 +81,22 @@ export function headline(seen: Seen): Line {
   return { tone: 'quiet', text: 'Not running' }
 }
 
-export type Header = { left: string; right: Line; wraps: boolean; rows: [string, string] }
+export type Header = { left: string; right: Line; isPulsing: boolean; wraps: boolean; rows: [string, string] }
 
 // The pane's top: the repo on the left, the loop's state on the right. Always two rows: the state
 // drops to the second when both don't fit on the first, and the second stays blank when they do, so
-// nothing below moves as the state changes.
+// nothing below moves as the state changes. The state's dot pulses while the loop is on a job, like
+// that job's own dot.
 export function header(seen: Seen, now: number, width: number): Header {
   const left = seen.root.split('/').filter(Boolean).pop() ?? seen.root
   const right = loopState(seen, now)
+  const isPulsing = seen.isLocked && !seen.isStopping && !!seen.status?.issues.some(r => r.state === 'working')
   const wraps = left.length + 1 + right.text.length > width
   if (wraps) {
     const state = { tone: right.tone, text: clip(right.text, width) }
-    return { left: clip(left, width), right: state, wraps, rows: [clip(left, width), state.text] }
+    return { left: clip(left, width), right: state, isPulsing, wraps, rows: [clip(left, width), state.text] }
   }
-  return { left, right, wraps, rows: [left + ' '.repeat(width - left.length - right.text.length) + right.text, ''] }
+  return { left, right, isPulsing, wraps, rows: [left + ' '.repeat(width - left.length - right.text.length) + right.text, ''] }
 }
 
 // The header's state. Running counts the jobs being worked, and says so past one; a run with none is

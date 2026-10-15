@@ -26,6 +26,7 @@ starter                                ● Running 2 · up 1h 04m
 The top line names the repo, and on the right whether the loop is running, how
 many jobs it's on and how long it has been up. In a narrow pane the state drops
 to the second line; the header always takes two, so nothing under it moves.
+While the loop is on a job, the dot before **Running** pulses with the jobs' dots.
 
 The dot beside a job the loop is on pulses, bright then dim, about once a
 second, and the clock beside it counts up. If the loop dies mid-step, the dot

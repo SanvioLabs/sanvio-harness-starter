@@ -117,6 +117,14 @@ group('the header', () => {
   test('an older loop.py, with no start, has no uptime', () => {
     expect(header(seen(status([ROW]), true), NOW, 60).right.text).toBe('● Running')
   })
+  test('the dot pulses only while the loop is on a job', () => {
+    expect(header(seen(up(status([ROW])), true), NOW, 60).isPulsing).toBe(true)
+    expect(header(seen(up(status(two)), true), NOW, 24).isPulsing).toBe(true)
+    expect(header(seen(up(status([{ ...ROW, state: 'pr' }])), true), NOW, 60).isPulsing).toBe(false)
+    expect(header(seen(up(status([ROW])), true, true), NOW, 60).isPulsing).toBe(false)
+    expect(header(seen(status([ROW], undefined, true), false), NOW, 80).isPulsing).toBe(false)
+    expect(header(seen(null, false), NOW, 60).isPulsing).toBe(false)
+  })
   test('two rows at any width: one when it fits, the state on the second when it does not, uncut', () => {
     const s = seen(up(status(two)), true)
     const wide = header(s, NOW, 60)

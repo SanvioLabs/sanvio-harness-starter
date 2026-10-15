@@ -80,7 +80,9 @@ group('the header', () => {
     const ui = await $.ui.mount(PANE)
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn).toContain('starter')
-    expect(drawn).toContain('● Idle')
+    // The state's dot is drawn apart from its words, so it can pulse; idle, it doesn't.
+    expect(drawn).toContain('" Idle"')
+    expect(JSON.stringify(await ui.find({ key: 'header' }))).not.toContain('cyan')
     expect(drawn).not.toContain('tmux attach')
     const row = await ui.find({ key: 'actions' })
     expect(row?.props.flexDirection).toBe('row')
@@ -235,6 +237,21 @@ group('a job in the pane', () => {
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn).toContain('●')
     expect(drawn).toContain(` · started ${p(d.getHours())}:${p(d.getMinutes())} · running 6m 1`)
+    await ui.unmount()
+  })
+  test("the header's Running dot pulses with the job's", async ($, on) => {
+    seed(on, working)
+    const ui = await $.ui.mount(PANE)
+    type Node = { props?: Record<string, unknown>; children?: (Node | string)[] }
+    const first = (n: Node | string | undefined): Node => (n as Node).children![0] as Node
+    // The header's state is its third child: the dot, then the words. A job's dot leads its first row.
+    const state = (await ui.find({ key: 'header' }) as unknown as Node).children![2] as Node
+    const headerDot = first(state)
+    const jobDot = first(first(await ui.find({ key: 'issue-12' }) as unknown as Node))
+    expect(headerDot.children).toEqual(['●'])
+    expect(JSON.stringify(state.children![1])).toContain(' Running')
+    // Drawn from the same beat, so the two dots brighten and dim together.
+    expect(headerDot.props).toEqual(jobDot.props)
     await ui.unmount()
   })
 })
