@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { FINISHED_MS, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, headline, isPulsing, lists, lockPid, page, parseStatus, sameSeen, waiting, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -174,5 +174,60 @@ group('the tabs', () => {
     expect(page(five, -4).start).toBe(0)
     expect(page([1, 2], 1)).toEqual({ shown: [1, 2], start: 0, above: 0, below: 0 })
     expect(page([], 3)).toEqual({ shown: [], start: 0, above: 0, below: 0 })
+  })
+})
+
+// A time as loop.py writes it: local, to the second, with no zone.
+function local(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+group('the dot', () => {
+  test('pulses only on a job the running loop is on', () => {
+    expect(dot(ROW, true)).toEqual({ tone: 'now', isPulsing: true })
+    expect(dot(ROW, false)).toEqual({ tone: 'fail', isPulsing: false })
+    expect(dot({ ...ROW, state: 'pr' }, true)).toEqual({ tone: 'pass', isPulsing: false })
+    expect(dot({ ...ROW, state: 'blocked' }, true)).toEqual({ tone: 'fail', isPulsing: false })
+    expect(dot({ ...ROW, state: 'skipped' }, true)).toEqual({ tone: 'quiet', isPulsing: false })
+  })
+  test('the pane redraws fast only while a dot pulses', () => {
+    expect(isPulsing(seen(status([ROW]), true))).toBe(true)
+    expect(isPulsing(seen(status([ROW]), false))).toBe(false)
+    expect(isPulsing(seen(status([{ ...ROW, state: 'pr' }]), true))).toBe(false)
+    expect(isPulsing(null)).toBe(false)
+  })
+})
+
+group('the clock', () => {
+  const START = new Date(2026, 9, 15, 14, 22, 5).getTime()
+  test('reads like a person says it', () => {
+    expect(duration(42_000)).toBe('42s')
+    expect(duration(6 * 60_000 + 5_000)).toBe('6m 05s')
+    expect(duration(64 * 60_000)).toBe('1h 04m')
+    expect(duration(-5)).toBe('0s')
+  })
+  test('a job being worked shows when it started and how long it has been running', () => {
+    const row = { ...ROW, started: local(START) }
+    expect(clock(row, true, START + 372_000)).toBe('started 14:22 · running 6m 12s')
+  })
+  test('an ended job shows how long it took, and one left by a dead run how long it ran', () => {
+    const done = { ...ROW, state: 'pr', started: local(START), updated: local(START + 18 * 60_000) }
+    expect(clock(done, true, START + 3_600_000)).toBe('started 14:22 · took 18m 00s')
+    const left = { ...ROW, started: local(START), updated: local(START + 90_000) }
+    expect(clock(left, false, START + 3_600_000)).toBe('started 14:22 · ran 1m 30s')
+  })
+  test('a start on another day carries its date', () => {
+    const row = { ...ROW, started: local(START) }
+    expect(clock(row, true, START + 24 * 3_600_000)).toBe('started Oct 15 14:22 · running 24h 00m')
+  })
+  test('a row from an older loop.py, with no start, has no clock', () => {
+    expect(clock(ROW, true, START)).toBeNull()
+    expect(clock({ ...ROW, started: 'soon' }, true, START)).toBeNull()
+  })
+  test('the start survives the status file', () => {
+    const text = JSON.stringify({ issues: [{ ...ROW, started: '2026-10-15T14:22:05' }] })
+    expect(parseStatus(text)?.issues[0]?.started).toBe('2026-10-15T14:22:05')
   })
 })

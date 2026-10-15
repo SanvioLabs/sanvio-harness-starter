@@ -534,8 +534,10 @@ class Loop:
         (folder / "ticket.md").write_text("# #{}: {}\n\n{}\n".format(
             number, issue["title"], issue.get("body") or ""))
         self.log("DISCOVER", 'picked "{}"'.format(issue["title"]), number)
+        # started: when this run of the issue began, for the pane's clock. A relabelled issue starts again.
         self.mark(number, title=issue["title"], step="SHAPE", state="working", round=0,
-                  tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"])
+                  tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"],
+                  started=datetime.now().isoformat(timespec="seconds"))
 
         try:
             tree, branch = self.worktree(number)

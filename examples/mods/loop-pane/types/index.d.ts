@@ -13,6 +13,8 @@ export type Row = {
   review: string | null
   pr: string | null
   note: string
+  // When this run of the issue began, in local time. An older loop.py doesn't write it.
+  started?: string
   updated?: string
 }
 

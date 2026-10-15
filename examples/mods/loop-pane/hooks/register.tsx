@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, describe, findRoot, firstTab, headline, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
+import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, clock, describe, dot, findRoot, firstTab, headline, isPulsing, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -9,6 +9,8 @@ const PANE = 'loop'
 // Not /loop: that's Claude Code's own command for running a prompt on a schedule.
 const COMMAND = 'loop-pane'
 const POLL_MS = 2000
+// The pulse's half beat. The pane redraws this often only while a job's dot is pulsing.
+const TICK_MS = 500
 
 const launchAtom = atom({ plugin: 'loop-pane', key: 'launch' } as const, null)
 const seenAtom = atom({ plugin: 'loop-pane', key: 'seen' } as const, null)
@@ -20,6 +22,11 @@ const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean 
   fail: { color: 'red', bold: true },
   quiet: { dimColor: true },
 }
+
+// A working job's dot, on alternate ticks. Bright and dim rather than on and off: a dot that vanishes
+// every other frame reads as a redraw glitch.
+const PULSE = { bright: { color: 'cyan', bold: true }, dim: { color: 'cyan', dimColor: true } } as const
+let beat = true
 
 // A job's rows: its title, where it is, two for the last round's results, and its pull request.
 const JOB_ROWS = 5
@@ -94,7 +101,9 @@ async function refresh($: EngineInterface): Promise<void> {
 function startPolling($: EngineInterface): void {
   if (stopPolling) return
   // every() hands back a timer, not a function: calling it threw, so the poll outlived the pane.
-  const timer = $.clock.every(POLL_MS, () => {
+  // It ticks at the pulse's pace and reads the loop's files on every POLL_MS / TICK_MS-th tick.
+  let ticks = 0
+  const timer = $.clock.every(TICK_MS, () => {
     void (async () => {
       const isUp = (await $.ui.panes()).some(pane => pane.id === PANE)
       if (!isUp) {
@@ -102,7 +111,10 @@ function startPolling($: EngineInterface): void {
         stopPolling = null
         return
       }
-      await refresh($)
+      beat = !beat
+      if (ticks++ % (POLL_MS / TICK_MS) === 0) await refresh($)
+      // The dot and the running clock move between reads, so redraw for them while a job is on.
+      if (isPulsing(await read($, seenAtom))) $.ui.invalidate('ui.render')
     })().catch(() => {})
   })
   stopPolling = () => timer.cancel()
@@ -145,6 +157,9 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const seen = await read($, seenAtom)
     const width = Math.max(10, e.props.bodyColumns)
+    // A job's lines sit under its title, past the dot.
+    const inner = width - 2
+    const now = Date.now()
 
     if (!seen) return <Text dimColor>Looking for the loop…</Text>
 
@@ -162,22 +177,34 @@ export const register: Register = on => {
     // moves as jobs scroll by or gain a result.
     const job = (row: Row) => {
       const { head: state, detail } = describe(row, seen.isLocked)
+      const mark = dot(row, seen.isLocked)
+      const time = clock(row, seen.isLocked, now)
+      const stateText = clip(state.text, inner)
+      // Every job has a dot, in the same column, so a title never moves as its job starts or ends.
       return (
         <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={JOB_ROWS}>
-          <Text bold>{clip(`#${row.number} ${row.title}`, width)}</Text>
-          <Text {...COLORS[state.tone]}>{clip(state.text, width)}</Text>
-          <Box height={2} overflow="hidden">
-            <Text dimColor>{detail ? clip(detail, width * 2) : ' '}</Text>
+          <Box flexDirection="row" columnGap={1}>
+            <Text {...(mark.isPulsing ? PULSE[beat ? 'bright' : 'dim'] : COLORS[mark.tone])}>●</Text>
+            <Text bold>{clip(`#${row.number} ${row.title}`, inner)}</Text>
           </Box>
-          {row.pr ? (
-            <Button
-              key={`pr-${row.number}`}
-              label={clip('Copy pull request link', width)}
-              onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
-            />
-          ) : (
-            <Text> </Text>
-          )}
+          <Box flexDirection="column" marginLeft={2}>
+            <Box flexDirection="row">
+              <Text {...COLORS[state.tone]}>{stateText}</Text>
+              {time && <Text dimColor>{clip(` · ${time}`, inner - stateText.length)}</Text>}
+            </Box>
+            <Box height={2} overflow="hidden">
+              <Text dimColor>{detail ? clip(detail, inner * 2) : ' '}</Text>
+            </Box>
+            {row.pr ? (
+              <Button
+                key={`pr-${row.number}`}
+                label={clip('Copy pull request link', inner)}
+                onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
+              />
+            ) : (
+              <Text> </Text>
+            )}
+          </Box>
         </Box>
       )
     }

@@ -11,28 +11,34 @@ tmux loop-starter: tmux attach -t loop-starter
 
 [ Queue 1 ] [ Active 1 ] [ Finished 4 ]
 
-#14 Gate: an empty Role cell passes
-building, round 2 of 5
-tests failed (1), review FIX
+● #14 Gate: an empty Role cell passes
+  building, round 2 of 5 · started 14:22 · running 6m 12s
+  tests failed (1), review FIX
 ```
+
+The dot beside a job the loop is on pulses, bright then dim, about once a
+second, and the clock beside it counts up. If the loop dies mid-step, the dot
+stops and turns red with the row. A job that has ended keeps a still dot in its
+result's colour, green for a pull request and red for a block, and says how
+long it took. A job started by a loop.py older than this one has no clock.
 
 Pick **Finished** and it lists the last day's jobs, three at a time:
 
 ```
 ▲ 1 more
-#1 Gate: a fee row with 0 hours passes
-pull request open
-tests passed, review PASS
-[ Copy pull request link ]
+● #1 Gate: a fee row with 0 hours passes
+  pull request open · started 09:10 · took 18m 03s
+  tests passed, review PASS
+  [ Copy pull request link ]
 
-#9 README: link the loop section
-blocked
-tests passed, review FIX. still failing after 5 rounds, see .loop/issue-9/
+● #9 README: link the loop section
+  blocked · started 08:02 · took 1h 04m
+  tests passed, review FIX. still failing after 5 rounds, see .loop/issue-9/
 
-#7 Gate: a blank fee cell passes
-pull request open
-tests passed, review PASS
-[ Copy pull request link ]
+● #7 Gate: a blank fee cell passes
+  pull request open · started 07:41 · took 12m 40s
+  tests passed, review PASS
+  [ Copy pull request link ]
 ```
 
 It's a Claude Code mod, so it works in Claude Code only, and it was built and

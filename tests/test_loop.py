@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -541,6 +542,14 @@ class TestAPass(unittest.TestCase):
         (self.state / "issues.json").write_text("[]")
         self.go()
         self.assertEqual([l.split()[2] for l in self.lines()], ["IDLE"])
+
+    def test_a_job_records_when_it_started_and_keeps_it_to_the_end(self):
+        before = datetime.now().replace(microsecond=0)
+        self.go()
+        row = self.status()["issues"][0]
+        started = datetime.fromisoformat(row["started"])
+        self.assertTrue(before <= started <= datetime.fromisoformat(row["updated"]))
+        self.assertEqual(row["state"], "pr")
 
     def open_then_idle(self, pr_state="OPEN"):
         """Open a pull request for #12, then run again with nothing ready. Returns the worktree path."""
