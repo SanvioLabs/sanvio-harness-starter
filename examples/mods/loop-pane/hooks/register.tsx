@@ -179,6 +179,13 @@ export const register: Register = on => {
     if (!seen) return <Text dimColor>Looking for the loop…</Text>
 
     const top = header(seen, now, width)
+    // The state's dot is its first character, drawn on its own so it can pulse with the jobs' dots.
+    const state = (
+      <Box flexDirection="row">
+        <Text {...(top.isPulsing ? PULSE[beat ? 'bright' : 'dim'] : COLORS[top.right.tone])}>{top.right.text.slice(0, 1)}</Text>
+        <Text {...COLORS[top.right.tone]}>{top.right.text.slice(1)}</Text>
+      </Box>
+    )
     const tmux = attach(seen)
     const watchFile = watch(seen)
     const l = lists(seen.status, now)
@@ -247,9 +254,9 @@ export const register: Register = on => {
         <Box key="header" flexDirection="row">
           <Text bold>{top.left}</Text>
           {!top.wraps && <Text>{' '.repeat(width - top.left.length - top.right.text.length)}</Text>}
-          {!top.wraps && <Text {...COLORS[top.right.tone]}>{top.right.text}</Text>}
+          {!top.wraps && state}
         </Box>
-        {top.wraps ? <Text {...COLORS[top.right.tone]}>{top.right.text}</Text> : <Text> </Text>}
+        {top.wraps ? state : <Text> </Text>}
         {/* The buttons' row stays when there are none, so the tabs don't move as the loop starts or stops. */}
         {!tmux && <Text key="actions"> </Text>}
         {tmux && (

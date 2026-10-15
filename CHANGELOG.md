@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: Loop pane header dot pulses
+
+The dot before **Running** in the `/loop-pane` header now pulses, bright then
+dim, in step with the dot beside each job the loop is on. Idle, stopping and
+not running keep a still dot.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** reopen `/loop-pane`, or reload mods, to pick it up.
+
 ## 2026-10-15: Loop pane header and a Watch button per job
 
 `/loop-pane` opens on a header: the repo on the left, and on the right whether
