@@ -36,7 +36,7 @@ the work alone if it doesn't. The CTO sends vulnerabilities to
 `security-reviewer`. The GC looks at licences, promises, other parties' names
 or content, and personal data, says it isn't a lawyer, and ends each report
 with the findings that need one. A new test checks every agent has a wrapper
-in `.claude/agents/` that can't edit, write or run a shell.
+in [`.claude/agents/`](.claude/agents/) that can't edit, write or run a shell.
 
 Files: [`agents/ceo.md`](agents/ceo.md), [`agents/cto.md`](agents/cto.md), [`agents/cmo.md`](agents/cmo.md), [`agents/gc.md`](agents/gc.md), [`.claude/agents/ceo.md`](.claude/agents/ceo.md), [`.claude/agents/cto.md`](.claude/agents/cto.md), [`.claude/agents/cmo.md`](.claude/agents/cmo.md), [`.claude/agents/gc.md`](.claude/agents/gc.md), [`AGENTS.md`](AGENTS.md), [`tests/test_steering.py`](tests/test_steering.py)
 
