@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: CEO, CTO, CMO and GC reviewers
+
+Four more read-only reviewers, one per executive seat, each reading finished
+work for what that seat answers for and reporting at most ten findings the way
+`reviewer` does. Each reads `company/COMPANY.md` if it exists and judges from
+the work alone if it doesn't. The CTO sends vulnerabilities to
+`security-reviewer`. The GC looks at licences, promises, other parties' names
+or content, and personal data, says it isn't a lawyer, and ends each report
+with the findings that need one. A new test checks every agent has a wrapper
+in [`.claude/agents/`](.claude/agents/) that can't edit, write or run a shell.
+
+Files: [`agents/ceo.md`](agents/ceo.md), [`agents/cto.md`](agents/cto.md), [`agents/cmo.md`](agents/cmo.md), [`agents/gc.md`](agents/gc.md), [`.claude/agents/ceo.md`](.claude/agents/ceo.md), [`.claude/agents/cto.md`](.claude/agents/cto.md), [`.claude/agents/cmo.md`](.claude/agents/cmo.md), [`.claude/agents/gc.md`](.claude/agents/gc.md), [`AGENTS.md`](AGENTS.md), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing.
+
 ## 2026-10-15: Loop pane header dot pulses
 
 The dot before **Running** in the `/loop-pane` header now pulses, bright then
