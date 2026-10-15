@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: Loop blocks a build that changes nothing
+
+When the loop's build leaves the branch the same as its base, the loop now
+blocks the issue there and then: no tests, no review, no push and no pull
+request. The status note and the log say `the build made no change in round N`,
+and the comment on the issue quotes the last 2,000 characters of the build
+agent's reply, with its @-mentions made harmless, so you can see why. A round
+that adds nothing on top of earlier rounds' commits still goes to review.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing.
+
 ## 2026-10-15: CEO, CTO, CMO and GC reviewers
 
 Four more read-only reviewers, one per executive seat, each reading finished

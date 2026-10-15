@@ -138,6 +138,14 @@ elif "You are the reviewer" in prompt:
     verdict = open(os.path.join(state, "verdict")).read().strip()
     print("Looks right." if verdict == "PASS" else "feature.txt is wrong.")
     print("VERDICT: " + verdict)
+elif os.path.exists(os.path.join(state, "build-noop")):
+    # Writes nothing, and says so at length: the start of the reply runs past what a comment keeps.
+    print("REPLY-START " + "x" * 3000 + " ping @someone. NOTHING-TO-DO-MARKER")
+elif os.path.exists(os.path.join(state, "build-once")):
+    # Writes feature.txt the first round only, so a later round adds no files.
+    if not os.path.exists("feature.txt"):
+        open("feature.txt", "w").write("done")
+    print("Added feature.txt.")
 else:
     open("feature.txt", "a").write("done")
     print("Added feature.txt.")
@@ -420,6 +428,50 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
         self.assertFalse(any("SIGNER-SAID-NO" in c for c in self.comments()))
         self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+
+    def test_a_build_that_changes_nothing_is_blocked_before_review(self):
+        (self.state / "build-noop").write_text("")
+        self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "BLOCKED"])
+        self.assertFalse((self.work / ".loop" / "issue-12" / "review.md").exists())
+        remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
+        self.assertEqual(remote, "")
+        calls = self.calls()
+        self.assertFalse(any(c.startswith("pr create") for c in calls))
+        self.assertIn("issue edit 12 --add-label loop:blocked", calls)
+
+    def test_a_build_that_changes_nothing_says_so_and_quotes_the_agent(self):
+        (self.state / "build-noop").write_text("")
+        self.go()
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        comment = comments[0]
+        self.assertIn("made no change", comment)
+        self.assertIn("NOTHING-TO-DO-MARKER", comment)
+        self.assertNotIn("REPLY-START", comment)
+        self.assertNotIn("x" * 2001, comment)
+        self.assertIn("@​someone", comment)
+        self.assertNotIn("@someone", comment)
+        self.assertNotIn("could not open the pull request", comment)
+
+    def test_no_change_shows_in_status_and_log(self):
+        (self.state / "build-noop").write_text("")
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["note"]), ("blocked", "the build made no change in round 1"))
+        blocked = [l for l in self.lines() if l.split()[2] == "BLOCKED"]
+        self.assertEqual(len(blocked), 1)
+        self.assertIn("no change", blocked[0])
+
+    def test_a_round_with_no_new_files_after_earlier_commits_is_reviewed(self):
+        (self.state / "build-once").write_text("")
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps.count("VALIDATE"), 2)
+        self.assertIn("still failing after 2 rounds", self.lines()[-1])
+        self.assertNotIn("no change", "\n".join(self.lines()))
 
     def test_a_comment_that_fails_is_logged_and_the_pull_request_stands(self):
         (self.state / "comment-fails").write_text("")

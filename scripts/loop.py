@@ -79,6 +79,7 @@ VERDICT = re.compile(r"^\s*VERDICT:\s*(PASS|FIX)\s*$", re.I | re.M)
 OUTPUT_CAP = 100_000
 REVIEW_MARKER = "<!-- loop-review-pr-report -->"  # first line of the one comment per pull request
 REVIEW_CAP = 60_000  # a report is cut here: a GitHub comment holds 65,536 characters
+SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
@@ -325,13 +326,21 @@ def pr_comment(url, rounds):
         url, rounds, "" if rounds == 1 else "s")
 
 
-def block_comment(number, why, rounds, cfg):
-    """Why it stopped and how to put it back. The reason is the loop's own words, never agent output."""
+def block_comment(number, why, rounds, cfg, said=None):
+    """Why it stopped and how to put it back. The reason is the loop's own words, never agent output.
+
+    said, when given, is the build agent's reply. Its tail follows the reason as a quote, apart from
+    it, with its mentions made harmless: the agent wrote it, and the issue's text shaped it.
+    """
     took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
-    return ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
+    text = ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
             ".loop/issue-{n}/ on the machine that ran it. To try again, fix the ticket (usually the "
             "Acceptance Criteria), take {blocked} off and put {ready} back.").format(
         took=took, why=why, n=number, blocked=cfg["blocked_label"], ready=cfg["ready_label"])
+    if said and said.strip():
+        quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
+        text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
+    return text
 
 
 class Loop:
@@ -731,13 +740,16 @@ class Loop:
         if code != 0:
             self.log("ERROR", "could not comment on the issue: " + out.strip()[:200], number)
 
-    def block(self, number, why, rounds=None):
-        """Take the issue off the queue: drop the ready label first, then mark it blocked."""
+    def block(self, number, why, rounds=None, said=None):
+        """Take the issue off the queue: drop the ready label first, then mark it blocked.
+
+        said, the build agent's reply, goes on the issue's comment only, never the log or status.
+        """
         self.halt_if_interrupted()  # whatever failed, a Ctrl-C caused it: the issue stays as it was
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
-        self.comment(number, block_comment(number, why, rounds, self.cfg))
+        self.comment(number, block_comment(number, why, rounds, self.cfg, said))
         self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):
@@ -804,12 +816,16 @@ class Loop:
                     return self.block(number, "commit refused (git exit {})".format(ccode))
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
+            # The whole branch against its base, not this round's files: a round that adds nothing
+            # to earlier rounds' commits still goes to review. A git that fails proves nothing.
+            dcode, diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)
+            if dcode == 0 and not diff.strip():
+                return self.block(number, "the build made no change in round {}".format(round_no), said=said)
             self.mark(number, step="VALIDATE")
 
             tcode, tout = self.sh(self.cfg["test_command"], cwd=tree, shell=True,
                                   timeout=self.cfg["test_timeout"], env=env_for_tests(os.environ))
             (folder / "test-output.txt").write_text(tout[-OUTPUT_CAP:])
-            diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)[1]
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
