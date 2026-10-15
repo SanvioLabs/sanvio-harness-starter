@@ -45,6 +45,19 @@ Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_l
 
 **Do:** restart a running loop, and reopen `/loop-pane`, to pick it up.
 
+## 2026-10-15: GitHub status mod
+
+A new mod, off unless you install it, draws one line above the prompt with the
+session repo's running actions, open pull requests and open issues, and adds
+`/github` to read them straight away. It only reads, through `gh`, at most once
+every two minutes, and a repo without a GitHub `origin` remote never calls
+`gh`.
+
+Files: [`examples/mods/github-status/`](examples/mods/github-status/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)
+
+**Do:** to use it, `/plugin install github-status@sanvio-harness-starter`,
+with `gh` installed and signed in.
+
 ## 2026-10-15: The loop works several issues at once
 
 [`scripts/loop.py`](scripts/loop.py) takes a `max_workers` key in `loop.json`,
