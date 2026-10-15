@@ -89,6 +89,22 @@ group('the header', () => {
     expect(inRow).toContain('Copy attach command')
     await ui.unmount()
   })
+  test('takes the same rows above the tabs whether the loop is running or not', async ($, on) => {
+    let seen = SEEN(true)
+    on('state.get', async (_$, e, next) =>
+      e.plugin === 'loop-pane' && e.key === 'seen' ? { value: { value: seen, version: 1 } } : next(e))
+    // How many of the pane's lines come before the tabs.
+    const above = async (): Promise<number> => {
+      const ui = await $.ui.mount(PANE)
+      const top = (await ui.drawn()) as unknown as { children: { props?: { key?: string } }[] }
+      await ui.unmount()
+      return top.children.findIndex(c => JSON.stringify(c).includes('"tab-queue"'))
+    }
+    const running = await above()
+    seen = { ...SEEN(false), isLocked: false, status: { ...SEEN(false).status!, running: false, tmux: null } }
+    expect(running).toBeGreaterThan(0)
+    expect(await above()).toBe(running)
+  })
 })
 
 group("a job's Watch button", () => {

@@ -250,6 +250,8 @@ export const register: Register = on => {
           {!top.wraps && <Text {...COLORS[top.right.tone]}>{top.right.text}</Text>}
         </Box>
         {top.wraps ? <Text {...COLORS[top.right.tone]}>{top.right.text}</Text> : <Text> </Text>}
+        {/* The buttons' row stays when there are none, so the tabs don't move as the loop starts or stops. */}
+        {!tmux && <Text key="actions"> </Text>}
         {tmux && (
           <Box key="actions" flexDirection="row" flexWrap="wrap" columnGap={1}>
             {watchFile && (

@@ -1033,7 +1033,7 @@ class Loop:
         window = self.open_window(number)
         if window:
             self.write_issue_watch(number, window)
-        thread =threading.Thread(target=self.worker, args=(issue, window),
+        thread = threading.Thread(target=self.worker, args=(issue, window),
                                   name="issue-{}".format(number), daemon=True)
         thread.start()
         return thread
