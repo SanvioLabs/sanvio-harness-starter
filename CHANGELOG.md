@@ -21,6 +21,12 @@ Typo fixes, rewording, tests on their own and tidying inside a file don't. The
 test: would someone who copied the harness last week want to know, or need to
 act? If you're unsure, write the entry.
 
+One entry per change someone would name, not per commit: three files that add
+one feature are one entry. The heading is `## YYYY-MM-DD: Name`, and the name
+never changes once it's written, because copies are compared by it. Under it:
+what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
+fine).
+
 ## 2026-10-15: CEO, CTO, CMO and GC reviewers
 
 Four more read-only reviewers, one per executive seat, each reading finished
@@ -35,12 +41,6 @@ in `.claude/agents/` that can't edit, write or run a shell.
 Files: [`agents/ceo.md`](agents/ceo.md), [`agents/cto.md`](agents/cto.md), [`agents/cmo.md`](agents/cmo.md), [`agents/gc.md`](agents/gc.md), [`.claude/agents/ceo.md`](.claude/agents/ceo.md), [`.claude/agents/cto.md`](.claude/agents/cto.md), [`.claude/agents/cmo.md`](.claude/agents/cmo.md), [`.claude/agents/gc.md`](.claude/agents/gc.md), [`AGENTS.md`](AGENTS.md), [`tests/test_steering.py`](tests/test_steering.py)
 
 **Do:** nothing.
-
-One entry per change someone would name, not per commit: three files that add
-one feature are one entry. The heading is `## YYYY-MM-DD: Name`, and the name
-never changes once it's written, because copies are compared by it. Under it:
-what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
-fine).
 
 ## 2026-10-15: The loop works several issues at once
 
