@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: Loop pane shows which job is live, when it started and for how long
+
+Each job in the [loop pane](examples/mods/loop-pane/) now has a dot beside its
+title. On a job the loop is working, the dot pulses and the row says when it
+started and how long it has been running, counting up. An ended job keeps a
+still dot in its result's colour and says how long it took. For this,
+[`scripts/loop.py`](scripts/loop.py) now writes a `started` time on each issue
+in `.loop/status.json`.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** restart a running loop to pick up the start times. Jobs it started
+before the restart have no clock.
+
 ## 2026-10-14: Loop cleans up finished worktrees
 
 While the loop is idle, each time it polls it checks each issue it opened a

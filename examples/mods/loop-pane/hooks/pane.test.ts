@@ -137,3 +137,26 @@ group('the tabs', () => {
     await ui.unmount()
   })
 })
+
+group('a job in the pane', () => {
+  // Six minutes and twelve seconds ago, as loop.py writes it: local, to the second, with no zone.
+  const d = new Date(Math.floor(Date.now() / 1000) * 1000 - 372_000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  const started = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  const working: Seen = {
+    ...SEEN(false),
+    status: {
+      running: true, updated: null, tmux: 'loop-starter', queue: [],
+      issues: [{ number: 12, title: 'Gate', step: 'BUILD', state: 'working', round: 2, max_rounds: 5,
+        tests: null, review: null, pr: null, note: '', started }],
+    },
+  }
+  test('has a dot and says when it started and how long it has been running', async ($, on) => {
+    seed(on, working)
+    const ui = await $.ui.mount(PANE)
+    const drawn = JSON.stringify(await ui.drawn())
+    expect(drawn).toContain('●')
+    expect(drawn).toContain(` · started ${p(d.getHours())}:${p(d.getMinutes())} · running 6m 1`)
+    await ui.unmount()
+  })
+})

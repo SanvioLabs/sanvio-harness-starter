@@ -55,6 +55,7 @@ export function parseStatus(text: string | null): Status | null {
       review: orNull(r.review),
       pr: orNull(r.pr),
       note: str(r.note),
+      started: orNull(r.started) ?? undefined,
       updated: orNull(r.updated) ?? undefined,
     }))
   return { running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux), queue, issues }
@@ -154,6 +155,47 @@ export function describe(row: Row, isRunning: boolean): { head: Line; detail: st
   const results = [row.tests && `tests ${row.tests}`, row.review && `review ${row.review}`].filter(Boolean).join(', ')
   const detail = [results, row.state === 'pr' ? '' : row.note].filter(Boolean).join('. ')
   return { head, detail: detail || null }
+}
+
+// The dot beside a job: whether it pulses, and its colour. It pulses only while the loop is alive and
+// on that job, so a run that dies mid-step stops it, the same moment the row turns red.
+export function dot(row: Row, isRunning: boolean): { tone: Tone; isPulsing: boolean } {
+  const ended = ENDED[row.state]
+  if (ended) return { tone: ended.tone, isPulsing: false }
+  if (row.state === 'working' && !isRunning) return { tone: 'fail', isPulsing: false }
+  return { tone: 'now', isPulsing: true }
+}
+
+// Whether any dot is pulsing, so the pane only redraws fast while one is.
+export function isPulsing(seen: Seen | null): boolean {
+  return !!seen?.isLocked && !!seen.status?.issues.some(r => dot(r, true).isPulsing)
+}
+
+const pad = (n: number): string => String(n).padStart(2, '0')
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// How long, the way a person reads it: 42s, 6m 05s, 1h 04m.
+export function duration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${pad(s % 60)}s`
+  return `${Math.floor(m / 60)}h ${pad(m % 60)}m`
+}
+
+// When a job started and how long it has been running, or took. loop.py writes local time with no
+// zone, which Date.parse reads as local too. A start on another day carries its date. A row from an
+// older loop.py has no start, so no clock.
+export function clock(row: Row, isRunning: boolean, now: number): string | null {
+  const from = row.started ? Date.parse(row.started) : Number.NaN
+  if (!Number.isFinite(from)) return null
+  const at = new Date(from)
+  const time = `${pad(at.getHours())}:${pad(at.getMinutes())}`
+  const when = at.toDateString() === new Date(now).toDateString() ? time : `${MONTHS[at.getMonth()]} ${at.getDate()} ${time}`
+  if (dot(row, isRunning).isPulsing) return `started ${when} · running ${duration(now - from)}`
+  const end = row.updated ? Date.parse(row.updated) : Number.NaN
+  if (!Number.isFinite(end)) return `started ${when}`
+  return `started ${when} · ${ENDED[row.state] ? 'took' : 'ran'} ${duration(end - from)}`
 }
 
 // A short line for each issue that has just reached an end: a pull request, a block or a stop.
