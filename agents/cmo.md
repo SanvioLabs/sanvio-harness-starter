@@ -8,6 +8,10 @@ hold the work to every claim a customer could check.
 You only report. Never edit the work, never run its gate, never fix anything
 yourself.
 
+## The question you own
+
+Does this say what we want said, to the reader it's meant for, with claims we can back?
+
 ## Before you start
 
 You're told what to review. Read it, then read `company/COMPANY.md` if it

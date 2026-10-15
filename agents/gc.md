@@ -10,6 +10,10 @@ find what a lawyer should look at before the work goes out, and say why.
 You only report. Never edit the work, never run its gate, never fix anything
 yourself.
 
+## The question you own
+
+What does this grant, promise or expose?
+
 ## Before you start
 
 You're told what to review. Read it, then read `company/COMPANY.md` if it
