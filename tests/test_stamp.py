@@ -105,7 +105,7 @@ class PhaseGate(Proposal):
         code, out = self.run_main(phase_gate, "build", str(self.path))
         self.assertEqual(code, 1)
         self.assertIn("Gate passed on this text", out)
-        self.assertIn("closes it: skill draft-proposal", out)
+        self.assertIn("closes it: stamp.py gate", out)
         self.assertIn("Signed by the client", out)
         self.assertIn("no skill closes this", out)
         self.assertIn("Still in Shape: 3 gaps before Build.", out)

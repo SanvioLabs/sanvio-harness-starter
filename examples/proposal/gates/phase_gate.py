@@ -23,6 +23,7 @@ from proposal_gate import HTML_COMMENT, ROOT, section  # noqa: E402 (same folder
 from stamp import split, state  # noqa: E402
 
 DRAFT = "skill draft-proposal"
+STAMP = "stamp.py gate"  # not the skill: re-drafting would copy the template over a finished proposal
 REVIEW = "agent reviewer, then you stamp it reviewed"  # the brief: agents/proposal-reviewer.md
 
 
@@ -45,7 +46,7 @@ PHASES = {
     ]),
     "build": ("Shape", [
         ("Problem written down", has_problem, DRAFT),
-        ("Gate passed on this text", fresh("gate"), DRAFT),
+        ("Gate passed on this text", fresh("gate"), STAMP),
         ("Reviewed on this text", fresh("reviewed"), REVIEW),
         ("Signed by the client", signed, None),
     ]),

@@ -224,11 +224,11 @@ commit, not once when someone remembers.
 **3. Close the gap.** Every phase of the flywheel ends at a gate, and a gate
 that only says "no" leaves you guessing. [`examples/proposal/gates/phase_gate.py`](examples/proposal/gates/phase_gate.py)
 names each thing a proposal is missing before Build and what closes it: a
-skill, the reviewer, or only you. Run what it names, then run it again. What
+command, the reviewer, or only you. Run what it names, then run it again. What
 no skill can close, like the client's signature, stays open, and it never
 moves the phase on by itself.
 
-![The phase gate for juniper-bakery entering Build names three gaps: gate passed on this text, closed by the draft-proposal skill; reviewed on this text, closed by the reviewer agent and then your stamp; and signed by the client, which no skill closes. The first two close in order, and the gate ends with one gap only you can close.](docs/close-the-gap.gif)
+![The phase gate for juniper-bakery entering Build names three gaps: gate passed on this text, closed by stamp.py gate; reviewed on this text, closed by the reviewer agent and then your stamp; and signed by the client, which no skill closes. The first two close in order, and the gate ends with one gap only you can close.](docs/close-the-gap.gif)
 
 **4. Mistake to rule.** When the agent gets something wrong, don't just fix the
 output. Write the rule that stops it happening again, in the file that governs
