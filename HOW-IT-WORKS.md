@@ -106,6 +106,15 @@ In Claude Code, `/loop-pane` draws it in a pane beside the conversation
 `.loop/watch.command`, and the pane's **Watch it** button opens it: a new
 Terminal window attached to the session, read-only.
 
+**More than one at once.** Set `max_workers` in `loop.json` and it works up to
+that many ready issues side by side, each in its own worktree. One that depends
+on an issue still being worked waits for it. Each issue's agents write what
+they say to `.loop/issue-N/agent.log` as they say it. Run inside tmux, each
+issue also gets a window named `issue-N` that follows that file and closes
+when the issue ends, and its row in `status.json` names the `window`. A stop
+starts nothing new and lets each running issue finish its step. Every worker
+runs its own agent sessions, so usage grows with the number of workers.
+
 **Make it yours** with a `loop.json` at the repo root. Any key you leave out
 keeps its default:
 
@@ -115,6 +124,7 @@ keeps its default:
 | `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
+| `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
 | `review_query` | `review-requested:@me` | The GitHub search `loop.py review` runs to find pull requests that ask for you |

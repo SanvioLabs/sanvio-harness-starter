@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: The loop works several issues at once
+
+[`scripts/loop.py`](scripts/loop.py) takes a `max_workers` key in `loop.json`,
+default 1: how many ready issues it works side by side, each on its own thread
+and worktree. An issue that depends on one still being worked waits for it. A
+stop starts nothing new and lets each running issue finish its step. What each
+issue's agents say goes to `.loop/issue-N/agent.log` as they say it, and run
+inside tmux, each issue gets a window named `issue-N` that follows that file and
+closes when the issue ends; its row in `.loop/status.json` names the `window`.
+Every worker runs its own agent sessions, so usage grows with the number of
+workers.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`README.md`](README.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** restart a running loop to pick it up. To work more than one issue at
+once, set `"max_workers"` in `loop.json`.
+
 ## 2026-10-15: The loop waits for an issue's dependencies
 
 [`scripts/loop.py`](scripts/loop.py) no longer takes an issue while one it

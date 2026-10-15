@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from datetime import datetime
@@ -185,6 +186,19 @@ elif args[0] == "api" and args[1].startswith("repos/{owner}/{repo}/issues/"):
     print(json.dumps(found))
 elif args[:2] == ["issue", "list"]:
     print(open(os.path.join(state, "issues.json")).read())
+elif args[:2] == ["issue", "edit"] and "--remove-label" in args:
+    # Off the listed issue too, as on GitHub, so a loop that keeps polling doesn't take it again.
+    # Locked and replaced whole: two workers can edit at once while the loop reads the list.
+    import fcntl, json
+    path = os.path.join(state, "issues.json")
+    with open(os.path.join(state, "issues.lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        listed = json.load(open(path))
+        for i in listed:
+            if i["number"] == int(args[2]):
+                i["labels"] = [l for l in i["labels"] if l["name"] != args[args.index("--remove-label") + 1]]
+        open(path + ".part", "w").write(json.dumps(listed))
+        os.replace(path + ".part", path)
 elif args[:2] == ["issue", "view"]:
     path = os.path.join(state, "issue-state")
     print(open(path).read().strip() if os.path.exists(path) else "OPEN")
@@ -209,6 +223,35 @@ state = os.environ["LOOP_TEST_STATE"]
 with open(os.path.join(state, "tmux-calls"), "a") as f:
     f.write(" ".join(sys.argv[1:]) + "\\n")
 print("loop-work")
+"""
+
+# A stand-in agent for workers side by side: it notes when each issue's plan starts and its build
+# begins and ends, takes LOOP_TEST_BUILD_SECONDS to build, and writes LOOP_TEST_STOP, when that's
+# set, once two builds have begun.
+TIMED_AGENT = """#!/usr/bin/env python3
+import os, re, sys, time
+prompt = sys.stdin.read()
+state = os.environ["LOOP_TEST_STATE"]
+times = os.path.join(state, "times")
+def note(n, what):
+    with open(times, "a") as f:
+        f.write("%s %s %f\\n" % (n, what, time.time()))
+if "You are planning" in prompt:
+    note(re.search(r"TICKET #(\\d+)", prompt).group(1), "start")
+    print("Plan: add feature.txt.")
+elif "You are the reviewer" in prompt:
+    print("Looks right.")
+    print("VERDICT: PASS")
+else:
+    n = re.search(r"issue #(\\d+)", prompt).group(1)
+    note(n, "build")
+    stop = os.environ.get("LOOP_TEST_STOP")
+    if stop and open(times).read().count(" build ") >= 2:
+        open(stop, "w").close()
+    time.sleep(float(os.environ.get("LOOP_TEST_BUILD_SECONDS", "1")))
+    open("feature.txt", "a").write("done")
+    note(n, "end")
+    print("Added feature.txt.")
 """
 
 
@@ -820,6 +863,138 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(steps, ["DISCOVER", "SHAPE", "STOPPED", "STOPPED"])
         self.assertEqual(self.status()["issues"][0]["state"], "stopped")
         self.assertFalse((loop_obj.dir / "STOP").exists())
+
+    # -- more than one worker ---------------------------------------------
+
+    def timed(self, *issues, seconds=1):
+        """List these issues and swap in the timed agent, whose builds take `seconds`."""
+        (self.state / "issues.json").write_text(json.dumps(list(issues)))
+        (self.state.parent / "bin" / "agent").write_text(TIMED_AGENT)
+        os.environ["LOOP_TEST_BUILD_SECONDS"] = str(seconds)
+        self.addCleanup(os.environ.pop, "LOOP_TEST_BUILD_SECONDS", None)
+
+    def times(self):
+        """{(issue number, "start" | "build" | "end"): when}, from the timed agent's notes."""
+        rows = (self.state / "times").read_text().split("\n")
+        return {(int(n), what): float(t) for n, what, t in (r.split() for r in rows if r.strip())}
+
+    def go_workers(self, workers=2):
+        """A run without --once, with `workers` workers. The first idle poll stops it."""
+        self.cfg["max_workers"] = workers
+        def stop(seconds):
+            (self.work / ".loop" / "STOP").write_text("")
+        with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=stop)), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).run()
+
+    def prs_opened(self):
+        return sorted(c.split("--head ")[1].split()[0] for c in self.calls() if c.startswith("pr create"))
+
+    def test_two_workers_build_two_ready_issues_at_once(self):
+        self.timed(issue(12), issue(13))
+        self.assertEqual(self.go_workers(), 0)
+        t = self.times()
+        self.assertLess(t[(12, "start")], t[(13, "end")])
+        self.assertLess(t[(13, "start")], t[(12, "end")])
+        for n in (12, 13):
+            self.assertTrue((Path(self.cfg["worktree_dir"]) / "issue-{}".format(n) / "feature.txt").exists())
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13"])
+
+    def test_a_third_issue_waits_for_one_of_two_workers_to_end(self):
+        self.timed(issue(12), issue(13), issue(14))
+        self.go_workers()
+        t = self.times()
+        self.assertGreater(t[(14, "start")], min(t[(12, "end")], t[(13, "end")]))
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13", "loop/issue-14"])
+
+    def test_an_issue_waits_for_a_dependency_a_worker_is_still_on(self):
+        # GitHub already says #2 is closed: only the worker still on it holds #4 back.
+        self.timed(issue(2), dict(issue(4), body="Depends on #2"))
+        (self.state / "deps.json").write_text(json.dumps({"2": {"state": "closed", "state_reason": "completed",
+                                                                "body": ""}}))
+        self.go_workers()
+        t = self.times()
+        self.assertGreater(t[(4, "start")], t[(2, "end")])
+        self.assertIn("#4 WAITING on #2", "\n".join(self.lines()))
+        self.assertEqual(self.prs_opened(), ["loop/issue-2", "loop/issue-4"])
+
+    def test_writes_from_many_threads_at_once_stay_whole(self):
+        runner = loop.Loop(self.work, self.cfg)
+        count = loop.STATUS_KEEP - 4
+        gate = threading.Barrier(count)
+        broken = []
+
+        def write(n):
+            try:
+                gate.wait()
+                runner.log("TEST", "line {}".format(n), n)
+                runner.mark(n, title="t{}".format(n), state="working")
+                json.loads((self.work / ".loop" / "status.json").read_text())
+                runner.lesson(n, 1, ["went wrong {}".format(n)], passed=False)
+            except Exception as err:  # noqa: BLE001 - any error in a thread is the failure
+                broken.append(repr(err))
+
+        threads = [threading.Thread(target=write, args=(n,)) for n in range(1, count + 1)]
+        with contextlib.redirect_stdout(io.StringIO()):
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        self.assertEqual(broken, [])
+        lines = self.lines()
+        self.assertEqual(len(lines), count)
+        for line in lines:
+            when, who, step, text = line.split(" ", 3)
+            self.assertEqual((step, text), ("TEST", "line " + who[1:]))
+        self.assertEqual(sorted(r["number"] for r in self.status()["issues"]), list(range(1, count + 1)))
+        self.assertEqual((self.work / ".loop" / "lessons.md").read_text().count("**What went wrong:**"), count)
+        self.assertFalse((self.work / ".loop" / "status.json.part").exists())
+
+    def test_agent_log_holds_what_the_shape_and_build_agents_said(self):
+        self.go()
+        text = (self.work / ".loop" / "issue-12" / "agent.log").read_text()
+        self.assertIn("Plan: add feature.txt.", text)
+        self.assertIn("Added feature.txt.", text)
+        self.assertLess(text.index("Plan: add feature.txt."), text.index("Added feature.txt."))
+
+    def test_inside_tmux_each_issue_gets_a_window_that_closes_when_it_ends(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        self.go()
+        calls = (self.state / "tmux-calls").read_text().splitlines()
+        log = self.work / ".loop" / "issue-12" / "agent.log"
+        opened = next(i for i, c in enumerate(calls) if c.startswith("new-window -d -t loop-work -n issue-12 "))
+        self.assertIn("tail -n +1 -f " + shlex.quote(str(log)), calls[opened])
+        self.assertGreater(calls.index("kill-window -t loop-work:issue-12"), opened)
+        self.assertEqual(self.status()["issues"][0]["window"], "issue-12")
+
+    def test_a_stop_while_two_workers_run_lets_both_finish_and_starts_no_third(self):
+        self.timed(issue(12), issue(13), issue(14))
+        os.environ["LOOP_TEST_STOP"] = str(self.work / ".loop" / "STOP")
+        self.addCleanup(os.environ.pop, "LOOP_TEST_STOP", None)
+        self.go_workers()
+        self.assertNotIn((14, "start"), self.times())
+        self.assertFalse((self.work / ".loop" / "issue-14").exists())
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13"])
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps[-1], "STOPPED")
+        self.assertEqual(steps.count("STOPPED"), 1)
+
+    def test_a_worker_that_raises_blocks_its_issue_and_the_other_carries_on(self):
+        (self.state / "issues.json").write_text(json.dumps([issue(12), issue(13)]))
+        original = loop.Loop.process
+
+        def process(this, issue):
+            if issue["number"] == 12:
+                raise ValueError("boom")
+            return original(this, issue)
+
+        with mock.patch.object(loop.Loop, "process", process):
+            self.go_workers()
+        rows = {r["number"]: r for r in self.status()["issues"]}
+        self.assertEqual((rows[12]["state"], rows[12]["note"]), ("blocked", "worker died: ValueError"))
+        self.assertIn("boom", (self.work / ".loop" / "issue-12" / "worker-error.txt").read_text())
+        self.assertNotIn("boom", "\n".join(self.comments()))
+        self.assertEqual(self.prs_opened(), ["loop/issue-13"])
 
 
 # Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
