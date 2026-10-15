@@ -111,7 +111,8 @@ that many ready issues side by side, each in its own worktree. One that depends
 on an issue still being worked waits for it. Each issue's agents write what
 they say to `.loop/issue-N/agent.log` as they say it. Run inside tmux, each
 issue also gets a window named `issue-N` that follows that file and closes
-when the issue ends, and its row in `status.json` names the `window`. A stop
+when the issue ends, and while it's open the issue's row in `status.json`
+names it as `window`. A stop
 starts nothing new and lets each running issue finish its step. Every worker
 runs its own agent sessions, so usage grows with the number of workers.
 

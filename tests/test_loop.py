@@ -879,13 +879,14 @@ class TestAPass(unittest.TestCase):
         rows = (self.state / "times").read_text().split("\n")
         return {(int(n), what): float(t) for n, what, t in (r.split() for r in rows if r.strip())}
 
-    def go_workers(self, workers=2):
-        """A run without --once, with `workers` workers. The first idle poll stops it."""
+    def go_workers(self, workers=2, sleep=None):
+        """A run without --once, with `workers` workers. The first idle poll stops it, unless sleep
+        says what an idle poll does."""
         self.cfg["max_workers"] = workers
         (self.state / "labels-follow").write_text("")  # a finished issue leaves the ready list
         def stop(seconds):
             (self.work / ".loop" / "STOP").write_text("")
-        with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=stop)), \
+        with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=sleep or stop)), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run()
 
@@ -920,6 +921,62 @@ class TestAPass(unittest.TestCase):
         self.assertIn("#4 WAITING on #2", "\n".join(self.lines()))
         self.assertEqual(self.prs_opened(), ["loop/issue-2", "loop/issue-4"])
 
+    def test_an_issue_still_waits_once_the_worker_ends_until_its_dependency_is_closed(self):
+        # #2 stays open on GitHub after its worker opens a pull request; the first idle poll closes it.
+        self.timed(issue(2), dict(issue(4), body="Depends on #2"))
+        deps = self.state / "deps.json"
+        deps.write_text(json.dumps({"2": {"state": "open", "body": ""}}))
+        closed = []
+
+        def poll(seconds):
+            if closed:
+                (self.work / ".loop" / "STOP").write_text("")
+            else:
+                closed.append(time.time())
+                deps.write_text(json.dumps({"2": {"state": "closed", "state_reason": "completed", "body": ""}}))
+
+        self.go_workers(sleep=poll)
+        t = self.times()
+        self.assertGreater(closed[0], t[(2, "end")])
+        self.assertGreater(t[(4, "start")], closed[0])
+        self.assertEqual(self.prs_opened(), ["loop/issue-2", "loop/issue-4"])
+
+    def test_a_ctrl_c_ends_the_workers_without_blocking_their_issues(self):
+        self.timed(issue(12), issue(13), seconds=30)
+        self.cfg["max_workers"] = 2
+        original = loop.Loop.reap
+
+        def reap(this, running, timeout=0):
+            times = self.state / "times"
+            if len(running) == 2 and times.exists() and times.read_text().count(" build ") == 2:
+                raise KeyboardInterrupt
+            return original(this, running, 0.05)
+
+        started = time.time()
+        with mock.patch.object(loop.Loop, "reap", reap), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(KeyboardInterrupt):
+                loop.Loop(self.work, self.cfg).run()
+            for thread in threading.enumerate():
+                if thread.name in ("issue-12", "issue-13"):
+                    thread.join(10)
+                    self.assertFalse(thread.is_alive())
+        self.assertLess(time.time() - started, 20)  # the agents were killed, not waited out
+        self.assertFalse(any("--add-label" in c for c in self.calls()))
+        self.assertEqual(self.comments(), [])
+        self.assertNotIn("BLOCKED", [l.split()[2] for l in self.lines()])
+        self.assertEqual({r["state"] for r in self.status()["issues"]}, {"working"})
+
+    def test_a_max_workers_that_isnt_a_number_works_one_at_a_time(self):
+        self.cfg["max_workers"] = "lots"
+        self.assertEqual(self.go(), 0)
+        self.assertIn("max_workers in loop.json isn't a number ('lots')", "\n".join(self.lines()))
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-12") for c in self.calls()))
+        self.assertEqual(loop.workers({"max_workers": "3"}), 3)
+        self.assertEqual(loop.workers({"max_workers": 0}), 1)
+        self.assertIsNone(loop.workers({"max_workers": None}))
+        self.assertIsNone(loop.workers({"max_workers": True}))
+
     def test_writes_from_many_threads_at_once_stay_whole(self):
         runner = loop.Loop(self.work, self.cfg)
         count = loop.STATUS_KEEP - 4
@@ -952,22 +1009,33 @@ class TestAPass(unittest.TestCase):
         self.assertEqual((self.work / ".loop" / "lessons.md").read_text().count("**What went wrong:**"), count)
         self.assertFalse((self.work / ".loop" / "status.json.part").exists())
 
-    def test_agent_log_holds_what_the_shape_and_build_agents_said(self):
+    def test_agent_log_holds_what_the_shape_build_and_review_agents_said(self):
         self.go()
         text = (self.work / ".loop" / "issue-12" / "agent.log").read_text()
         self.assertIn("Plan: add feature.txt.", text)
         self.assertIn("Added feature.txt.", text)
+        self.assertIn("VERDICT: PASS", text)
         self.assertLess(text.index("Plan: add feature.txt."), text.index("Added feature.txt."))
+        self.assertLess(text.index("Added feature.txt."), text.index("VERDICT: PASS"))
 
     def test_inside_tmux_each_issue_gets_a_window_that_closes_when_it_ends(self):
         os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
-        self.go()
+        original = loop.Loop.mark
+        named = []  # the window the issue's row names after each update while it runs
+
+        def mark(this, number, **fields):
+            original(this, number, **fields)
+            named.append(this.status["issues"][0].get("window"))
+
+        with mock.patch.object(loop.Loop, "mark", mark):
+            self.go()
         calls = (self.state / "tmux-calls").read_text().splitlines()
         log = self.work / ".loop" / "issue-12" / "agent.log"
         opened = next(i for i, c in enumerate(calls) if c.startswith("new-window -d -t loop-work -n issue-12 "))
         self.assertIn("tail -n +1 -f " + shlex.quote(str(log)), calls[opened])
         self.assertGreater(calls.index("kill-window -t loop-work:issue-12"), opened)
-        self.assertEqual(self.status()["issues"][0]["window"], "issue-12")
+        self.assertEqual(set(named), {"issue-12"})
+        self.assertIsNone(self.status()["issues"][0]["window"])  # closed, so no longer named
 
     def test_outside_tmux_no_window_opens(self):
         self.go()

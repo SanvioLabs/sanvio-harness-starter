@@ -35,7 +35,8 @@ and worktree. An issue that depends on one still being worked waits for it. A
 stop starts nothing new and lets each running issue finish its step. What each
 issue's agents say goes to `.loop/issue-N/agent.log` as they say it, and run
 inside tmux, each issue gets a window named `issue-N` that follows that file and
-closes when the issue ends; its row in `.loop/status.json` names the `window`.
+closes when the issue ends; while it's open, the issue's row in
+`.loop/status.json` names it as `window`.
 Every worker runs its own agent sessions, so usage grows with the number of
 workers.
 

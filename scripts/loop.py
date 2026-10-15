@@ -103,6 +103,24 @@ SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|AC
 DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
 
 
+class Interrupted(BaseException):
+    """A Ctrl-C reached the loop: a worker ends where it is and leaves its issue as it was.
+
+    Not an Exception, so the worker's catch-all for a crash, which blocks the issue, lets it through.
+    """
+
+
+def workers(cfg):
+    """max_workers from the config as a whole number, at least 1, or None when it isn't a number."""
+    value = cfg.get("max_workers", 1)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return max(1, int(value))
+    except (ValueError, OverflowError):
+        return None
+
+
 def load_config(root):
     """The defaults, overlaid with loop.json at the repo root if there is one."""
     cfg = dict(DEFAULTS)
@@ -329,6 +347,7 @@ class Loop:
         self.session = None  # the tmux session this run is in, once locked() has asked
         self.windows = {}  # issue number -> the tmux window following its agent.log
         self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
+        self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
 
     # -- plumbing ---------------------------------------------------------
 
@@ -416,6 +435,11 @@ class Loop:
     def stopped(self):
         return (self.dir / "STOP").exists()
 
+    def halt_if_interrupted(self):
+        """Raise Interrupted after a Ctrl-C, so a worker whose agent it killed doesn't take that for a failure."""
+        if self.interrupted.is_set():
+            raise Interrupted()
+
     def whoami(self):
         if self.me is None:
             code, out = self.gh("api", "user", "-q", ".login")
@@ -477,9 +501,12 @@ class Loop:
             cmd = held
         if number is None:
             return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
+        self.halt_if_interrupted()
         folder = self.dir / "issue-{}".format(number)
         folder.mkdir(exist_ok=True)
-        return self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr)
+        result = self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr)
+        self.halt_if_interrupted()  # its exit code is the Ctrl-C's kill, not something it got wrong
+        return result
 
     def stream(self, cmd, cwd, prompt, path, which, stderr=True):
         """sh() for an agent, with each line it says appended to path as it arrives, for its window to show."""
@@ -517,6 +544,8 @@ class Loop:
         said = []
         with proc:
             self.agents.add(proc)
+            if self.interrupted.is_set():
+                expire()  # started as a Ctrl-C was ending the others: it goes too
             threading.Thread(target=feed, daemon=True).start()
             timer.start()
             try:
@@ -685,6 +714,7 @@ class Loop:
 
     def block(self, number, why, rounds=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked."""
+        self.halt_if_interrupted()  # whatever failed, a Ctrl-C caused it: the issue stays as it was
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
@@ -765,7 +795,7 @@ class Loop:
 
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode),
-                                       tree, confine=True)
+                                       tree, confine=True, number=number)
             if self.git("status", "--porcelain", cwd=tree)[1].strip():
                 self.git("checkout", "--", ".", cwd=tree)
                 self.git("clean", "-fdq", cwd=tree)
@@ -788,11 +818,13 @@ class Loop:
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
+        self.halt_if_interrupted()
         self.mark(number, step="SCALE")
         code, state = self.gh("issue", "view", str(number), "--json", "state", "-q", ".state")
         if code == 0 and state.strip() != "OPEN":
             self.mark(number, state="skipped", note="issue is {}".format(state.strip().lower()))
             return self.log("SCALE", "skipped: issue is {}, no pull request opened".format(state.strip().lower()), number)
+        self.halt_if_interrupted()  # the Ctrl-C reaches gh too, so a failed look is no reason to push
         with self.git_lock:  # -u writes the clone's one config file, which two pushes can't both lock
             code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
@@ -904,7 +936,11 @@ class Loop:
         waits for each worker, which stops itself before its next round."""
         idle = False
         running = {}  # issue number -> its worker thread
-        most = max(1, int(self.cfg.get("max_workers", 1)))
+        most = workers(self.cfg)
+        if most is None:
+            self.log("ERROR", "max_workers in loop.json isn't a number ({!r}), so it works one issue at a time".format(
+                self.cfg.get("max_workers"))[:200])
+            most = 1
         try:
             while not self.stopped():
                 self.reap(running)
@@ -937,7 +973,9 @@ class Loop:
                 self.reap(running, None)
         except KeyboardInterrupt:
             # Ends now, as it did with one issue: the agents run in sessions of their own, so the
-            # Ctrl-C never reached them, and waiting on them could take agent_timeout each.
+            # Ctrl-C never reached them, and waiting on them could take agent_timeout each. The flag
+            # first, so a worker whose agent this kills stops instead of blocking its issue.
+            self.interrupted.set()
             for proc in list(self.agents):
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
@@ -972,17 +1010,25 @@ class Loop:
         """One issue, start to end. An uncaught error blocks only this issue; the other workers carry on."""
         number = issue["number"]
         try:
-            self.process(issue)
-        except Exception as err:
-            folder = self.dir / "issue-{}".format(number)
-            folder.mkdir(exist_ok=True)
-            (folder / "worker-error.txt").write_text(traceback.format_exc())
-            # The type only: the message can hold agent or GitHub text, and this lands on the issue.
-            self.block(number, "worker died: {}".format(type(err).__name__))
+            try:
+                self.process(issue)
+            except Exception as err:
+                folder = self.dir / "issue-{}".format(number)
+                folder.mkdir(exist_ok=True)
+                (folder / "worker-error.txt").write_text(traceback.format_exc())
+                # The type only: the message can hold agent or GitHub text, and this lands on the issue.
+                self.block(number, "worker died: {}".format(type(err).__name__))
+        except Interrupted:
+            pass  # a Ctrl-C: the issue stays as it was on GitHub, as it did with one issue at a time
         finally:
             if window:
                 self.sh(["tmux", "kill-window", "-t", "{}:{}".format(self.session, window)])
                 self.windows.pop(number, None)
+                with self.write_lock:  # the window is gone, so its row stops naming it
+                    row = next((r for r in self.status["issues"] if r["number"] == number), None)
+                    if row is not None and row.get("window") == window:
+                        row["window"] = None
+                        self.save_status()
             with self.done:
                 self.finished.add(number)
                 self.done.notify_all()
