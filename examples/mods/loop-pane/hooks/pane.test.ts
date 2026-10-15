@@ -74,6 +74,68 @@ group('the Watch it button', () => {
   })
 })
 
+group('the header', () => {
+  test('names the repo and the state, with Watch it and Copy attach command on one row and no bare attach line', async ($, on) => {
+    seed(on, SEEN(true))
+    const ui = await $.ui.mount(PANE)
+    const drawn = JSON.stringify(await ui.drawn())
+    expect(drawn).toContain('starter')
+    expect(drawn).toContain('● Idle')
+    expect(drawn).not.toContain('tmux attach')
+    const row = await ui.find({ key: 'actions' })
+    expect(row?.props.flexDirection).toBe('row')
+    const inRow = JSON.stringify(row?.children)
+    expect(inRow).toContain('Watch it')
+    expect(inRow).toContain('Copy attach command')
+    await ui.unmount()
+  })
+})
+
+group("a job's Watch button", () => {
+  const withWindow: Seen = {
+    ...SEEN(false),
+    status: {
+      running: true, updated: null, tmux: 'loop-starter', queue: [],
+      issues: [{ number: 12, title: 'Gate', step: 'BUILD', state: 'working', round: 1, tests: null, review: null,
+        pr: null, note: '', window: 'issue-12' }],
+    },
+  }
+  test('opens the job watch file', async ($, on) => {
+    const ran: string[][] = []
+    on('process.run', async (_$, e) => {
+      ran.push([...e.argv])
+      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    seed(on, withWindow)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'watch-12' })
+    await drain()
+    expect(ran).toEqual([['open', '/h/starter/.loop/issue-12/watch.command']])
+    await ui.unmount()
+  })
+  test("copies the job's read-only attach command when the window can't open", async ($, on) => {
+    const copied: string[] = []
+    on('process.run', async () => ({ value: { exitCode: 1, stdout: '', stderr: 'no', isStdoutTruncated: false, isStderrTruncated: false } }))
+    on('ui.copy', async (_$, e) => {
+      copied.push(e.text)
+      return { value: { isCopied: true } }
+    })
+    on('ui.toast', async () => ({ value: undefined }))
+    seed(on, withWindow)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'watch-12' })
+    await drain()
+    expect(copied).toEqual(["tmux attach -r -t '=loop-starter:issue-12'"])
+    await ui.unmount()
+  })
+  test('a job with no window has none', async ($, on) => {
+    seed(on, { ...withWindow, status: { ...withWindow.status!, issues: withWindow.status!.issues.map(r => ({ ...r, window: undefined })) } })
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.find({ key: 'watch-12' })).toBeUndefined()
+    await ui.unmount()
+  })
+})
+
 // A local time, as loop.py writes it, `hours` ago.
 function hoursAgo(hours: number): string {
   const d = new Date(Date.now() - hours * 3600_000)

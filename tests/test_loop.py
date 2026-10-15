@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -668,6 +668,20 @@ class TestAPass(unittest.TestCase):
             self.go()
         self.assertEqual(seen, ["loop-work"])
 
+    def test_status_says_when_the_run_started_and_clears_it_when_it_stops(self):
+        seen = []
+        original = loop.Loop.process
+        def process(this, issue):
+            seen.append(json.loads((this.dir / "status.json").read_text()).get("started"))
+            return original(this, issue)
+        before = datetime.now(timezone.utc).replace(microsecond=0)
+        with mock.patch.object(loop.Loop, "process", process):
+            self.go()
+        started = datetime.fromisoformat(seen[0])
+        self.assertEqual(started.utcoffset(), timedelta(0))  # UTC, with its offset, so the pane reads it right
+        self.assertGreaterEqual(started, before)
+        self.assertIsNone(self.status()["started"])
+
     def watch_while_running(self, platform):
         """What .loop/watch.command held, and its mode, while the issue was worked; None when absent."""
         seen = []
@@ -1073,6 +1087,31 @@ class TestAPass(unittest.TestCase):
         self.assertGreater(calls.index("kill-window -t loop-work:issue-12"), opened)
         self.assertEqual(set(named), {"issue-12"})
         self.assertIsNone(self.status()["issues"][0]["window"])  # closed, so no longer named
+
+    def test_on_macos_each_issue_window_gets_a_read_only_watch_file_gone_when_it_ends(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        seen = []
+        original = loop.Loop.process
+        def process(this, issue):
+            path = this.dir / "issue-12" / "watch.command"
+            seen.append(path.read_text() if path.exists() else None)
+            return original(this, issue)
+        with mock.patch.object(loop.Loop, "process", process), mock.patch.object(loop.sys, "platform", "darwin"):
+            self.go()
+        tmux = shlex.quote(shutil.which("tmux"))
+        self.assertEqual(seen, ["#!/bin/sh\nexec {} -S /tmp/tmux-501/default attach -r -t '=loop-work:issue-12'\n".format(tmux)])
+        self.assertFalse((self.work / ".loop" / "issue-12" / "watch.command").exists())
+
+    def test_no_issue_watch_file_off_macos(self):
+        os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
+        seen = []
+        original = loop.Loop.process
+        def process(this, issue):
+            seen.append((this.dir / "issue-12" / "watch.command").exists())
+            return original(this, issue)
+        with mock.patch.object(loop.Loop, "process", process), mock.patch.object(loop.sys, "platform", "linux"):
+            self.go()
+        self.assertEqual(seen, [False])
 
     def test_outside_tmux_no_window_opens(self):
         self.go()

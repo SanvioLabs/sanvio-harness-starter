@@ -1,6 +1,7 @@
 // What scripts/loop.py writes to .loop/status.json. Every field is optional here: an older or
 // half-written file still draws, with what it has.
-export type QueueItem = { number: number; title: string }
+// waiting_on: the open issues it depends on, while the loop waits for them to close.
+export type QueueItem = { number: number; title: string; waiting_on?: number[] }
 
 export type Row = {
   number: number
@@ -16,6 +17,8 @@ export type Row = {
   // When this run of the issue began, in local time. An older loop.py doesn't write it.
   started?: string
   updated?: string
+  // The issue's tmux window, issue-N, while it's open.
+  window?: string
 }
 
 export type Status = {
@@ -23,6 +26,8 @@ export type Status = {
   updated: string | null
   // The tmux session a running loop is in, when it was started in one.
   tmux: string | null
+  // When the running loop started, in UTC with its offset. An older loop.py doesn't write it.
+  started?: string | null
   queue: QueueItem[]
   issues: Row[]
 }

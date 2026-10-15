@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, clock, describe, dot, findRoot, firstTab, headline, isPulsing, lists, lockPid, page, parseStatus, sameSeen, watch, watchCommand } from './logic'
+import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -21,6 +21,7 @@ const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean 
   pass: { color: 'green', bold: true },
   fail: { color: 'red', bold: true },
   quiet: { dimColor: true },
+  idle: { color: 'green', dimColor: true },
 }
 
 // A working job's dot, on alternate ticks. Bright and dim rather than on and off: a dot that vanishes
@@ -38,6 +39,17 @@ const EMPTY: Record<Tab, string> = {
 }
 
 let stopPolling: (() => void) | null = null
+
+// Open a read-only Terminal window from a watch file; when it can't, copy the command that does the
+// same and say so. Closing the window leaves the loop running.
+function openWatch($: EngineInterface, file: string, copy: () => Promise<unknown>): void {
+  void (async () => {
+    const ran = await $.process.run(['open', file]).catch(() => null)
+    if (ran?.exitCode === 0) return
+    await copy()
+    $.ui.toast("Couldn't open a window, so the read-only attach command is copied")
+  })().catch(() => {})
+}
 
 // The tab in view and its first job, kept inside the list. Before the person picks, the busiest tab.
 function current(view: View | null, l: Lists): View {
@@ -112,9 +124,12 @@ function startPolling($: EngineInterface): void {
         return
       }
       beat = !beat
-      if (ticks++ % (POLL_MS / TICK_MS) === 0) await refresh($)
-      // The dot and the running clock move between reads, so redraw for them while a job is on.
-      if (isPulsing(await read($, seenAtom))) $.ui.invalidate('ui.render')
+      const isRead = ticks++ % (POLL_MS / TICK_MS) === 0
+      if (isRead) await refresh($)
+      // The dot and the running clock move between reads, so redraw for them while a job is on. The
+      // header's uptime moves too, so a live loop redraws at least at every read.
+      const seen = await read($, seenAtom)
+      if (isPulsing(seen) || (isRead && seen?.isLocked)) $.ui.invalidate('ui.render')
     })().catch(() => {})
   })
   stopPolling = () => timer.cancel()
@@ -163,10 +178,10 @@ export const register: Register = on => {
 
     if (!seen) return <Text dimColor>Looking for the loop…</Text>
 
-    const head = headline(seen)
+    const top = header(seen, now, width)
     const tmux = attach(seen)
     const watchFile = watch(seen)
-    const l = lists(seen.status, Date.now())
+    const l = lists(seen.status, now)
     const view = current(await read($, viewAtom), l)
     const queue = page(l.queue, view.start)
     const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start)
@@ -180,6 +195,7 @@ export const register: Register = on => {
       const mark = dot(row, seen.isLocked)
       const time = clock(row, seen.isLocked, now)
       const stateText = clip(state.text, inner)
+      const jobCommand = jobAttach(seen, row)
       // Every job has a dot, in the same column, so a title never moves as its job starts or ends.
       return (
         <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={JOB_ROWS}>
@@ -195,12 +211,25 @@ export const register: Register = on => {
             <Box height={2} overflow="hidden">
               <Text dimColor>{detail ? clip(detail, inner * 2) : ' '}</Text>
             </Box>
-            {row.pr ? (
-              <Button
-                key={`pr-${row.number}`}
-                label={clip('Copy pull request link', inner)}
-                onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
-              />
+            {jobCommand || row.pr ? (
+              <Box flexDirection="row" columnGap={1}>
+                {jobCommand && (
+                  <Button
+                    key={`watch-${row.number}`}
+                    label="Watch"
+                    onPress={press =>
+                      openWatch($, `${seen.root}/${jobWatchFile(row.number)}`, () =>
+                        $.ui.copy({ text: jobCommand, surface: press.surface }))}
+                  />
+                )}
+                {row.pr ? (
+                  <Button
+                    key={`pr-${row.number}`}
+                    label={clip('Copy pull request link', inner)}
+                    onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
+                  />
+                ) : null}
+              </Box>
             ) : (
               <Text> </Text>
             )}
@@ -214,31 +243,32 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Text {...COLORS[head.tone]}>{clip(head.text, width)}</Text>
-        {tmux && <Text>{clip(`tmux ${seen.status?.tmux}: ${tmux}`, width * 2)}</Text>}
-        {watchFile && (
-          <Button
-            key="watch"
-            label={clip('Watch it', width)}
-            onPress={press => {
-              // A new Terminal window, attached read-only; closing it leaves the loop running.
-              void (async () => {
-                const ran = await $.process.run(['open', watchFile]).catch(() => null)
-                if (ran?.exitCode === 0) return
-                await $.ui.copy({ text: watchCommand(seen) ?? '', surface: press.surface })
-                $.ui.toast("Couldn't open a window, so the read-only attach command is copied")
-              })().catch(() => {})
-            }}
-          />
-        )}
+        {/* Two rows whatever the state, so nothing under the header moves when it wraps. */}
+        <Box key="header" flexDirection="row">
+          <Text bold>{top.left}</Text>
+          {!top.wraps && <Text>{' '.repeat(width - top.left.length - top.right.text.length)}</Text>}
+          {!top.wraps && <Text {...COLORS[top.right.tone]}>{top.right.text}</Text>}
+        </Box>
+        {top.wraps ? <Text {...COLORS[top.right.tone]}>{top.right.text}</Text> : <Text> </Text>}
         {tmux && (
-          <Button
-            key="tmux"
-            label={clip('Copy attach command', width)}
-            onPress={press => $.ui.copy({ text: tmux, surface: press.surface })}
-          />
+          <Box key="actions" flexDirection="row" flexWrap="wrap" columnGap={1}>
+            {watchFile && (
+              <Button
+                key="watch"
+                label="Watch it"
+                onPress={press =>
+                  openWatch($, watchFile, () => $.ui.copy({ text: watchCommand(seen) ?? '', surface: press.surface }))}
+              />
+            )}
+            <Button
+              key="tmux"
+              label="Copy attach command"
+              onPress={press => $.ui.copy({ text: tmux, surface: press.surface })}
+            />
+          </Box>
         )}
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
+        <Text dimColor>{'─'.repeat(width)}</Text>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {TABS.map(({ tab, label }) => (
             <Button
               key={`tab-${tab}`}
@@ -262,7 +292,18 @@ export const register: Register = on => {
         )}
         {jobs
           ? jobs.shown.map(job)
-          : queue.shown.map(q => <Text key={`queue-${q.number}`}>{clip(`#${q.number} ${q.title}`, width)}</Text>)}
+          : queue.shown.map(q => {
+              // The title gives way to what it waits on, down to a short stub.
+              const note = waitingOn(q)
+              const tag = note ? ` · ${note}` : ''
+              const title = clip(`#${q.number} ${q.title}`, Math.max(width - tag.length, Math.min(width, 16)))
+              return (
+                <Box key={`queue-${q.number}`} flexDirection="row">
+                  <Text>{title}</Text>
+                  {tag ? <Text dimColor>{clip(tag, width - title.length)}</Text> : null}
+                </Box>
+              )
+            })}
         {gap(PAGE - shownCount - (isEmpty ? 1 : 0), jobs ? JOB_ROWS : 1)}
         {below > 0 ? (
           <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1)} />
