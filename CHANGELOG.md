@@ -29,12 +29,13 @@ fine).
 
 ## 2026-10-14: Loop cleans up finished worktrees
 
-When the loop goes idle, it checks each issue it opened a pull request for. If
-the pull request is merged or closed and the issue's worktree has no changes,
-it removes the worktree and the local `loop/issue-N` branch and logs a
-`CLEANUP` line. A worktree with changes is kept and logged as `KEPT`. An open
-pull request, a blocked issue, or a pull request GitHub can't be asked about
-leaves everything as it was. Remote branches, `review-pr-N` checkouts and
+While the loop is idle, each time it polls it checks each issue it opened a
+pull request for. If the pull request is merged or closed, the issue's worktree
+has no changes, and every commit on the local `loop/issue-N` branch is in the
+pull request, it removes the worktree and the branch and logs a `CLEANUP` line.
+A worktree with changes, or a branch with commits that were never pushed, is
+kept and logged once as `KEPT`. An open pull request, a blocked issue, or a
+pull request GitHub can't be asked about leaves everything as it was. Remote branches, `review-pr-N` checkouts and
 `.loop/issue-N/` stay.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)

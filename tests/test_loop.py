@@ -168,8 +168,9 @@ elif args[:2] == ["pr", "view"]:
     if os.path.exists(os.path.join(state, "pr-view-fails")):
         print("HTTP 502")  # on stdout, as gh prints its errors
         sys.exit(1)
-    path = os.path.join(state, "pr-state")
-    print(open(path).read().strip() if os.path.exists(path) else "OPEN")
+    path, head = os.path.join(state, "pr-state"), os.path.join(state, "pr-head")
+    print(open(path).read().strip() if os.path.exists(path) else "OPEN",
+          open(head).read().strip() if os.path.exists(head) else "")
 elif args[:2] == ["issue", "comment"] and os.path.exists(os.path.join(state, "comment-fails")):
     print("HTTP 403: comments are locked", file=sys.stderr)
     sys.exit(1)
@@ -546,6 +547,7 @@ class TestAPass(unittest.TestCase):
         self.go()
         (self.state / "issues.json").write_text("[]")
         (self.state / "pr-state").write_text(pr_state)
+        (self.state / "pr-head").write_text(git(self.work, "rev-parse", "origin/loop/issue-12").stdout.strip())
         tree = Path(self.cfg["worktree_dir"]) / "issue-12"
         self.assertTrue(tree.exists())
         return tree
@@ -585,6 +587,47 @@ class TestAPass(unittest.TestCase):
         self.assertTrue(tree.exists())
         self.assertTrue(self.branch_exists())
         self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
+    def test_a_commit_the_pull_request_doesnt_have_keeps_the_branch(self):
+        tree = self.open_then_idle("CLOSED")
+        git(tree, "commit", "-q", "--allow-empty", "-m", "never pushed")
+        self.go()
+        self.go()
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        kept = [l for l in self.lines() if l.split()[2] == "KEPT"]
+        self.assertEqual(len(kept), 2)  # one per run, the same as one per process
+        self.assertIn("commits the pull request doesn't", kept[0])
+        self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
+    def test_a_pull_request_finished_past_the_local_branch_is_still_tidied(self):
+        tree = self.open_then_idle("MERGED")
+        other = Path(self.cfg["worktree_dir"]).parent / "hand"
+        git(self.work, "worktree", "add", "-q", "-b", "hand", str(other), "origin/loop/issue-12")
+        git(other, "commit", "-q", "--allow-empty", "-m", "finished by hand")
+        (self.state / "pr-head").write_text(git(other, "rev-parse", "HEAD").stdout.strip())
+        self.assertEqual(self.go(), 0)
+        self.assertFalse(tree.exists())
+        self.assertFalse(self.branch_exists())
+
+    def test_a_pull_request_merged_while_idle_is_tidied_on_a_later_poll(self):
+        tree = self.open_then_idle("OPEN")
+        runner = loop.Loop(self.work, self.cfg)
+        polls = []
+
+        def merge_then_stop(seconds):
+            polls.append(seconds)
+            if len(polls) == 1:
+                (self.state / "pr-state").write_text("MERGED")
+            else:
+                (self.work / ".loop" / "STOP").write_text("")
+
+        with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=merge_then_stop)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            runner.run()
+        self.assertFalse(tree.exists())
+        self.assertEqual(len(polls), 2)
+        self.assertEqual([l.split()[2] for l in self.lines()].count("IDLE"), 1)  # still once, over two polls
 
     def test_a_failed_pull_request_read_removes_nothing(self):
         tree = self.open_then_idle("MERGED")
