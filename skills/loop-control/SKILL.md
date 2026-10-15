@@ -68,6 +68,13 @@ it gets read before it's labelled.
    how to watch it: `tmux attach -t <name>` (`Ctrl-b d` leaves it
    running), `/loop-pane` in Claude Code, or `tail -f .loop/loop.log`.
 
+`max_workers` in `loop.json` (default 1) is how many issues `run` works at
+once. Each worker runs its own agent sessions, so say that usage grows with the
+number before the person raises it. Each issue's agents write to
+`.loop/issue-<N>/agent.log` as they go, and in tmux each issue gets a window
+named `issue-<N>` that follows it (`Ctrl-b w` lists them) and closes when the
+issue ends. A stop lets every running issue finish its step.
+
 ## Say what it did
 
 1. Read `.loop/status.json` for where each issue ended, then that issue's

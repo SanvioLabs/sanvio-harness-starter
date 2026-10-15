@@ -26,8 +26,12 @@ The same state, for a tool to read, is in .loop/status.json: what's waiting, wha
 issue is on, and how its last round went. Run inside tmux, a START line in the log and the
 status name the session, so `tmux attach -t <name>` opens it. On macOS the run also writes
 .loop/watch.command, which opens a read-only Terminal window on it (the loop pane's Watch it).
-Everything a round produced is in .loop/issue-N/. Checkouts live outside the clone, in
-~/.harness-loop/. It never merges.
+Everything a round produced is in .loop/issue-N/, and agent.log there is what its agents said, as
+they said it. Checkouts live outside the clone, in ~/.harness-loop/. It never merges.
+
+max_workers in loop.json (default 1) is how many issues it works at once, each on its own thread
+and each agent its own session, so usage grows with it. Inside tmux each issue gets a window,
+issue-N, that follows its agent.log and closes when the issue ends.
 Standard library only; needs git and the gh CLI, signed in.
 """
 import argparse
@@ -36,9 +40,12 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +62,8 @@ DEFAULTS = {
     "ready_label": "loop-ready",
     "blocked_label": "loop:blocked",
     "max_rounds": 5,
+    # Issues worked at once. Each one's agents are sessions of their own, so usage grows with it.
+    "max_workers": 1,
     "agent_timeout": 1800,
     "test_timeout": 1800,
     "poll_seconds": 60,
@@ -92,6 +101,29 @@ ISSUE_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
 # wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
 SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
 DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
+
+
+class Interrupted(BaseException):
+    """A Ctrl-C reached the loop: a worker ends where it is and leaves its issue as it was.
+
+    Not an Exception, so the worker's catch-all for a crash, which blocks the issue, lets it through.
+    """
+
+
+def interrupt(signum, frame):
+    """A SIGTERM or SIGHUP, taken as a Ctrl-C."""
+    raise KeyboardInterrupt()
+
+
+def workers(cfg):
+    """max_workers from the config as a whole number, at least 1, or None when it isn't a number."""
+    value = cfg.get("max_workers", 1)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return max(1, int(value))
+    except (ValueError, OverflowError):
+        return None
 
 
 def load_config(root):
@@ -311,22 +343,34 @@ class Loop:
         self.said = set()  # skips and tidy lines already logged by this process, so a poll doesn't repeat them
         self.unposted = {}  # pull request number -> (sha, comment) the agent wrote and GitHub refused
         self.status = self.read_status()
+        # Every write to a shared .loop/ file, and every change to self.status, holds this. Workers
+        # share the one self.status, so no worker's update overwrites another's.
+        self.write_lock = threading.RLock()
+        self.git_lock = threading.Lock()  # one new worktree or push at a time: they share the clone's refs and config
+        self.done = threading.Condition()  # a worker adds its issue to self.finished and notifies
+        self.finished = set()
+        self.session = None  # the tmux session this run is in, once locked() has asked
+        self.windows = {}  # issue number -> the tmux window following its agent.log
+        self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
+        self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
 
     # -- plumbing ---------------------------------------------------------
 
     def log_once(self, step, text, number=None):
         """Log a line once per run, for checks repeated on every idle poll."""
-        if (step, text, number) not in self.said:
-            self.said.add((step, text, number))
-            self.log(step, text, number)
+        with self.write_lock:
+            if (step, text, number) not in self.said:
+                self.said.add((step, text, number))
+                self.log(step, text, number)
 
     def log(self, step, text, number=None):
         """One line per event: time, issue, step, detail. The whole monitor is tail -f."""
         who = "#{}".format(number) if number else "-"
         line = "{} {} {} {}".format(datetime.now().isoformat(timespec="seconds"), who, step, text)
-        with open(self.dir / "loop.log", "a") as handle:
-            handle.write(line + "\n")
-        print(line, flush=True)
+        with self.write_lock:
+            with open(self.dir / "loop.log", "a") as handle:
+                handle.write(line + "\n")
+            print(line, flush=True)
 
     def read_status(self):
         try:
@@ -340,33 +384,35 @@ class Loop:
 
     def save_status(self, **fields):
         """Rewrite .loop/status.json whole, so a reader never sees half a file."""
-        self.status.update(fields)
-        self.status["updated"] = datetime.now().isoformat(timespec="seconds")
-        self.status["issues"] = self.status["issues"][:STATUS_KEEP]
-        reviews = self.status["reviews"]
-        if len(reviews) > REVIEW_KEEP:
-            newest = sorted(reviews, key=lambda n: reviews[n].get("updated", ""), reverse=True)[:REVIEW_KEEP]
-            self.status["reviews"] = {n: reviews[n] for n in newest}
-        part = self.dir / "status.json.part"
-        part.write_text(json.dumps(self.status, indent=2) + "\n")
-        os.replace(part, self.dir / "status.json")
+        with self.write_lock:
+            self.status.update(fields)
+            self.status["updated"] = datetime.now().isoformat(timespec="seconds")
+            self.status["issues"] = self.status["issues"][:STATUS_KEEP]
+            reviews = self.status["reviews"]
+            if len(reviews) > REVIEW_KEEP:
+                newest = sorted(reviews, key=lambda n: reviews[n].get("updated", ""), reverse=True)[:REVIEW_KEEP]
+                self.status["reviews"] = {n: reviews[n] for n in newest}
+            part = self.dir / "status.json.part"
+            part.write_text(json.dumps(self.status, indent=2) + "\n")
+            os.replace(part, self.dir / "status.json")
 
     def mark(self, number, **fields):
         """Update one issue's entry and move it to the top: it's the one the loop is on."""
-        rows = self.status["issues"]
-        row = next((r for r in rows if r["number"] == number), None)
-        if row is None:
-            row = {"number": number, "title": "", "step": "", "state": "", "round": 0,
-                   "tests": None, "review": None, "pr": None, "note": ""}
-        else:
-            rows.remove(row)
-        row.update(fields)
-        row["updated"] = datetime.now().isoformat(timespec="seconds")
-        rows.insert(0, row)
-        if row["state"] in ("pr", "blocked", "skipped"):
-            # Off the queue the moment it ends, as its label is: the next look at GitHub agrees.
-            self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
-        self.save_status()
+        with self.write_lock:
+            rows = self.status["issues"]
+            row = next((r for r in rows if r["number"] == number), None)
+            if row is None:
+                row = {"number": number, "title": "", "step": "", "state": "", "round": 0,
+                       "tests": None, "review": None, "pr": None, "note": ""}
+            else:
+                rows.remove(row)
+            row.update(fields)
+            row["updated"] = datetime.now().isoformat(timespec="seconds")
+            rows.insert(0, row)
+            if row["state"] in ("pr", "blocked", "skipped"):
+                # Off the queue the moment it ends, as its label is: the next look at GitHub agrees.
+                self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
+            self.save_status()
 
     def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None):
         """(exit code, combined output, or stdout alone with stderr=False).
@@ -393,6 +439,11 @@ class Loop:
 
     def stopped(self):
         return (self.dir / "STOP").exists()
+
+    def halt_if_interrupted(self):
+        """Raise Interrupted after a Ctrl-C, so a worker whose agent it killed doesn't take that for a failure."""
+        if self.interrupted.is_set():
+            raise Interrupted()
 
     def whoami(self):
         if self.me is None:
@@ -432,10 +483,11 @@ class Loop:
         except OSError:
             path.unlink(missing_ok=True)  # the pane falls back to copying the attach command
 
-    def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True):
+    def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True, number=None):
         """Run a fresh agent session. Returns (exit code, what it said).
 
         stderr=False keeps its warnings and traces out of what it said, for text that gets posted.
+        With number, each line it says is also appended to .loop/issue-N/agent.log as it comes.
 
         untrusted means cwd holds a stranger's files, and their text may be written to steer the agent.
         Claude Code then runs restricted: the read tools only, confined to that folder, so nothing
@@ -452,11 +504,76 @@ class Loop:
             return REFUSED, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
         if (untrusted or confine) and held is not None:
             cmd = held
-        return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
+        if number is None:
+            return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
+        self.halt_if_interrupted()
+        folder = self.dir / "issue-{}".format(number)
+        folder.mkdir(exist_ok=True)
+        result = self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr)
+        self.halt_if_interrupted()  # its exit code is the Ctrl-C's kill, not something it got wrong
+        return result
+
+    def stream(self, cmd, cwd, prompt, path, which, stderr=True):
+        """sh() for an agent, with each line it says appended to path as it arrives, for its window to show."""
+        timeout = self.cfg["agent_timeout"]
+        try:
+            # A session of its own: a timeout kills whatever it started too, which would otherwise hold
+            # its output open, and a Ctrl-C meant for the loop's terminal doesn't reach it.
+            proc = subprocess.Popen(cmd, cwd=str(cwd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT if stderr else subprocess.DEVNULL,
+                                    text=True, errors="replace", start_new_session=True)
+        except FileNotFoundError:
+            return 127, "command not found: {}".format(cmd[0])
+        except OSError as err:
+            return 126, "could not run {}: {}".format(cmd[0], err.strerror or err)
+
+        def feed():
+            # On its own thread, so an agent that talks before it has read the prompt can't stall both pipes.
+            try:
+                proc.stdin.write(prompt)
+                proc.stdin.close()
+            except (OSError, ValueError):
+                pass  # it exited without reading it all; its exit code says so
+
+        expired = threading.Event()
+
+        def expire():
+            expired.set()
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass  # it ended on its own meanwhile
+
+        timer = threading.Timer(timeout, expire)
+        timer.daemon = True
+        said = []
+        with proc:
+            self.agents.add(proc)
+            if self.interrupted.is_set():
+                expire()  # started as a Ctrl-C was ending the others: it goes too
+            threading.Thread(target=feed, daemon=True).start()
+            timer.start()
+            try:
+                with open(path, "a") as handle:
+                    handle.write("== {} {} ==\n".format(datetime.now().isoformat(timespec="seconds"), which))
+                    handle.flush()
+                    for line in proc.stdout:
+                        said.append(line)
+                        handle.write(line)
+                        handle.flush()
+                proc.wait()
+            finally:
+                timer.cancel()
+                self.agents.discard(proc)
+        if expired.is_set():
+            return 124, "timed out after {}s".format(timeout)
+        return proc.returncode, "".join(said)
 
     # -- the flywheel -----------------------------------------------------
 
-    def discover(self, only=None, dry_run=False):
+    def discover(self, only=None, dry_run=False, busy=()):
+        """The next issue to start, or None. busy is the issues a worker is already on: never picked again,
+        and an issue that depends on one waits for it."""
         code, out = self.gh("issue", "list", "--state", "open", "--limit", "50", "--json",
                             "number,title,body,labels,assignees")
         if code != 0:
@@ -465,7 +582,7 @@ class Loop:
         waiting = ready(json.loads(out or "[]"), self.whoami(), self.cfg)
         self.save_status(queue=[{"number": i["number"], "title": i["title"]} for i in waiting])
         # Only an issue with nothing left to wait for may be picked; the queue still shows the rest.
-        free = [i for i in waiting if self.held(i, dry_run) == "ok"]
+        free = [i for i in waiting if i["number"] not in busy and self.held(i, dry_run, busy) == "ok"]
         return pick(free, self.whoami(), self.cfg, only)
 
     def fresh(self, issue):
@@ -491,11 +608,12 @@ class Loop:
             return None
         return dict(issue, title=data.get("title") or issue["title"], body=data.get("body") or "")
 
-    def dependencies(self, number, body):
+    def dependencies(self, number, body, busy=()):
         """What this issue waits on, from its "Depends on" lines and the issues GitHub lists as blocking it.
 
         ("ok", []) when nothing is left, ("wait", [open numbers]), ("block", why) when one can never be
         met, or ("error", gh's output) when GitHub couldn't say. Each issue is read once per call.
+        One in busy, which a worker here is still on, counts as open whatever GitHub says.
         """
         found = {}  # number -> the issue as GitHub has it, or None for one that isn't there
 
@@ -532,7 +650,7 @@ class Loop:
                 reason = got.get("state_reason")
                 if got.get("state") == "closed" and reason not in (None, "completed"):
                     return "block", "#{} was closed as {}".format(d, reason.replace("_", " "))
-            waits = [d for d in direct if is_open(read(d))]
+            waits = [d for d in direct if d in busy or is_open(read(d))]
             # Follow what each open dependency waits on in turn: if it comes back here, none can start.
             seen, todo = set(waits), [(d, d) for d in waits]
             while todo:
@@ -548,14 +666,14 @@ class Loop:
             return "error", str(err)
         return ("wait", waits) if waits else ("ok", [])
 
-    def held(self, issue, dry_run=False):
+    def held(self, issue, dry_run=False, busy=()):
         """dependencies() for one issue, acted on. Returns "ok", "wait", "block" or "error".
 
         One that can never be met is blocked, which takes its ready label off, so it's said once.
         One that waits, or that GitHub couldn't answer for, is logged once per run and left as it is.
         """
         number = issue["number"]
-        verdict, detail = self.dependencies(number, issue.get("body"))
+        verdict, detail = self.dependencies(number, issue.get("body"), busy)
         if verdict == "block":
             if dry_run:
                 self.log_once("DISCOVER", "would block: not taken: " + detail, number)
@@ -563,10 +681,11 @@ class Loop:
                 self.block(number, "not taken: " + detail)
         elif verdict == "wait":
             self.log_once("WAITING", "on " + ", ".join("#{}".format(d) for d in detail), number)
-            for row in self.status["queue"]:
-                if row["number"] == number:
-                    row["waiting_on"] = detail
-            self.save_status()
+            with self.write_lock:
+                for row in self.status["queue"]:
+                    if row["number"] == number:
+                        row["waiting_on"] = detail
+                self.save_status()
         elif verdict == "error":
             self.log_once("ERROR", "could not read its dependencies: " + detail.strip()[:200], number)
         return verdict
@@ -581,12 +700,13 @@ class Loop:
         branch = "loop/issue-{}".format(number)
         if path.exists():
             return path, branch
-        self.git("fetch", "-q", "origin", self.cfg["base"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        known = self.git("rev-parse", "--verify", "-q", branch)[0] == 0
-        args = ["worktree", "add", "-q", str(path), branch] if known else \
-            ["worktree", "add", "-q", "-b", branch, str(path), "origin/" + self.cfg["base"]]
-        code, out = self.git(*args)
+        with self.git_lock:
+            self.git("fetch", "-q", "origin", self.cfg["base"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            known = self.git("rev-parse", "--verify", "-q", branch)[0] == 0
+            args = ["worktree", "add", "-q", str(path), branch] if known else \
+                ["worktree", "add", "-q", "-b", branch, str(path), "origin/" + self.cfg["base"]]
+            code, out = self.git(*args)
         if code != 0:
             raise RuntimeError("could not make the worktree: " + out.strip()[:200])
         return path, branch
@@ -599,6 +719,7 @@ class Loop:
 
     def block(self, number, why, rounds=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked."""
+        self.halt_if_interrupted()  # whatever failed, a Ctrl-C caused it: the issue stays as it was
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
@@ -612,7 +733,7 @@ class Loop:
         entry = "## {} #{}: {} round{}\n**What went wrong:** {}\n**What should have happened:** {}\n\n".format(
             datetime.now().strftime("%Y-%m-%d"), number, rounds, "" if rounds == 1 else "s",
             " | ".join(problems) or "the run stopped", right)
-        with open(self.dir / "lessons.md", "a") as handle:
+        with self.write_lock, open(self.dir / "lessons.md", "a") as handle:
             handle.write(entry)
 
     def process(self, issue):
@@ -627,9 +748,10 @@ class Loop:
             number, issue["title"], issue.get("body") or ""))
         self.log("DISCOVER", 'picked "{}"'.format(issue["title"]), number)
         # started: when this run of the issue began, for the pane's clock. A relabelled issue starts again.
+        # window: the tmux window following its agent.log, None outside tmux.
         self.mark(number, title=issue["title"], step="SHAPE", state="working", round=0,
                   tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"],
-                  started=datetime.now().isoformat(timespec="seconds"))
+                  started=datetime.now().isoformat(timespec="seconds"), window=self.windows.get(number))
 
         try:
             tree, branch = self.worktree(number)
@@ -638,7 +760,7 @@ class Loop:
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
-        code, plan = self.agent("reader_agent", shape_prompt(issue), tree, confine=True)
+        code, plan = self.agent("reader_agent", shape_prompt(issue), tree, confine=True, number=number)
         if code != 0 or not plan.strip():
             return self.block(number, "shape failed (agent exit {})".format(code))
         (folder / "plan.md").write_text(plan)
@@ -653,7 +775,8 @@ class Loop:
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
-            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests), tree)
+            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests), tree,
+                                    number=number)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
             self.git("add", "-A", cwd=tree)
@@ -677,7 +800,7 @@ class Loop:
 
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode),
-                                       tree, confine=True)
+                                       tree, confine=True, number=number)
             if self.git("status", "--porcelain", cwd=tree)[1].strip():
                 self.git("checkout", "--", ".", cwd=tree)
                 self.git("clean", "-fdq", cwd=tree)
@@ -700,12 +823,15 @@ class Loop:
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
+        self.halt_if_interrupted()
         self.mark(number, step="SCALE")
         code, state = self.gh("issue", "view", str(number), "--json", "state", "-q", ".state")
         if code == 0 and state.strip() != "OPEN":
             self.mark(number, state="skipped", note="issue is {}".format(state.strip().lower()))
             return self.log("SCALE", "skipped: issue is {}, no pull request opened".format(state.strip().lower()), number)
-        code, out = self.git("push", "-q", "-u", "origin", branch)
+        self.halt_if_interrupted()  # the Ctrl-C reaches gh too, so a failed look is no reason to push
+        with self.git_lock:  # -u writes the clone's one config file, which two pushes can't both lock
+            code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
             return self.block(number, "push failed: " + out.strip()[:200])
         body = pr_body(number)
@@ -792,7 +918,7 @@ class Loop:
         try:
             (self.dir / "STOP").unlink(missing_ok=True)  # no other loop holds the lock, so an old stop is stale
             (self.dir / "watch.command").unlink(missing_ok=True)  # and so is a killed run's
-            tmux = self.tmux_session()
+            tmux = self.session = self.tmux_session()
             self.save_status(running=True, pid=os.getpid(), tmux=tmux)
             if tmux:
                 self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
@@ -811,26 +937,130 @@ class Loop:
         return self.locked(lambda: self.work(once, only, dry_run))
 
     def work(self, once, only, dry_run):
+        """Start a worker per ready issue, up to max_workers at once. A stop starts nothing new and
+        waits for each worker, which stops itself before its next round."""
         idle = False
-        while not self.stopped():
-            issue = self.discover(only, dry_run)
-            if issue is None:
-                if not idle:
-                    self.log("IDLE", "nothing ready")
-                    idle = True
-                if not dry_run:
-                    self.tidy()
-                if once or dry_run or only is not None:
+        running = {}  # issue number -> its worker thread
+        most = workers(self.cfg)
+        if most is None:
+            self.log("ERROR", "max_workers in loop.json isn't a number ({!r}), so it works one issue at a time".format(
+                self.cfg.get("max_workers"))[:200])
+            most = 1
+        # The agents run in sessions of their own, so a closed terminal or a killed tmux session no
+        # longer reaches them. Its SIGHUP, or a SIGTERM, ends the run the way a Ctrl-C does, which
+        # kills them, rather than leaving them working an issue the next run may take again.
+        caught = {}
+        if threading.current_thread() is threading.main_thread():
+            for sig in (signal.SIGTERM, signal.SIGHUP):
+                caught[sig] = signal.signal(sig, interrupt)
+        try:
+            while not self.stopped():
+                self.reap(running)
+                if len(running) >= most:
+                    self.reap(running, None)
+                    continue
+                issue = self.discover(only, dry_run, busy=running)
+                if issue is None:
+                    if running:
+                        # Look again each poll, or as soon as a worker ends.
+                        self.reap(running, self.cfg["poll_seconds"])
+                        continue
+                    if not idle:
+                        self.log("IDLE", "nothing ready")
+                        idle = True
+                    if not dry_run:
+                        self.tidy()
+                    if once or dry_run or only is not None:
+                        break
+                    time.sleep(self.cfg["poll_seconds"])
+                    continue
+                idle = False
+                if dry_run:
+                    self.log("DISCOVER", 'would pick "{}"'.format(issue["title"]), issue["number"])
                     break
-                time.sleep(self.cfg["poll_seconds"])
-                continue
-            idle = False
-            if dry_run:
-                self.log("DISCOVER", 'would pick "{}"'.format(issue["title"]), issue["number"])
-                break
-            self.process(issue)
-            if once or only is not None:
-                break
+                running[issue["number"]] = self.start(issue)
+                if once or only is not None:
+                    break
+            while running:
+                self.reap(running, None)
+        except KeyboardInterrupt:
+            # Ends now, as it did with one issue: the agents run in sessions of their own, so the
+            # Ctrl-C never reached them, and waiting on them could take agent_timeout each. The flag
+            # first, so a worker whose agent this kills stops instead of blocking its issue.
+            self.interrupted.set()
+            for proc in list(self.agents):
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass  # it ended on its own meanwhile
+            running.clear()
+            raise
+        finally:
+            for sig, before in caught.items():
+                signal.signal(sig, before)
+            for thread in running.values():  # after any other error, still let each worker finish
+                thread.join()
+
+    def reap(self, running, timeout=0):
+        """Wait up to timeout seconds (None: until one does) for a worker to end, then drop each ended one."""
+        with self.done:
+            self.done.wait_for(lambda: self.finished, timeout)
+            ended, self.finished = self.finished, set()
+        for number in ended:
+            thread = running.pop(number, None)  # None for one an earlier run() already joined
+            if thread is not None:
+                thread.join()
+
+    def start(self, issue):
+        """process() the issue on a thread of its own, after opening its tmux window when there's a session."""
+        number = issue["number"]
+        window = self.open_window(number)
+        thread = threading.Thread(target=self.worker, args=(issue, window),
+                                  name="issue-{}".format(number), daemon=True)
+        thread.start()
+        return thread
+
+    def worker(self, issue, window):
+        """One issue, start to end. An uncaught error blocks only this issue; the other workers carry on."""
+        number = issue["number"]
+        try:
+            try:
+                self.process(issue)
+            except Exception as err:
+                folder = self.dir / "issue-{}".format(number)
+                folder.mkdir(exist_ok=True)
+                (folder / "worker-error.txt").write_text(traceback.format_exc())
+                # The type only: the message can hold agent or GitHub text, and this lands on the issue.
+                self.block(number, "worker died: {}".format(type(err).__name__))
+        except Interrupted:
+            pass  # a Ctrl-C: the issue stays as it was on GitHub, as it did with one issue at a time
+        finally:
+            if window:
+                self.sh(["tmux", "kill-window", "-t", "{}:{}".format(self.session, window)])
+                self.windows.pop(number, None)
+                with self.write_lock:  # the window is gone, so its row stops naming it
+                    row = next((r for r in self.status["issues"] if r["number"] == number), None)
+                    if row is not None and row.get("window") == window:
+                        row["window"] = None
+                        self.save_status()
+            with self.done:
+                self.finished.add(number)
+                self.done.notify_all()
+
+    def open_window(self, number):
+        """In tmux, a window named issue-N that follows .loop/issue-N/agent.log. Its name, or None."""
+        if not self.session:
+            return None
+        name = "issue-{}".format(number)
+        log = self.dir / name / "agent.log"
+        log.parent.mkdir(exist_ok=True)
+        log.touch()  # tail -f gives up on a file that isn't there yet
+        code, _ = self.sh(["tmux", "new-window", "-d", "-t", self.session, "-n", name,
+                           "tail -n +1 -f " + shlex.quote(str(log))])
+        if code != 0:
+            return None
+        self.windows[number] = name
+        return name
 
     # -- reviewing pull requests ------------------------------------------
 
