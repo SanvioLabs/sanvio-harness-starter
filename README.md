@@ -6,7 +6,7 @@ A harness is everything around the model: the rules it reads, the procedures it
 follows, the checks that stop it, and the other agents it hands work to. The
 model is the engine. The harness is what makes it safe to leave running.
 
-![You ask a coding agent to fix a bug. On its own it commits a .env file and the mistake lands in your repo. Then the harness appears around it: instructions it reads, steps it follows, a second reader, and checks that stop it. The same request again: the hook blocks the .env, the agent fixes it, the reader and the checks agree, and only then does it land.](docs/what-is-a-harness.gif)
+![You ask an AI agent to draft the bakery proposal. On its own it leaves a rate as TBD, and the blank goes out to the client. Then the harness appears around it: instructions it reads (rates.json, templates/), steps it follows (skills/draft-proposal), a second reader (proposal-reviewer.md), and checks that stop it (the proposal gate, CI). The same request and the same mistake: this time the gate blocks it, the agent fills the rate from the rate card, the reader and the gate agree, and only then does it go out.](docs/what-is-a-harness.gif)
 
 This repo is the smallest harness that still does the job. The root is
 generic: rules, skills, a reviewer, the checks, and a place for your company
@@ -150,7 +150,7 @@ that needs judgement goes to the reviewer instead. Never edit a gate to make
 work pass. Fix the work.
 
 "Gate" also names the checkpoint at the end of each phase of the
-[flywheel](#four-loops-that-keep-it-working). That one is a question, mostly answered by a person: was it
+[flywheel](#the-main-loop-and-three-inside-it). That one is a question, mostly answered by a person: was it
 measured against real use? Can it run without you? One or two become scripts,
 and Build's runs the job's gate above. [`steering/gates.md`](steering/gates.md) has both: where each
 check runs, and what each phase asks. A bigger harness names its gates, one set
@@ -190,11 +190,19 @@ first that fits.
 
 ![Seven examples drop down seven questions, one stopping at each, hardest for the agent to skip first: code goes to your code repo in projects/, a check a script can make goes to gates/ and runs in the hook and CI, a step in a job goes in that job's skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
 
-## Four loops that keep it working
+## The main loop, and three inside it
 
-The layers are what a harness is made of. The loops are how you run it. Each
-one is small, and each one is the difference between a harness that works on
-day one and a harness that still works in month six.
+The layers are what a harness is made of. The loops are how you run it. The
+flywheel is the main loop, and three smaller loops turn inside it. Each one is
+small, and each one is the difference between a harness that works on day one
+and a harness that still works in month six.
+
+**The main loop: the flywheel.** Every stage ends at a gate, and the output of
+one turn is the input to the next. A proposal becomes a signed scope, the scope
+becomes the build, and the build's lessons change the next proposal. Keep each
+turn small enough to finish. [`scripts/loop.py`](scripts/loop.py) runs one turn per issue.
+
+![The main loop. Five phases on a wheel: Discover, Shape, Build, Validate, Scale. Each gate between them lights as the work passes and shows the question it asks, and the last gate starts turn two.](docs/main-loop.gif)
 
 **1. Fix and recheck.** A check fails, you fix what it names, it runs again,
 and nothing moves until it passes. Here that's the skill's last two steps and
@@ -210,14 +218,7 @@ reviewed and then changed gets reviewed again.
 
 ![One edit lands on a pull request that had passed. Every check and the review go grey, the merge button waits, and they run again until it's green.](docs/pass-goes-stale.gif)
 
-**3. The flywheel.** Every stage ends at a gate, and the output of one turn is
-the input to the next. A proposal becomes a signed scope, the scope becomes the
-build, and the build's lessons change the next proposal. Keep each turn small
-enough to finish.
-
-![Five phases on a wheel: Discover, Shape, Build, Validate, Scale. Each gate between them lights as the work passes and shows the question it asks, and the last gate starts turn two.](docs/flywheel.gif)
-
-**4. Mistake to rule.** When the agent gets something wrong, don't just fix the
+**3. Mistake to rule.** When the agent gets something wrong, don't just fix the
 output. Write the rule that stops it happening again, in the file that governs
 it: [`AGENTS.md`](AGENTS.md), a skill, or a gate if it has to hold. Mitchell Hashimoto calls
 this harness engineering. A correction you only said out loud hasn't happened,
@@ -225,8 +226,15 @@ because the next session never heard it.
 
 ![In session 1 the agent pushes to main. You say "learn from that", and the rule is written into AGENTS.md with the date. Session 2 starts with fresh context, reads AGENTS.md, and opens a pull request instead.](docs/mistake-to-rule.gif)
 
-The fourth loop is the one that makes the others better. Every other file in
+The third loop is the one that makes the others better. Every other file in
 this repo exists because of it.
+
+**Where it goes: factories.** A harness with its flywheel turning inside is a
+factory: work goes in, checked work comes out. This starter is one. A company
+can run several that feed each other, each taking only what the next one
+needs, and work crosses from one to the next only through a gate.
+
+![Three factories in one company, each with its own flywheel. Sales takes a lead in and puts a signed proposal out, which passes Sales' gate. Delivery takes it because it needs a signed scope, and puts shipped work out. Support takes shipped work in and routes by need: a bug back to Delivery, more scope to Sales.](docs/factories-chain.gif)
 
 ## Borrowing other people's skills
 

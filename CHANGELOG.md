@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: README loops follow the flywheel
+
+The README's loops section now treats the flywheel as the main loop, with fix
+and recheck, a pass goes stale and mistake to rule turning inside it, so
+mistake to rule is now loop 3. The opening animation is a proposal job instead
+of a bug fix, and a new animation at the end of the section shows harnesses
+feeding each other as factories. `docs/flywheel.gif` is now
+[`docs/main-loop.gif`](docs/main-loop.gif), and the section's anchor changed from
+`#four-loops-that-keep-it-working` to `#the-main-loop-and-three-inside-it`.
+
+Files: [`README.md`](README.md), [`docs/what-is-a-harness.gif`](docs/what-is-a-harness.gif), [`docs/main-loop.gif`](docs/main-loop.gif), [`docs/mistake-to-rule.gif`](docs/mistake-to-rule.gif), [`docs/factories-chain.gif`](docs/factories-chain.gif)
+
+**Do:** nothing, unless something of yours links to `docs/flywheel.gif` or the
+old anchor.
+
 ## 2026-10-15: Loop pane shows which job is live, when it started and for how long
 
 Each job in the [loop pane](examples/mods/loop-pane/) now has a dot beside its
