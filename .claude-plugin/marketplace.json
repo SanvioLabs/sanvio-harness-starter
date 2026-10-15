@@ -16,6 +16,11 @@
       "description": "A pane beside the conversation showing the loop: what's waiting, what each issue is on, and its pull request"
     },
     {
+      "name": "github-status",
+      "source": "./examples/mods/github-status",
+      "description": "A line above the prompt with the repo's running actions, open pull requests and open issues"
+    },
+    {
       "name": "stelliad",
       "source": {
         "source": "github",

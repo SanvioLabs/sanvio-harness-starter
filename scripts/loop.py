@@ -25,7 +25,8 @@ Watch it with:  tail -f .loop/loop.log
 The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
 issue is on, and how its last round went. Run inside tmux, a START line in the log and the
 status name the session, so `tmux attach -t <name>` opens it. On macOS the run also writes
-.loop/watch.command, which opens a read-only Terminal window on it (the loop pane's Watch it).
+.loop/watch.command, which opens a read-only Terminal window on it (the loop pane's Watch it),
+and .loop/issue-N/watch.command for each issue's window (the pane's Watch on that issue).
 Everything a round produced is in .loop/issue-N/, and agent.log there is what its agents said, as
 they said it. Checkouts live outside the clone, in ~/.harness-loop/. It never merges.
 
@@ -46,7 +47,7 @@ import sys
 import threading
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -463,9 +464,23 @@ class Loop:
     def write_watch(self, session):
         """On macOS, .loop/watch.command: opened, it attaches a new Terminal window to the session, read-only.
 
-        The loop pane's Watch it button opens it. The tmux path is absolute because Terminal's PATH
-        can differ from this shell's, and the socket is this run's, so a non-default server still
-        attaches. "=" makes tmux match the name exactly; it's quoted by hand because shlex leaves it bare.
+        The loop pane's Watch it button opens it.
+        """
+        self.write_attach(self.dir / "watch.command", session)
+
+    def write_issue_watch(self, number, window):
+        """On macOS, .loop/issue-N/watch.command: the same, on the issue's own window.
+
+        The Watch button on the issue's row in the loop pane opens it. worker() removes it with the window.
+        """
+        self.write_attach(self.dir / "issue-{}".format(number) / "watch.command", "{}:{}".format(self.session, window))
+
+    def write_attach(self, path, target):
+        """Write a script at path that attaches tmux to target, read-only. macOS with tmux only.
+
+        The tmux path is absolute because Terminal's PATH can differ from this shell's, and the socket
+        is this run's, so a non-default server still attaches. "=" makes tmux match the session name
+        exactly; it's quoted by hand because shlex leaves it bare.
         """
         tmux = shutil.which("tmux")
         if sys.platform != "darwin" or not tmux:
@@ -475,10 +490,9 @@ class Loop:
         if socket:
             argv += ["-S", socket]
         argv += ["attach", "-r", "-t"]
-        target = "'=" + session.replace("'", "'\\''") + "'"
-        path = self.dir / "watch.command"
+        quoted = "'=" + target.replace("'", "'\\''") + "'"
         try:
-            path.write_text("#!/bin/sh\nexec {} {}\n".format(" ".join(shlex.quote(a) for a in argv), target))
+            path.write_text("#!/bin/sh\nexec {} {}\n".format(" ".join(shlex.quote(a) for a in argv), quoted))
             path.chmod(0o755)
         except OSError:
             path.unlink(missing_ok=True)  # the pane falls back to copying the attach command
@@ -919,7 +933,9 @@ class Loop:
             (self.dir / "STOP").unlink(missing_ok=True)  # no other loop holds the lock, so an old stop is stale
             (self.dir / "watch.command").unlink(missing_ok=True)  # and so is a killed run's
             tmux = self.session = self.tmux_session()
-            self.save_status(running=True, pid=os.getpid(), tmux=tmux)
+            # started is UTC with its offset, unlike the rest of the file, so the pane's uptime needs no zone.
+            self.save_status(running=True, pid=os.getpid(), tmux=tmux,
+                             started=datetime.now(timezone.utc).isoformat(timespec="seconds"))
             if tmux:
                 self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
                 self.write_watch(tmux)
@@ -928,7 +944,7 @@ class Loop:
                 self.log("STOPPED", "stop file found")
                 (self.dir / "STOP").unlink()
         finally:
-            self.save_status(running=False, pid=None, tmux=None, reviewing=None)
+            self.save_status(running=False, pid=None, tmux=None, started=None, reviewing=None)
             (self.dir / "watch.command").unlink(missing_ok=True)
             (self.dir / "lock").unlink(missing_ok=True)
         return code or 0
@@ -1015,6 +1031,8 @@ class Loop:
         """process() the issue on a thread of its own, after opening its tmux window when there's a session."""
         number = issue["number"]
         window = self.open_window(number)
+        if window:
+            self.write_issue_watch(number, window)
         thread = threading.Thread(target=self.worker, args=(issue, window),
                                   name="issue-{}".format(number), daemon=True)
         thread.start()
@@ -1037,6 +1055,7 @@ class Loop:
         finally:
             if window:
                 self.sh(["tmux", "kill-window", "-t", "{}:{}".format(self.session, window)])
+                (self.dir / "issue-{}".format(number) / "watch.command").unlink(missing_ok=True)
                 self.windows.pop(number, None)
                 with self.write_lock:  # the window is gone, so its row stops naming it
                     row = next((r for r in self.status["issues"] if r["number"] == number), None)

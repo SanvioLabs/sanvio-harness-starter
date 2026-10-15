@@ -42,6 +42,47 @@ Files: [`agents/ceo.md`](agents/ceo.md), [`agents/cto.md`](agents/cto.md), [`age
 
 **Do:** nothing.
 
+## 2026-10-15: Loop pane header dot pulses
+
+The dot before **Running** in the `/loop-pane` header now pulses, bright then
+dim, in step with the dot beside each job the loop is on. Idle, stopping and
+not running keep a still dot.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** reopen `/loop-pane`, or reload mods, to pick it up.
+
+## 2026-10-15: Loop pane header and a Watch button per job
+
+`/loop-pane` opens on a header: the repo on the left, and on the right whether
+the loop is running, idle, stopping or not running, how many jobs it's on, and
+how long it has been up. Watch it and Copy attach command share one row, and
+the bare `tmux attach` line is gone. Each job with a tmux window has its own
+**Watch** button, which opens a read-only Terminal window on that job, or copies
+its attach command when it can't. A queued issue that depends on an open one
+says what it's waiting on. [`scripts/loop.py`](scripts/loop.py) writes `started` to
+`.loop/status.json` while a run holds the lock, and on macOS in tmux
+`.loop/issue-N/watch.command` while an issue's window is open. tmux has one
+current window per session, so a job's Watch also switches any other window
+attached to the loop's session.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`examples/mods/loop-pane/`](examples/mods/loop-pane/), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** restart a running loop, and reopen `/loop-pane`, to pick it up.
+
+## 2026-10-15: GitHub status mod
+
+A new mod, off unless you install it, draws one line above the prompt with the
+session repo's running actions, open pull requests and open issues, and adds
+`/github` to read them straight away. It only reads, through `gh`, at most once
+every two minutes, and a repo without a GitHub `origin` remote never calls
+`gh`.
+
+Files: [`examples/mods/github-status/`](examples/mods/github-status/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)
+
+**Do:** to use it, `/plugin install github-status@sanvio-harness-starter`,
+with `gh` installed and signed in.
+
 ## 2026-10-15: The loop works several issues at once
 
 [`scripts/loop.py`](scripts/loop.py) takes a `max_workers` key in `loop.json`,

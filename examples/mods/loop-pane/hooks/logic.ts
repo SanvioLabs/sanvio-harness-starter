@@ -1,7 +1,7 @@
 // The pane's decisions as plain functions, so they can be tested without a session.
 import type { QueueItem, Row, Seen, Status, Tab } from '../types'
 
-export type Tone = 'now' | 'pass' | 'fail' | 'quiet'
+export type Tone = 'now' | 'pass' | 'fail' | 'quiet' | 'idle'
 export type Line = { tone: Tone; text: string }
 
 export const STATUS_FILE = '.loop/status.json'
@@ -41,7 +41,12 @@ export function parseStatus(text: string | null): Status | null {
   const data = raw as Record<string, unknown>
   const queue: QueueItem[] = (Array.isArray(data.queue) ? data.queue : [])
     .filter((q): q is Record<string, unknown> => !!q && typeof q === 'object' && num((q as Record<string, unknown>).number) > 0)
-    .map(q => ({ number: num(q.number), title: str(q.title) }))
+    .map(q => {
+      const item: QueueItem = { number: num(q.number), title: str(q.title) }
+      const on = Array.isArray(q.waiting_on) ? q.waiting_on.filter(n => num(n) > 0) : []
+      if (on.length) item.waiting_on = on
+      return item
+    })
   const issues: Row[] = (Array.isArray(data.issues) ? data.issues : [])
     .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && num((r as Record<string, unknown>).number) > 0)
     .map(r => ({
@@ -57,8 +62,12 @@ export function parseStatus(text: string | null): Status | null {
       note: str(r.note),
       started: orNull(r.started) ?? undefined,
       updated: orNull(r.updated) ?? undefined,
+      window: orNull(r.window) ?? undefined,
     }))
-  return { running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux), queue, issues }
+  return {
+    running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux),
+    started: orNull(data.started), queue, issues,
+  }
 }
 
 // The first line of the pane. The lock is the truth about running: the file's own flag can be left
@@ -70,6 +79,39 @@ export function headline(seen: Seen): Line {
   if (!seen.status) return { tone: 'quiet', text: "Hasn't run here yet" }
   if (seen.status.running) return { tone: 'fail', text: "Not running. The last run didn't finish cleanly" }
   return { tone: 'quiet', text: 'Not running' }
+}
+
+export type Header = { left: string; right: Line; isPulsing: boolean; wraps: boolean; rows: [string, string] }
+
+// The pane's top: the repo on the left, the loop's state on the right. Always two rows: the state
+// drops to the second when both don't fit on the first, and the second stays blank when they do, so
+// nothing below moves as the state changes. The state's dot pulses while the loop is on a job, like
+// that job's own dot.
+export function header(seen: Seen, now: number, width: number): Header {
+  const left = seen.root.split('/').filter(Boolean).pop() ?? seen.root
+  const right = loopState(seen, now)
+  const isPulsing = seen.isLocked && !seen.isStopping && !!seen.status?.issues.some(r => r.state === 'working')
+  const wraps = left.length + 1 + right.text.length > width
+  if (wraps) {
+    const state = { tone: right.tone, text: clip(right.text, width) }
+    return { left: clip(left, width), right: state, isPulsing, wraps, rows: [clip(left, width), state.text] }
+  }
+  return { left, right, isPulsing, wraps, rows: [left + ' '.repeat(width - left.length - right.text.length) + right.text, ''] }
+}
+
+// The header's state. Running counts the jobs being worked, and says so past one; a run with none is
+// idle. Up is how long this run has held the lock, from a loop.py that writes when it started.
+function loopState(seen: Seen, now: number): Line {
+  const from = seen.status?.started ? Date.parse(seen.status.started) : Number.NaN
+  const up = Number.isFinite(from) ? ` · up ${duration(now - from)}` : ''
+  if (seen.isLocked && seen.isStopping) return { tone: 'now', text: '● Stopping after this step' }
+  if (seen.isLocked) {
+    const working = seen.status?.issues.filter(r => r.state === 'working').length ?? 0
+    if (!working) return { tone: 'idle', text: `● Idle${up}` }
+    return { tone: 'now', text: `● Running${working > 1 ? ` ${working}` : ''}${up}` }
+  }
+  const line = headline(seen)
+  return { tone: line.tone, text: `○ ${line.text}` }
 }
 
 // The command that opens the tmux session a running loop is in, or null. A session named by a run
@@ -91,6 +133,25 @@ export function watch(seen: Seen): string | null {
 export function watchCommand(seen: Seen): string | null {
   const name = seen.status?.tmux
   return attach(seen) && name ? `tmux attach -r -t '=${name.replace(/'/g, `'\\''`)}'` : null
+}
+
+// The file that opens a window on one job's tmux window, read-only, under the root. loop.py writes it
+// only on macOS, when it opens the window, and removes it when the window closes.
+export function jobWatchFile(n: number): string {
+  return `.loop/issue-${n}/watch.command`
+}
+
+// What that file runs, to copy when it can't open, or null when the job has no window in a live run.
+export function jobAttach(seen: Seen, row: Row): string | null {
+  const name = seen.status?.tmux
+  if (!attach(seen) || !name || !row.window) return null
+  return `tmux attach -r -t '=${`${name}:${row.window}`.replace(/'/g, `'\\''`)}'`
+}
+
+// What a queued issue waits on, beside its title: the open issues it depends on. Null when nothing.
+export function waitingOn(item: QueueItem): string | null {
+  const on = item.waiting_on ?? []
+  return on.length ? `waiting on ${on.map(n => `#${n}`).join(', ')}` : null
 }
 
 // Jobs in view at once; the rest scroll.
