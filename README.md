@@ -150,7 +150,7 @@ that needs judgement goes to the reviewer instead. Never edit a gate to make
 work pass. Fix the work.
 
 "Gate" also names the checkpoint at the end of each phase of the
-[flywheel](#the-main-loop-and-three-inside-it). That one is a question, mostly answered by a person: was it
+[flywheel](#the-main-loop-and-four-inside-it). That one is a question, mostly answered by a person: was it
 measured against real use? Can it run without you? One or two become scripts,
 and Build's runs the job's gate above. [`steering/gates.md`](steering/gates.md) has both: where each
 check runs, and what each phase asks. A bigger harness names its gates, one set
@@ -190,10 +190,10 @@ first that fits.
 
 ![Seven examples drop down seven questions, one stopping at each, hardest for the agent to skip first: code goes to your code repo in projects/, a check a script can make goes to gates/ and runs in the hook and CI, a step in a job goes in that job's skill, the company to company/COMPANY.md, where things live to company/DATA.md, a topic to its steering file, and anything else to AGENTS.md.](docs/where-it-goes.gif)
 
-## The main loop, and three inside it
+## The main loop, and four inside it
 
 The layers are what a harness is made of. The loops are how you run it. The
-flywheel is the main loop, and three smaller loops turn inside it. Each one is
+flywheel is the main loop, and four smaller loops turn inside it. Each one is
 small, and each one is the difference between a harness that works on day one
 and a harness that still works in month six.
 
@@ -211,14 +211,26 @@ to make the work pass.
 
 ![A change goes edit, test, hook. The hook blocks a committed .env, the change goes back to edit, and on the second pass it clears the hook, CI, review and a human merge.](docs/fix-and-recheck.gif)
 
-**2. A pass goes stale.** A check that passed yesterday says nothing about the
-file you edited this morning. That's why the gate runs in the hook on every
-commit, not once when someone remembers. In your job, anything that was
-reviewed and then changed gets reviewed again.
+**2. A stamp goes stale.** A check that passed yesterday says nothing about the
+file you edited this morning. So each check stamps the proposal with a
+fingerprint of its text, in a fixed order: the gate first, then your okay on
+the review. Edit it after, and every stamp goes stale until they run again.
+[`examples/proposal/gates/stamp.py`](examples/proposal/gates/stamp.py) writes the stamps and `stamp.py status` says
+which are fresh. It's the same reason the gate runs in the hook on every
+commit, not once when someone remembers.
 
-![One edit lands on a pull request that had passed. Every check and the review go grey, the merge button waits, and they run again until it's green.](docs/pass-goes-stale.gif)
+![The Juniper Bakery proposal, stamped by the gate and then the review: Ready to send. One edit adds a start date, both stamps go stale, and sending waits. The gate runs and stamps it, then the review, and it's ready to send again.](docs/stamp-goes-stale.gif)
 
-**3. Mistake to rule.** When the agent gets something wrong, don't just fix the
+**3. Close the gap.** Every phase of the flywheel ends at a gate, and a gate
+that only says "no" leaves you guessing. [`examples/proposal/gates/phase_gate.py`](examples/proposal/gates/phase_gate.py)
+names each thing a proposal is missing before Build and what closes it: a
+command, the reviewer, or only you. Run what it names, then run it again. What
+no skill can close, like the client's signature, stays open, and it never
+moves the phase on by itself.
+
+![The phase gate for juniper-bakery entering Build names three gaps: gate passed on this text, closed by stamp.py gate; reviewed on this text, closed by the reviewer agent and then your stamp; and signed by the client, which no skill closes. The first two close in order, and the gate ends with one gap only you can close.](docs/close-the-gap.gif)
+
+**4. Mistake to rule.** When the agent gets something wrong, don't just fix the
 output. Write the rule that stops it happening again, in the file that governs
 it: [`AGENTS.md`](AGENTS.md), a skill, or a gate if it has to hold. Mitchell Hashimoto calls
 this harness engineering. A correction you only said out loud hasn't happened,
@@ -226,7 +238,7 @@ because the next session never heard it.
 
 ![In session 1 the agent pushes to main. You say "learn from that", and the rule is written into AGENTS.md with the date. Session 2 starts with fresh context, reads AGENTS.md, and opens a pull request instead.](docs/mistake-to-rule.gif)
 
-The third loop is the one that makes the others better. Every other file in
+The fourth loop is the one that makes the others better. Every other file in
 this repo exists because of it.
 
 **Where it goes: factories.** A harness with its flywheel turning inside is a

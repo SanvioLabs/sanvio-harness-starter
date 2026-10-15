@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: Stamps and a phase gate for proposals
+
+Two loops the README only described before now run. Each check stamps a
+proposal with a fingerprint of its text, in order (the gate, then your okay on
+the review), and an edit makes every stamp stale until they run again. A phase
+gate names what a proposal is missing before Shape or Build and what closes
+each gap, and never moves the phase itself. The README's loops are now the
+main loop plus four: fix and recheck, a stamp goes stale (in place of a pass
+goes stale), close the gap, and mistake to rule. The draft-proposal skill
+stamps a proposal once its gate passes.
+
+Files: [`examples/proposal/gates/stamp.py`](examples/proposal/gates/stamp.py), [`examples/proposal/gates/phase_gate.py`](examples/proposal/gates/phase_gate.py), [`tests/test_stamp.py`](tests/test_stamp.py), [`examples/proposal/README.md`](examples/proposal/README.md), [`examples/proposal/skills/draft-proposal/SKILL.md`](examples/proposal/skills/draft-proposal/SKILL.md), [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`steering/gates.md`](steering/gates.md), [`docs/stamp-goes-stale.gif`](docs/stamp-goes-stale.gif), [`docs/close-the-gap.gif`](docs/close-the-gap.gif), [`docs/mistake-to-rule.gif`](docs/mistake-to-rule.gif)
+
+**Do:** nothing to take it. `docs/pass-goes-stale.gif` is gone, and the loops
+section's anchor is now `#the-main-loop-and-four-inside-it`, so update anything
+of yours that links to either.
+
 ## 2026-10-15: README loops follow the flywheel
 
 The README's loops section now treats the flywheel as the main loop, with fix
