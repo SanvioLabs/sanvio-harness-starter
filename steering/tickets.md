@@ -55,8 +55,12 @@ skill checks them and asks before it labels.
   guard would refuse.
 - Risk is Low or Medium, and there's no Human Approval section. The loop runs
   with nobody watching, so nothing in a ticket can make it stop and ask.
-- Any `Depends on #N` has closed. The loop reads neither dependencies nor
-  priority: it takes the lowest-numbered ready issue.
+- Its dependencies can be left to the loop. It waits until each `Depends on
+  #N` line's issues, and each issue GitHub lists as blocking it, are closed
+  as completed, so `loop-ready` can go on a dependent issue straight away. One
+  closed as not planned, a number that isn't an issue, or a cycle blocks it
+  with a comment. The loop doesn't read priority: of the issues with nothing
+  left to wait for, it takes the lowest-numbered.
 - It isn't assigned to someone else.
 
 ## While it's worked

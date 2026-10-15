@@ -22,8 +22,10 @@ it gets read before it's labelled.
    - **One change**, small enough for one pull request.
    - **Acceptance criteria** a check can prove, at least one of them by a
      test that fails now and passes after. "Make it better" isn't one.
-   - **Risk Low or Medium,** no Human Approval section, and any
-     `Depends on #N` closed.
+   - **Risk Low or Medium,** and no Human Approval section. Open
+     dependencies needn't stop you labelling it: the loop waits for them.
+     `WAITING` lines in `.loop/loop.log`, and `waiting_on` on the issue's
+     entry in the queue in `.loop/status.json`, show what it waits on.
    - **Where Stelliad is installed,** `stelliad:review-ticket <N>` says READY.
    - **Nothing outside the repo:** no deploying, sending, publishing,
      credentials, or anything the guard would refuse.

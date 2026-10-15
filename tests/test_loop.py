@@ -59,6 +59,12 @@ class TestPureParts(unittest.TestCase):
         self.assertEqual([i["number"] for i in loop.ready(issues, "pat", CFG)], [7, 9])
         self.assertEqual([i["number"] for i in loop.ready(issues, "sam", CFG)], [3, 7, 9])
 
+    def test_depends_on_reads_only_depends_on_lines(self):
+        body = "Fixes the thing, see #9.\nDepends on #5, #3\n  depends on #7 and #3\nNot a depends on #8 line."
+        self.assertEqual(loop.depends_on(body), [3, 5, 7])
+        self.assertEqual(loop.depends_on("Mentions #9 only."), [])
+        self.assertEqual(loop.depends_on(None), [])
+
     def test_config_overlays_defaults_from_loop_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(loop.load_config(tmp), loop.DEFAULTS)
@@ -158,6 +164,25 @@ elif args[:2] == ["api", "graphql"]:
         found = {"title": listed["title"], "body": listed["body"], "authorAssociation": "OWNER",
                  "lastEditedAt": None, "timelineItems": {"nodes": []}}
     print(json.dumps({"data": {"repository": {"issue": found}}}))
+elif args[:2] == ["api", "--paginate"] and args[2].endswith("/dependencies/blocked_by"):
+    # What GitHub lists as blocking issue N: blocked-by.json, {"N": [numbers]}, when a test sets it.
+    import json
+    if os.path.exists(os.path.join(state, "deps-fail")):
+        print("HTTP 502", file=sys.stderr)
+        sys.exit(1)
+    path = os.path.join(state, "blocked-by.json")
+    for n in (json.load(open(path)) if os.path.exists(path) else {}).get(args[2].split("/")[4], []):
+        print(n)
+elif args[0] == "api" and args[1].startswith("repos/{owner}/{repo}/issues/"):
+    # One issue by number from deps.json, {"N": {...}}; any number not in it isn't there.
+    import json
+    path = os.path.join(state, "deps.json")
+    found = (json.load(open(path)) if os.path.exists(path) else {}).get(args[1].split("/")[-1])
+    if found is None:
+        print('{"message": "Not Found"}')
+        print("gh: Not Found (HTTP 404)", file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps(found))
 elif args[:2] == ["issue", "list"]:
     print(open(os.path.join(state, "issues.json")).read())
 elif args[:2] == ["issue", "view"]:
@@ -441,6 +466,103 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((self.state / "plan-cwd").exists())
         self.assertFalse(any("--add-label" in c for c in self.calls()))
         self.assertIn("could not read the issue", "\n".join(self.lines()))
+
+    def with_dependencies(self, issues, deps=None, blocked_by=None):
+        """The listed issues, the issues they name as GitHub has them, and what GitHub lists as blocking each."""
+        (self.state / "issues.json").write_text(json.dumps(issues))
+        (self.state / "deps.json").write_text(json.dumps(deps or {}))
+        (self.state / "blocked-by.json").write_text(json.dumps(blocked_by or {}))
+
+    def test_an_open_issue_github_lists_as_blocking_makes_it_wait(self):
+        self.with_dependencies([issue(12)], deps={"3": {"state": "open", "body": ""}}, blocked_by={"12": [3]})
+        self.assertEqual(self.go(), 0)
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertIn("#12 WAITING on #3", "\n".join(self.lines()))
+        self.assertFalse(any("issue edit" in c or "issue comment" in c for c in self.calls()))
+
+    def test_a_waiting_issue_is_passed_over_for_the_next_one(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3"), issue(4)],
+                               deps={"3": {"state": "open", "body": ""}})
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-4") for c in self.calls()))
+        self.assertFalse(any("loop/issue-2" in c for c in self.calls()))
+
+    def test_an_issue_is_taken_once_its_dependencies_closed_as_completed(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3"), issue(4)],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": ""}})
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+
+    def blocked_on(self, deps):
+        """Run #2, which depends on #3 as deps has it. Returns the one comment #2 got."""
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps=deps)
+        self.go()
+        self.assertFalse((self.state / "plan-cwd").exists())
+        calls = self.calls()
+        self.assertLess(calls.index("issue edit 2 --remove-label loop-ready"),
+                        calls.index("issue edit 2 --add-label loop:blocked"))
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        return comments[0]
+
+    def test_a_dependency_closed_as_not_planned_blocks_the_issue(self):
+        self.assertIn("not taken: #3 was closed as not planned",
+                      self.blocked_on({"3": {"state": "closed", "state_reason": "not_planned", "body": ""}}))
+
+    def test_a_dependency_that_isnt_there_blocks_the_issue(self):
+        self.assertIn("not taken: #3 isn't an issue", self.blocked_on({}))
+
+    def test_a_dependency_that_is_a_pull_request_blocks_the_issue(self):
+        self.assertIn("not taken: #3 isn't an issue",
+                      self.blocked_on({"3": {"state": "open", "body": "", "pull_request": {"url": "x"}}}))
+
+    def test_a_dependency_that_depends_back_blocks_the_issue(self):
+        self.assertIn("not taken: #3 depends back on #2",
+                      self.blocked_on({"3": {"state": "open", "body": "Depends on #2"}}))
+
+    def test_a_waiting_issue_is_logged_once_over_two_polls_and_its_queue_entry_says_on_what(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps={"3": {"state": "open", "body": ""}})
+        runner = loop.Loop(self.work, self.cfg)
+        polls = []
+
+        def poll_twice(seconds):
+            polls.append(seconds)
+            if len(polls) == 2:
+                (self.work / ".loop" / "STOP").write_text("")
+
+        with mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=poll_twice)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            runner.run()
+        self.assertEqual(len(polls), 2)
+        self.assertEqual([l.split()[2] for l in self.lines()].count("WAITING"), 1)
+        self.assertEqual(self.status()["queue"], [{"number": 2, "title": "Add the thing", "waiting_on": [3]}])
+
+    def test_a_failed_dependency_read_logs_one_error_and_takes_nothing(self):
+        (self.state / "deps-fail").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertFalse(any("--add-label" in c for c in self.calls()))
+        errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("could not read its dependencies: HTTP 502", errors[0])
+
+    def test_a_depends_on_line_added_after_discover_stops_it_before_the_worktree(self):
+        (self.state / "deps.json").write_text(json.dumps({"3": {"state": "open", "body": ""}}))
+        (self.state / "graphql.json").write_text(json.dumps({
+            "title": "Add the thing", "body": "Depends on #3", "authorAssociation": "OWNER",
+            "lastEditedAt": None, "timelineItems": {"nodes": []}}))
+        with mock.patch.object(loop.Loop, "worktree") as made:
+            self.assertEqual(self.go(), 0)
+        made.assert_not_called()
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertIn("#12 WAITING on #3", "\n".join(self.lines()))
+
+    def test_dry_run_says_what_it_would_block_and_changes_nothing(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")])
+        self.go(dry_run=True)
+        self.assertFalse(any("issue edit" in c or "issue comment" in c for c in self.calls()))
+        self.assertIn("would block: not taken: #3 isn't an issue", "\n".join(self.lines()))
 
     def test_the_agents_get_the_issue_as_it_is_now_and_plan_in_the_worktree(self):
         (self.state / "graphql.json").write_text(json.dumps({

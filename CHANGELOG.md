@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-15: The loop waits for an issue's dependencies
+
+[`scripts/loop.py`](scripts/loop.py) no longer takes an issue while one it
+depends on is open. It reads each `Depends on #N` line in the issue and each
+issue GitHub lists as blocking it, skips the issue until they're all closed as
+completed, and takes the next one meanwhile. A `WAITING` line in the log says
+what it waits on, as does `waiting_on` on its entry in the queue in
+`.loop/status.json`. A dependency closed as not planned, a number that isn't an
+issue, or a cycle blocks the issue with a comment saying which. It checks again
+just before it starts, so a line added after the issue was queued still
+counts.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`steering/tickets.md`](steering/tickets.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** restart a running loop to pick it up. From then on, `loop-ready` can go
+on a dependent issue before what it depends on has closed.
+
 ## 2026-10-15: Stamps and a phase gate for proposals
 
 Two loops the README only described before now run. Each check stamps a
