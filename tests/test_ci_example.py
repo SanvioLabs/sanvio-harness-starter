@@ -92,7 +92,33 @@ def unquoted_heredocs(text):
     return re.findall(r"<<-?\s*([A-Za-z_]\w*)\b", text)
 
 
+def unchecked_downloads(text):
+    """Every curl or wget that fetches something to run, in a workflow with no pinned sha256 check."""
+    commands = re.findall(r"\b(?:curl|wget)\b[^\n]*", text.replace("\\\n", " "))
+    fetched = [c for c in commands if re.search(r"\|\s*(?:tar|sh|bash)\b|\s-[oO]\s|\.(?:tar\.gz|tgz|zip|deb)\b", c)]
+    checked = re.search(r"sha256sum\s+(?:-c|--check)\b", text) and re.search(r"\b[0-9a-f]{64}\b", text)
+    return [] if checked else fetched
+
+
 class EveryWorkflow(unittest.TestCase):
+    def test_every_download_is_checked_against_a_pinned_sha256(self):
+        # A release asset can be replaced after it's published; a checksum
+        # written here can't.
+        for path in WORKFLOWS:
+            self.assertEqual(unchecked_downloads(path.read_text()), [], path.name)
+
+    def test_the_download_check_catches_an_unchecked_binary(self):
+        unchecked = 'curl -sSfL "https://example.com/tool_1.0_linux_x64.tar.gz" \\\n  | tar -xz -C /tmp tool\n'
+        self.assertEqual(len(unchecked_downloads(unchecked)), 1)
+        checked = (
+            "SHA256=" + "a" * 64 + "\n"
+            'curl -sSfL -o /tmp/tool.tar.gz "https://example.com/tool_1.0_linux_x64.tar.gz"\n'
+            'echo "${SHA256}  /tmp/tool.tar.gz" | sha256sum -c -\n'
+        )
+        self.assertEqual(unchecked_downloads(checked), [])
+        self.assertEqual(unchecked_downloads('curl -sSf "https://api.github.com/repos/o/r"\n'), [])
+
+
     def test_every_action_is_pinned_to_a_commit(self):
         # A tag can be moved to other code; a commit can't.
         for path in WORKFLOWS:

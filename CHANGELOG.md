@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-16: Secret scan checks the gitleaks download
+
+The secret-scan workflow now checks the gitleaks binary against a SHA-256
+written in the workflow before it runs it. Until now it piped the release
+download straight into `tar`. A mismatch fails the job with its own message,
+separate from the "a secret is in this repo's history" one. To move the
+version, change `VERSION` and `SHA256` together, taking the checksum from that
+release's checksums file. A new test fails on any workflow that downloads
+something to run without a pinned sha256 check.
+
+Files: [`.github/workflows/secrets.yml`](.github/workflows/secrets.yml), [`tests/test_ci_example.py`](tests/test_ci_example.py)
+
+**Do:** if your harness has its own copy of `secrets.yml`, take this one, or add
+the same check to yours.
+
 ## 2026-10-15: Loop blocks a build that changes nothing
 
 When the loop's build leaves the branch the same as its base, the loop now
