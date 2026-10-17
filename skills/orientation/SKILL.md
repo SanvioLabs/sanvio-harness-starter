@@ -168,8 +168,8 @@ Fill it from the person's answers, not the example rows. Write on a yes.
 
 Say once that `company/` is gitignored, so this stays on their machine, and that
 every session reads it: the next agent that opens the repo knows where to look
-without asking. [`docs/company.md`](../../docs/company.md) says how to share it with a team once their
-copy is private.
+without asking. The README's [Where things live](../../README.md#where-things-live) says how to share it with a
+team once their copy is private.
 
 ### 5. Write the company record
 
@@ -183,7 +183,7 @@ in the form it's in.
 
 **Here.** The record is local files in `company/`. Interview for it:
 
-1. If `company/COMPANY.md` doesn't exist, copy [`docs/COMPANY.example.md`](../../docs/COMPANY.example.md)
+1. If `company/COMPANY.md` doesn't exist, copy [`COMPANY.example.md`](COMPANY.example.md)
    there. If it does, read it and only ask about the sections still empty. A
    section is empty when everything under its heading is blank or an HTML
    comment: the `<!-- -->` prompts are not answers.
@@ -213,7 +213,7 @@ one. `python3 scripts/check_setup.py` checks that the repo is private.
 **In a wiki.** The answers live on wiki pages, and the record points at them.
 For each section, ask which page holds its answer, and write
 `company/COMPANY.md` with the page's space and name under each heading, in the
-pointer form shown at the top of [`docs/COMPANY.example.md`](../../docs/COMPANY.example.md). Write as you go,
+pointer form shown at the top of [`COMPANY.example.md`](COMPANY.example.md). Write as you go,
 as above. Don't open the pages to copy their contents in. Then draft a row for the wiki in
 `company/DATA.md`, with its connector and whether it's cleared, sorted as in
 step 3, and write it on a yes. If the connector isn't live in this session,
