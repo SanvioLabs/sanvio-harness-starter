@@ -45,6 +45,30 @@ Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW
 and copy the updated workflow. For the loop, put `--cov --cov-fail-under=N`
 in `test_command`.
 
+## 2026-10-17: Loop review_agent
+
+A new `loop.json` key, `review_agent`, names the command that reviews, so a
+different model can review what the build agent wrote. It reviews each round in
+the issue loop and each pull request in `loop.py review`, held to read tools the
+same way `reader_agent` is, and for `review` it has to be `claude`. Planning
+stays with `reader_agent`. Empty, the default, means `reader_agent` reviews as
+before.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
+## 2026-10-17: Anatomy picture at the top of the README
+
+The README opens with one picture of the whole harness: your coding agent in the
+middle, the eight parts around it, the company documents that feed each one, and
+the folder where each lives in this repo. The agent is named generically, since
+the same harness works for Claude Code, Codex and Kiro.
+
+Files: [`README.md`](README.md), [`docs/harness-anatomy.png`](docs/harness-anatomy.png)
+
+**Do:** nothing.
+
 ## 2026-10-16: Secret scan checks the gitleaks download
 
 The secret-scan workflow now checks the gitleaks binary against a SHA-256

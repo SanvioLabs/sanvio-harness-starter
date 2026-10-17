@@ -57,6 +57,8 @@ DEFAULTS = {
     "agent": "claude -p --permission-mode acceptEdits",
     # The agent that plans and reviews. It is told not to edit, and any edit is thrown away.
     "reader_agent": "claude -p",
+    # The agent that reviews, held to read tools the same way. Empty means reader_agent reviews.
+    "review_agent": "",
     # Run by this script, never by the agent, so the agent can't grade its own work.
     "test_command": "python3 -m unittest discover -s tests",
     "base": "main",
@@ -506,6 +508,10 @@ class Loop:
         except OSError:
             path.unlink(missing_ok=True)  # the pane falls back to copying the attach command
 
+    def reviewer(self):
+        """The config key whose command reviews: review_agent when it's set, reader_agent otherwise."""
+        return "review_agent" if self.cfg.get("review_agent") else "reader_agent"
+
     def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True, number=None):
         """Run a fresh agent session. Returns (exit code, what it said).
 
@@ -829,7 +835,7 @@ class Loop:
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
-            rcode, review = self.agent("reader_agent", review_prompt(plan, diff, tout or "(no output)", tcode),
+            rcode, review = self.agent(self.reviewer(), review_prompt(plan, diff, tout or "(no output)", tcode),
                                        tree, confine=True, number=number)
             if self.git("status", "--porcelain", cwd=tree)[1].strip():
                 self.git("checkout", "--", ".", cwd=tree)
@@ -1218,14 +1224,15 @@ class Loop:
             skill = skill_file.read_text() if skill_file.exists() else ""
             prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
             # stdout only: stderr is the agent's warnings and paths, and the report is posted publicly.
-            code, report = self.agent("reader_agent", prompt, tree, untrusted=True, stderr=False)
+            who = self.reviewer()
+            code, report = self.agent(who, prompt, tree, untrusted=True, stderr=False)
             # Fixed reasons only: the report is text someone else could shape, and these go in a one-line log.
             if code == 124:
                 return True, sha, "timed out after {}s".format(self.cfg["agent_timeout"]), True
             if code == 127:
                 return True, sha, "agent command not found", True
             if code == REFUSED:
-                return True, sha, "not run: reader_agent isn't a claude command, so it can't be confined", True
+                return True, sha, "not run: {} isn't a claude command, so it can't be confined".format(who), True
             if code != 0:
                 return True, sha, "agent exit {}".format(code), True
             if not report.strip():
