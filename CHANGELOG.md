@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Pick the pull-request reviewer
+
+The review-pr workflow example now runs on Claude, Codex or a local Ollama
+model, picked with one `REVIEWER` repository variable. Left unset it stays on
+Claude, as before. Codex runs in its read-only sandbox with its key kept out
+of its commands. Ollama runs a model named in `REVIEW_MODEL` on a self-hosted
+runner labelled `ollama`, and holds no key. Neither CLI ever holds the other
+vendor's key, and any other `REVIEWER` value fails the run.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
+
+**Do:** nothing to stay on Claude. To switch, set `REVIEWER` to `codex` or
+`ollama` (and `REVIEW_MODEL`), and add `OPENAI_API_KEY` for Codex.
+
 ## 2026-10-17: Company setup lives in the README
 
 How to keep the company record now sits in the README's *Where things live*
