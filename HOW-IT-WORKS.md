@@ -152,6 +152,12 @@ script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put
 that command in `test_command`, which the script runs itself.
 
+**Coverage, if you want it.** Put it in `test_command`, for instance
+`"test_command": "uv run pytest --cov --cov-fail-under=80"`. The number is
+the project's to choose, and a round below it fails like any other test
+failure. A coverage pass shows which lines ran, not that a test would catch
+a change to them; [`skills/review-tests/`](skills/review-tests/) checks that.
+
 **From a conversation,** the [`skills/loop-control/`](skills/loop-control/) skill does the same jobs:
 it checks an issue is ready before labelling it, starts the loop, says what
 it did, and stops it with the label off first.
