@@ -1,5 +1,9 @@
 """Run with: python3 -m unittest discover -s tests"""
+import os
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -43,11 +47,54 @@ def run_lines(text):
     return out
 
 
+def branch(script, name):
+    """The body of a `name)` branch of a shell case, up to its `;;`, or None."""
+    match = re.search(r"^\s*{}\)\s*\n(.*?)^\s*;;".format(re.escape(name)), script, re.M | re.S)
+    return match.group(1) if match else None
+
+
 class ReviewPrWorkflow(unittest.TestCase):
     def setUp(self):
         self.assertTrue(WORKFLOW.is_file(), "examples/ci/review-pr.yml doesn't exist")
         self.text = WORKFLOW.read_text()
         self.code = code(self.text)
+
+    def scope(self):
+        return self.code.split("id: scope", 1)[1].split("- uses:", 1)[0]
+
+    def steps(self):
+        """Each step under the job as (name, text), the name '' for one without."""
+        body = self.code.split("\n    steps:\n", 1)[1]
+        out = []
+        for text in re.split(r"^(?=      - )", body, flags=re.M):
+            if not text.strip():
+                continue
+            name = re.search(r"^      (?:- |  )name: \"?(.*?)\"?$", text, re.M)
+            out.append((name.group(1) if name else "", text))
+        return out
+
+    def step(self, name):
+        found = [text for each, text in self.steps() if each == name]
+        self.assertEqual(len(found), 1, "no single step named " + name)
+        return found[0]
+
+    def run_step(self, name, **env):
+        """Run a step's script as Actions would. Returns it, its outputs and what it added to the env."""
+        script = self.step(name).split("run: |\n", 1)[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            output, added = Path(tmp) / "output", Path(tmp) / "env"
+            output.touch()
+            added.touch()
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", textwrap.dedent(script)],
+                env={"PATH": os.environ["PATH"], "HEAD_REPO": "o/r", "THIS_REPO": "o/r", "REVIEWER": "claude",
+                     "REVIEW_MODEL": "", "ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "",
+                     "GITHUB_OUTPUT": str(output), "GITHUB_ENV": str(added), **env},
+                capture_output=True, text=True)
+            return result, output.read_text(), added.read_text()
+
+    def run_scope(self, reviewer, **env):
+        return self.run_step("Skip a pull request from a fork", REVIEWER=reviewer, **env)[:2]
 
     def test_it_runs_on_pull_request_and_never_the_target_variant(self):
         self.assertNotIn("pull_request_target", self.text)
@@ -81,6 +128,8 @@ class ReviewPrWorkflow(unittest.TestCase):
                              "line {}: reference a secret as ${{{{ secrets.NAME }}}}".format(number))
         self.assertTrue(SECRET_REF.search(self.code), "the workflow references no secret")
         self.assertIsNone(KEY_SHAPES.search(self.text), "something in the file looks like a key")
+        for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+            self.assertIn("${{ secrets." + name + " }}", self.code)
 
     def test_a_pull_request_from_a_fork_skips_with_a_notice(self):
         self.assertIn("github.event.pull_request.head.repo.full_name", self.code)
@@ -128,6 +177,117 @@ class ReviewPrWorkflow(unittest.TestCase):
     def test_the_skill_points_at_the_example(self):
         skill = (ROOT / "skills" / "review-pr" / "SKILL.md").read_text()
         self.assertIn("examples/ci/review-pr.yml", skill)
+
+    def test_the_reviewer_defaults_to_claude(self):
+        self.assertIn("REVIEWER: ${{ vars.REVIEWER || 'claude' }}", self.code)
+        self.assertIn("REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}", self.code)
+
+    def test_an_unknown_reviewer_fails_and_names_the_three(self):
+        other = branch(self.scope(), "*")
+        self.assertIsNotNone(other, "the scope step's case has no *) branch")
+        self.assertIn("::error::", other)
+        self.assertIn("claude, codex or ollama", other)
+        self.assertRegex(other, r"exit [1-9]")
+
+    def test_the_reviewer_is_read_in_any_case(self):
+        for value in ("claude", "Claude", "codex", "CODEX", "ollama", "Ollama"):
+            result, output = self.run_scope(value, ANTHROPIC_API_KEY="a", OPENAI_API_KEY="o", REVIEW_MODEL="m")
+            self.assertEqual(result.returncode, 0, value + ": " + result.stdout)
+            self.assertIn("review=true", output, value)
+        result, output = self.run_scope("gpt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("claude, codex or ollama", result.stdout)
+        self.assertNotIn("review=true", output)
+
+    def test_a_missing_key_skips_and_a_missing_model_fails(self):
+        for name, key in (("Claude", "ANTHROPIC_API_KEY"), ("Codex", "OPENAI_API_KEY")):
+            result, _, added = self.run_step("Skip when {} has no key".format(name))
+            self.assertEqual(result.returncode, 0, name)
+            self.assertIn("REVIEW_SKIPPED=true", added, name)
+            self.assertIn("::notice::", result.stdout, name)
+            result, _, added = self.run_step("Skip when {} has no key".format(name), **{key: "k"})
+            self.assertEqual(result.returncode, 0, name)
+            self.assertNotIn("REVIEW_SKIPPED", added, name)
+        result, output = self.run_scope("ollama")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("review=true", output)
+
+    def test_a_skipped_review_runs_nothing_after_the_key_checks(self):
+        names = [name for name, _ in self.steps()]
+        for name, text in self.steps()[names.index("Skip when Codex has no key") + 1:]:
+            self.assertIn("env.REVIEW_SKIPPED != 'true'", text, name or "the checkout")
+        for name, reviewer in (("Claude", "claude"), ("Codex", "codex")):
+            self.assertIn("env.REVIEWER == '{}'".format(reviewer), self.step("Skip when {} has no key".format(name)))
+
+    def test_codex_runs_read_only_and_its_commands_get_no_environment(self):
+        call = re.search(r"codex exec[^<]*", self.step("Run the review-pr skill on Codex"))
+        self.assertIsNotNone(call, "no codex exec call in the Codex step")
+        self.assertIn("--sandbox read-only", call.group(0))
+        self.assertIn("-c shell_environment_policy.inherit=none", call.group(0))
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", self.code)
+
+    def test_only_codex_s_last_message_is_posted(self):
+        codex = self.step("Run the review-pr skill on Codex")
+        self.assertIn('--output-last-message "$RUNNER_TEMP/report.md"', codex)
+        self.assertIn('> "$RUNNER_TEMP/codex.log" 2>&1', codex)
+        self.assertNotIn("codex.log", self.step("Post the report as one comment"))
+
+    def test_codex_is_pinned(self):
+        self.assertRegex(self.code, r"npm install -g @openai/codex@\d+\.\d+\.\d+(\s|$)")
+
+    def test_codex_without_its_key_skips_instead_of_failing(self):
+        codex = self.step("Skip when Codex has no key")
+        self.assertRegex(codex, r'-z "\$OPENAI_API_KEY"')
+        self.assertIn("${{ secrets.OPENAI_API_KEY }}", self.scope())
+
+    def test_a_codex_report_or_log_holding_the_key_is_not_posted(self):
+        codex = self.step("Run the review-pr skill on Codex")
+        self.assertIn('grep -qF -e "$OPENAI_API_KEY" "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/codex.log"', codex)
+        self.assertLess(self.code.index('grep -qF -e "$OPENAI_API_KEY"'), self.code.index("Post the report"))
+
+    def test_each_reviewer_s_step_holds_only_its_own_key(self):
+        expected = {
+            "Run the review-pr skill: build the prompt": set(),
+            "Run the review-pr skill on Claude": {"ANTHROPIC_API_KEY"},
+            "Run the review-pr skill on Codex": {"OPENAI_API_KEY"},
+            "Run the review-pr skill on Ollama": set(),
+        }
+        for name, keys in expected.items():
+            self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step(name))), keys, name)
+        for name, reviewer in (("Claude", "claude"), ("Codex", "codex"), ("Ollama", "ollama")):
+            self.assertIn("env.REVIEWER == '{}'".format(reviewer), self.step("Run the review-pr skill on " + name))
+        holding = [name for name, text in self.steps() if "secrets." in text]
+        self.assertEqual(sorted(holding), ["Run the review-pr skill on Claude", "Run the review-pr skill on Codex",
+                                           "Skip when Claude has no key", "Skip when Codex has no key"])
+        self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step("Skip when Claude has no key"))),
+                         {"ANTHROPIC_API_KEY"})
+        self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step("Skip when Codex has no key"))),
+                         {"OPENAI_API_KEY"})
+
+    def test_every_step_holding_a_key_checks_its_output_for_it(self):
+        for name, text in self.steps():
+            if name.startswith("Skip when"):
+                continue
+            for key in re.findall(r"secrets\.(\w+)", text):
+                self.assertIn('grep -qF -e "${}"'.format(key), text, name)
+
+    def test_ollama_runs_a_named_model_on_a_self_hosted_runner_with_no_key(self):
+        self.assertRegex(self.code, r"runs-on: \$\{\{ vars\.REVIEWER == 'ollama' && "
+                                    r"fromJSON\('\[\"self-hosted\",\"ollama\"\]'\) \|\| 'ubuntu-latest' \}\}")
+        ollama = self.step("Run the review-pr skill on Ollama")
+        self.assertRegex(ollama, r'ollama run "\$REVIEW_MODEL"')
+        self.assertNotIn("secrets.", ollama)
+        self.assertNotIn("API_KEY", ollama)
+        required = branch(self.scope(), "ollama")
+        self.assertIsNotNone(required, "the scope step's case has no ollama) branch")
+        self.assertRegex(required, r'-z "\$REVIEW_MODEL"')
+        self.assertIn("::error::", required)
+        self.assertRegex(required, r"exit [1-9]")
+
+    def test_the_header_names_all_three_reviewers(self):
+        header = self.text.split("\nname:", 1)[0]
+        for word in ("Claude", "Codex", "Ollama", "REVIEWER", "REVIEW_MODEL", "OPENAI_API_KEY", "self-hosted"):
+            self.assertIn(word, header)
 
 
 if __name__ == "__main__":

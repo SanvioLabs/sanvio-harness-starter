@@ -42,6 +42,48 @@ Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_l
 
 **Do:** nothing.
 
+## 2026-10-17: Pick the pull-request reviewer
+
+The review-pr workflow example now runs on Claude, Codex or a local Ollama
+model, picked with one `REVIEWER` repository variable. Left unset it stays on
+Claude, as before. Each reviewer runs in its own step, which gets only its
+own key. Codex runs in its read-only sandbox, and because its commands can
+still read files across the runner, its report and its log are checked for
+its key before anything is posted. Ollama runs a model named in
+`REVIEW_MODEL` on a self-hosted runner labelled `ollama`, and its step holds
+no key. `REVIEWER` is read in any case, and any other value fails the run.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
+
+**Do:** nothing to stay on Claude. To switch, set `REVIEWER` to `codex` or
+`ollama` (and `REVIEW_MODEL`), and add `OPENAI_API_KEY` for Codex.
+
+## 2026-10-17: Idea inbox
+
+A new `inbox` skill keeps the ideas you have away from the desk. Email one to
+your own plus address from your phone, or say "idea: ..." in a session. Say
+"inbox" and it sweeps those emails in, where `company/DATA.md` clears your
+mail, then goes through each idea with you and gives it a fate: do it now,
+make an issue, park it or drop it. The list lives in `.inbox/`, which is
+gitignored, and the skill never changes a message.
+
+Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/inbox/inbox.py`](skills/inbox/inbox.py), [`tests/test_inbox.py`](tests/test_inbox.py), [`.gitignore`](.gitignore), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** pick a plus address, such as `name+idea@example.com`, and add a phone
+shortcut that emails it. Step 1 of [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), *Set up capture*,
+has both.
+
+## 2026-10-17: Setup gets a figure
+
+[`steering/writing.md`](steering/writing.md) now asks for a figure beside any README or doc that explains how
+something is set up, with alt text that carries what it shows, and
+[`AGENTS.md`](AGENTS.md) sends the agent there when it writes one. [`projects/README.md`](projects/README.md) gets
+the first: the harness and its projects on disk, and where to start the agent.
+
+Files: [`steering/writing.md`](steering/writing.md), [`AGENTS.md`](AGENTS.md), [`projects/README.md`](projects/README.md), [`docs/projects-layout.png`](docs/projects-layout.png)
+
+**Do:** nothing.
+
 ## 2026-10-17: A dependency closed by hand blocks its issue
 
 The loop now checks how a dependency was closed. One that a merged change

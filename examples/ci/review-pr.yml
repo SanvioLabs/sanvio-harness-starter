@@ -3,14 +3,42 @@
 # own CI. To use it, copy it into .github/workflows/ of a repo that carries
 # this harness's skills/ folder, and add the secret it names.
 #
-# What it does: on each pull request it runs the skill headlessly with
-# `claude -p`, then posts what the skill reported as a comment, and edits that
-# same comment on the next push. The skill only reports. This workflow's last
-# step is the only thing that posts, and it never approves, requests changes
-# or merges: a person decides what happens to the pull request.
+# What it does: on each pull request it runs the skill headlessly, then posts
+# what the skill reported as a comment, and edits that same comment on the
+# next push. The skill only reports. This workflow's last step is the only
+# thing that posts, and it never approves, requests changes or merges: a
+# person decides what happens to the pull request.
 #
-# The secret it needs: ANTHROPIC_API_KEY, a repository secret (Settings,
-# Secrets and variables, Actions). For Bedrock or Vertex, swap it for that
+# Which model reviews: the REVIEWER repository variable (Settings, Secrets
+# and variables, Actions, Variables) picks claude, codex or ollama. Left
+# unset, it's claude. Case doesn't matter. Any other value fails the run.
+# REVIEW_MODEL, another variable, names the model for Ollama, and is ignored
+# by the other two.
+#
+# Claude runs `claude -p` with Read, Grep and Glob only, confined to the
+# checkout. It can reach nothing else on the runner. Its key is
+# ANTHROPIC_API_KEY, a repository secret.
+#
+# Codex runs `codex exec` in its read-only sandbox. Its commands can't write,
+# but they can read any file on the runner, outside the checkout too. Its key,
+# OPENAI_API_KEY, a repository secret, isn't passed to its commands, but one
+# that goes looking can still read it from Codex's own environment. So its
+# report and its log are checked for the key before anything is posted, and
+# the key should be one made for this alone, that you can revoke.
+#
+# Ollama runs `ollama run` on a model you already serve. It has no tools, so
+# it reaches only the prompt, and it needs no key. It runs on a self-hosted
+# runner with the `ollama` label, which has to have Ollama installed and the
+# REVIEW_MODEL model pulled already. This workflow installs neither.
+#
+# Each reviewer runs in its own step, and that step gets only its own key:
+# Claude's ANTHROPIC_API_KEY, Codex's OPENAI_API_KEY, Ollama's none. The only
+# other step that gets a key checks that it's set, runs only for that key's
+# reviewer, and runs no model, so with Ollama no step gets either secret. A
+# missing key skips the review with a notice. A missing REVIEW_MODEL for
+# Ollama fails it.
+#
+# For Claude on Bedrock or Vertex, swap ANTHROPIC_API_KEY for that
 # provider's credentials and the environment variable the Claude Code CLI
 # documents for it. anthropics/claude-code-action is the alternative to
 # installing the CLI by hand: it replaces the install and review steps, and
@@ -23,13 +51,14 @@
 # that way: don't widen the trigger to the `_target` variant of pull_request,
 # and don't add a permission.
 #
-# The key has to be scoped to a workspace (create it inside a workspace in the
-# Anthropic Console). An organisation-level key fails with "must include the
-# anthropic-workspace-id header".
+# The Anthropic key has to be scoped to a workspace (create it inside a
+# workspace in the Anthropic Console). An organisation-level key fails with
+# "must include the anthropic-workspace-id header".
 #
-# The CLI is pinned to the version this was last run with, because a change
-# in how it reads permission rules changes what the agent can reach. Move the
-# pin on purpose, after a run on a test pull request, as with any dependency.
+# The Claude and Codex CLIs are pinned to exact versions, because a change in
+# how either reads its permission or sandbox rules changes what the agent can
+# reach. Move a pin on purpose, after a run on a test pull request, as with
+# any dependency.
 name: Review pull request
 
 on:
@@ -47,50 +76,93 @@ concurrency:
 jobs:
   review:
     name: review
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.REVIEWER == 'ollama' && fromJSON('["self-hosted","ollama"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
+    env:
+      REVIEWER: ${{ vars.REVIEWER || 'claude' }}
+      REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
     steps:
       - name: Skip a pull request from a fork
         id: scope
         env:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           THIS_REPO: ${{ github.repository }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
             echo "review=false" >> "$GITHUB_OUTPUT"
             echo "::notice::A pull request from a fork gets no secrets, so the review skips."
-          elif [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "review=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The expressions that pick the runner and the steps ignore case, so
+          # this does too.
+          reviewer=$(printf '%s' "$REVIEWER" | tr '[:upper:]' '[:lower:]')
+          case "$reviewer" in
+            claude | codex)
+              ;;
+            ollama)
+              if [ -z "$REVIEW_MODEL" ]; then
+                echo "::error::REVIEWER is ollama, so set the REVIEW_MODEL variable to a model the runner already serves."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::REVIEWER must be claude, codex or ollama, not '$REVIEWER'."
+              exit 1
+              ;;
+          esac
+          echo "review=true" >> "$GITHUB_OUTPUT"
+
+      # Each key is checked in a step of its own that gets only that key and
+      # runs only for its reviewer, so on the Ollama path no step gets either.
+      - name: Skip when Claude has no key
+        if: steps.scope.outputs.review == 'true' && env.REVIEWER == 'claude'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "REVIEW_SKIPPED=true" >> "$GITHUB_ENV"
             echo "::notice::This pull request has no ANTHROPIC_API_KEY (Dependabot's don't get Actions secrets), so the review skips."
-          else
-            echo "review=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when Codex has no key
+        if: steps.scope.outputs.review == 'true' && env.REVIEWER == 'codex'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "REVIEW_SKIPPED=true" >> "$GITHUB_ENV"
+            echo "::notice::This pull request has no OPENAI_API_KEY (Dependabot's don't get Actions secrets), so the review skips."
           fi
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        if: steps.scope.outputs.review == 'true'
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true'
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Install the Claude Code CLI
-        if: steps.scope.outputs.review == 'true'
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'claude'
         run: npm install -g @anthropic-ai/claude-code@2.1.296
 
-      # The agent runs restricted: Read, Grep and Glob only, confined to the
+      - name: Install the Codex CLI
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'codex'
+        run: npm install -g @openai/codex@0.159.1
+
+      # Claude runs restricted: Read, Grep and Glob only, confined to the
       # checkout, with no shell, no MCP servers, and no settings or hooks
       # loaded from anywhere, the pull request's own .claude/ folder included.
       # The key sits in the environment of the process the tools run in, and
       # /proc is outside the checkout, so a Read of /proc/self/environ is
-      # refused. The agent has no shell, so this step gets the diff and the
-      # commits with git and puts them in the prompt. Its report is posted
-      # verbatim, so the step also refuses to post one that contains the key:
-      # a backstop for a key written out as it is, not a guarantee against an
-      # encoded one, which is why the confinement matters more.
-      - name: Run the review-pr skill
-        if: steps.scope.outputs.review == 'true'
+      # refused. The agent has no shell, so the first step below gets the diff
+      # and the commits with git and puts them in the prompt, holding no key.
+      # Each reviewer then runs in its own step, which gets only its own key.
+      # Its report is posted verbatim, so that step also refuses to post one
+      # that contains the key: a backstop for a key written out as it is, not
+      # a guarantee against an encoded one, which is why the confinement
+      # matters more. Ollama's step holds no key, so it has nothing to check.
+      - name: "Run the review-pr skill: build the prompt"
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true'
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE_REF: ${{ github.base_ref }}
         run: |
           # The base branch goes in through printf, so the heredoc can be quoted
@@ -115,6 +187,12 @@ jobs:
           # big diff, which fails the step under a shell set to pipefail.
           git diff "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/diff.patch"
           head -c 60000 "$RUNNER_TEMP/diff.patch" >> "$RUNNER_TEMP/prompt.md"
+
+      - name: Run the review-pr skill on Claude
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'claude'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
           set +e
           claude -p --max-turns 30 --restricted --strict-mcp-config --tools Read,Grep,Glob \
             < "$RUNNER_TEMP/prompt.md" > "$RUNNER_TEMP/report.md"
@@ -133,8 +211,49 @@ jobs:
             exit "$code"
           fi
 
+      # Codex's commands can read the runner's files, its own process's
+      # environment under /proc included, so a command can find the key even
+      # though it isn't handed one. Only the final message goes to the report;
+      # the rest of what Codex prints, the commands it ran and what they
+      # printed, goes to a log that is never posted. Both are checked for the
+      # key, and a key in either stops the run.
+      - name: Run the review-pr skill on Codex
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'codex'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set +e
+          codex exec --sandbox read-only -c shell_environment_policy.inherit=none \
+            --output-last-message "$RUNNER_TEMP/report.md" - \
+            < "$RUNNER_TEMP/prompt.md" > "$RUNNER_TEMP/codex.log" 2>&1
+          code=$?
+          set -e
+          if grep -qF -e "$OPENAI_API_KEY" "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/codex.log"; then
+            rm -f "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/codex.log"
+            echo "::error::The report or the Codex log contained the API key, so nothing was posted."
+            exit 1
+          fi
+          if [ "$code" -ne 0 ]; then
+            echo "::error::codex exited $code. What it said:"
+            tail -c 2000 "$RUNNER_TEMP/codex.log"
+            exit "$code"
+          fi
+
+      - name: Run the review-pr skill on Ollama
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'ollama'
+        run: |
+          set +e
+          ollama run "$REVIEW_MODEL" < "$RUNNER_TEMP/prompt.md" > "$RUNNER_TEMP/report.md"
+          code=$?
+          set -e
+          # Ollama writes its errors to stderr, which is already in the log.
+          if [ "$code" -ne 0 ]; then
+            echo "::error::ollama exited $code."
+            exit "$code"
+          fi
+
       - name: Post the report as one comment
-        if: steps.scope.outputs.review == 'true'
+        if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
