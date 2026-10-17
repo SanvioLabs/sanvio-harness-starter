@@ -37,7 +37,7 @@ Playwright config has to start the app itself; the job needs no secrets.
 
 Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_ci_example.py`](tests/test_ci_example.py), [`CHANGELOG.md`](CHANGELOG.md)
 
-**Do:** re-copy `examples/ci/project-checks.yml` into each project's
+**Do:** re-copy [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml) into each project's
 `.github/workflows/checks.yml` to take it.
 
 ## 2026-10-16: Secret scan checks the gitleaks download
