@@ -91,7 +91,11 @@ A FAIL doesn't stop the walk. Go on to step 2.
 
 ### 2. Ask three questions
 
-In one message, ask exactly these three, then stop and wait for the answers:
+Open with the model, in three lines at most: the harness holds the method
+(rules, skills, gates, reviewers); everything else is reached where it lives,
+through a cloned repo or a connector, and the harness records only where.
+
+In the same message, ask exactly these three, then stop and wait for the answers:
 
 1. What job do you do every week that you'd like to hand to an agent? (A
    status update, a code review, an invoice, a support reply, a release note.)
@@ -169,11 +173,15 @@ copy is private.
 
 ### 5. Write the company record
 
-Offer it in one line: "Want to spend five minutes telling me about the company?
-I'll write it down so every session knows who it's working for." A no skips to
-step 6, and a later run picks it up.
+Offer it in one line: "Want to set up the company record? Every session reads
+it, so it knows who it's working for." A no skips to step 6, and a later run
+picks it up.
 
-On a yes:
+On a yes, ask first where the record lives: here, in a company repo, or in a
+wiki. If `company/COMPANY.md` already exists, don't ask: read it and carry on
+in the form it's in.
+
+**Here.** The record is local files in `company/`. Interview for it:
 
 1. If `company/COMPANY.md` doesn't exist, copy [`docs/COMPANY.example.md`](../../docs/COMPANY.example.md)
    there. If it does, read it and only ask about the sections still empty. A
@@ -190,6 +198,26 @@ On a yes:
 
 Never draft an answer for them and never fill a section they skipped. "Skip"
 leaves a section empty, "stop" ends the interview.
+
+**In a company repo.** The record is already written somewhere private. Name
+the command and let them run it from the harness root:
+
+```bash
+git clone <url> company
+```
+
+Then read `company/COMPANY.md` instead of interviewing, and say which sections
+are written and which are empty. Changes to it go through that repo, not this
+one. `python3 scripts/check_setup.py` checks that the repo is private.
+
+**In a wiki.** The answers live on wiki pages, and the record points at them.
+For each section, ask which page holds its answer, and write
+`company/COMPANY.md` with the page's space and name under each heading, in the
+pointer form shown at the top of [`docs/COMPANY.example.md`](../../docs/COMPANY.example.md). Write as you go,
+as above. Don't open the pages to copy their contents in. Then draft a row for the wiki in
+`company/DATA.md`, with its connector and whether it's cleared, sorted as in
+step 3, and write it on a yes. If the connector isn't live in this session,
+name the setup step in their tool and let them do it.
 
 ### 6. If they want to see the layers first
 
