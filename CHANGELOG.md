@@ -38,6 +38,8 @@ before.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
 
+**Do:** nothing.
+
 ## 2026-10-17: Anatomy picture at the top of the README
 
 The README opens with one picture of the whole harness: your coding agent in the
