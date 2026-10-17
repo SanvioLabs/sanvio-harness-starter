@@ -79,7 +79,7 @@ the next. Nothing runs until you start it, and it never merges.
 
 | Step | What happens | Left behind in `.loop/issue-N/` |
 |---|---|---|
-| Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else, skipping one still waiting on an open dependency until it closes | `ticket.md` |
+| Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else, skipping one still waiting on an open dependency until it closes. A dependency counts as met when a merged change closes it; one closed by hand blocks the issue, with a comment saying why | `ticket.md` |
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
 | Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`). Once the pull request is merged or closed, the loop removes the worktree and its branch while it's idle, unless the worktree has changes or the branch has commits the pull request doesn't | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
