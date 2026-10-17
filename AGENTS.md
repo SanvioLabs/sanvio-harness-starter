@@ -77,6 +77,7 @@ steps in order.
 | [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md) | At the end of a sprint, or asked for a harness report, a sprint follow-up, or what to add to the harness |
 | [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, whether this copy is up to date, or what the starter has that it doesn't |
 | [`skills/standup/SKILL.md`](skills/standup/SKILL.md) | Asked for a standup or a morning check, or what's on them today: reviews waiting, issues assigned, what the loop finished or blocked, today's meetings |
+| [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md) | Asked to go over their ideas: "inbox", "review my ideas", "sweep my ideas", or "idea: ..." to capture one |
 
 These come from the Stelliad plugin, which [`.claude/settings.json`](.claude/settings.json) switches on.
 Installing it is the one install that doesn't go through `review-skill`; the

@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Idea inbox
+
+A new `inbox` skill keeps the ideas you have away from the desk. Email one to
+your own plus address from your phone, or say "idea: ..." in a session. Say
+"inbox" and it sweeps those emails in, where `company/DATA.md` clears your
+mail, then goes through each idea with you and gives it a fate: do it now,
+make an issue, park it or drop it. The list lives in `.inbox/`, which is
+gitignored, and the skill never changes a message.
+
+Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/inbox/inbox.py`](skills/inbox/inbox.py), [`tests/test_inbox.py`](tests/test_inbox.py), [`.gitignore`](.gitignore), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** pick a plus address, such as `name+idea@example.com`, and add a phone
+shortcut that emails it. Step 1 of [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), *Set up capture*,
+has both.
+
 ## 2026-10-17: Setup gets a figure
 
 [`steering/writing.md`](steering/writing.md) now asks for a figure beside any README or doc that explains how

@@ -10,3 +10,4 @@ company/
 projects/*
 !projects/README.md
 .harness/
+.inbox/
