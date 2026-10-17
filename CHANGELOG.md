@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Setup gets a figure
+
+[`steering/writing.md`](steering/writing.md) now asks for a figure beside any README or doc that explains how
+something is set up, with alt text that carries what it shows, and
+[`AGENTS.md`](AGENTS.md) sends the agent there when it writes one. [`projects/README.md`](projects/README.md) gets
+the first: the harness and its projects on disk, and where to start the agent.
+
+Files: [`steering/writing.md`](steering/writing.md), [`AGENTS.md`](AGENTS.md), [`projects/README.md`](projects/README.md), [`docs/projects-layout.png`](docs/projects-layout.png)
+
+**Do:** nothing.
+
 ## 2026-10-17: A dependency closed by hand blocks its issue
 
 The loop now checks how a dependency was closed. One that a merged change
