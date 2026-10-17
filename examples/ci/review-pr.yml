@@ -146,7 +146,7 @@ jobs:
 
       - name: Install the Codex CLI
         if: steps.scope.outputs.review == 'true' && env.REVIEW_SKIPPED != 'true' && env.REVIEWER == 'codex'
-        run: npm install -g @openai/codex@0.46.0
+        run: npm install -g @openai/codex@0.159.1
 
       # Claude runs restricted: Read, Grep and Glob only, confined to the
       # checkout, with no shell, no MCP servers, and no settings or hooks
