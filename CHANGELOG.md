@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: company/ can be a private repo's clone
+
+`company/` is now ignored as a whole, so you can clone a private company repo
+into it with `git clone <url> company` and keep one record across harnesses and
+machines. Its README and example moved out to [`docs/company.md`](docs/company.md) and
+[`docs/COMPANY.example.md`](docs/COMPANY.example.md), and the README says when to keep the record
+as local files, committed in a private copy, or in its own repo. The setup
+check now asks GitHub for the company repo's visibility and fails if it's
+public, and warns when the record is committed in the harness itself.
+
+Files: [`.gitignore`](.gitignore), [`docs/company.md`](docs/company.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`scripts/check_setup.py`](scripts/check_setup.py), [`tests/test_check_setup.py`](tests/test_check_setup.py), [`tests/test_steering.py`](tests/test_steering.py), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing: your existing `company/` files stay where they are. To move
+them into a company repo, run `git init` inside `company/`, commit, and push to
+a private repo. On other machines, `git clone <url> company` from the harness
+root.
+
 ## 2026-10-17: What's new works in a downloaded copy
 
 "What's new" now reads the starter's `CHANGELOG.md` over HTTPS with `curl`

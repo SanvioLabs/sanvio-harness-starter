@@ -17,7 +17,7 @@ read, plus a few short scripts that run whatever the agent decides.
 | [`gates/`](gates/) | Scripts that exit non-zero when work isn't ready | The agent, the git hook and CI |
 | [`.githooks/`](.githooks/) | The check at commit | Git, whatever the agent decided |
 | [`.claude/hooks/`](.claude/hooks/) | Checks before each tool call and at session start | Claude Code, whatever the agent decided |
-| [`company/`](company/), [`projects/`](projects/) | Who you are, where your data is, your code | Read by the agent, never committed here |
+| `company/`, [`projects/`](projects/) | Who you are, where your data is, your code | Read by the agent, never committed here |
 | [`examples/`](examples/) | One worked job with all five layers, to read and copy | You, and the agent when you point it there |
 
 The tool (Claude Code, Codex or Kiro) does the model calls, the tool calls, the
@@ -188,7 +188,7 @@ that check, so the text it checked is the text the agents get.
 
 **What the issue's text can reach.** The planner and the reviewer run in the
 build checkout with read tools only, so they can't read the rest of your clone
-([`company/`](company/), [`projects/`](projects/)) into a plan that ends up in a pull request. The loop
+(`company/`, [`projects/`](projects/)) into a plan that ends up in a pull request. The loop
 commits with git hooks off, so a hook the agent writes doesn't run. It runs your
 test command without anything named like a secret in its environment (tokens,
 keys, passwords, `AWS_*`, the SSH agent). The tests still run code the agent

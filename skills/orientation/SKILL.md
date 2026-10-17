@@ -61,7 +61,7 @@ Say these out loud when they show up:
 
 - **Hook FAIL.** Every check in the hook silently does nothing until they run
   the fix. Don't run it for them.
-- **Remote WARN on the public starter.** Everything in [`company/`](../../company/) is
+- **Remote WARN on the public starter.** Everything in `company/` is
   gitignored, so the company record and the data map stay on their machine
   either way. Their own job's files (the five layers) are tracked, though, and
   before they push those anywhere they need their own private copy. On GitHub
@@ -162,9 +162,9 @@ Draft `company/DATA.md`:
 
 Fill it from the person's answers, not the example rows. Write on a yes.
 
-Say once that [`company/`](../../company/) is gitignored, so this stays on their machine, and that
+Say once that `company/` is gitignored, so this stays on their machine, and that
 every session reads it: the next agent that opens the repo knows where to look
-without asking. [`company/README.md`](../../company/README.md) says how to share it with a team once their
+without asking. [`docs/company.md`](../../docs/company.md) says how to share it with a team once their
 copy is private.
 
 ### 5. Write the company record
@@ -175,7 +175,7 @@ step 6, and a later run picks it up.
 
 On a yes:
 
-1. If `company/COMPANY.md` doesn't exist, copy [`company/COMPANY.example.md`](../../company/COMPANY.example.md)
+1. If `company/COMPANY.md` doesn't exist, copy [`docs/COMPANY.example.md`](../../docs/COMPANY.example.md)
    there. If it does, read it and only ask about the sections still empty. A
    section is empty when everything under its heading is blank or an HTML
    comment: the `<!-- -->` prompts are not answers.

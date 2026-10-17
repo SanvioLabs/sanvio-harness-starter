@@ -6,9 +6,7 @@ __pycache__/
 incoming/
 .loop/
 local-data/
-company/*
-!company/README.md
-!company/*.example.md
+company/
 projects/*
 !projects/README.md
 .harness/

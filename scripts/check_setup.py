@@ -10,6 +10,7 @@ doesn't fail: it's something to decide, not something broken.
 """
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -76,6 +77,15 @@ def safe_url(url):
     return re.sub(r"^([a-z+]+://)[^/@]+@", r"\1", url)
 
 
+def repo_ref(url):
+    """The remote as a credential-free https URL gh accepts: git@host:owner/repo becomes https://host/owner/repo."""
+    url = safe_url(url)
+    scp = re.match(r"^[^/@:]+@([^/:]+):(.+)$", url)
+    if scp:
+        url = "https://{}/{}".format(scp.group(1), scp.group(2))
+    return re.sub(r"\.git/?$", "", url)
+
+
 def check_remote(root):
     url = git(root, "remote", "get-url", "origin")
     if not url:
@@ -106,7 +116,38 @@ def check_gate(root):
             "git status to see what changed.")
 
 
+def check_company_repo(company):
+    """company/ is its own clone: ask GitHub whether the repo it pushes to is private."""
+    origin = git(company, "remote", "get-url", "origin")
+    if not origin:
+        return ("WARN", "company: company/ is a git repo with no origin, so its visibility can't be checked",
+                "Push it to a private repo, then check: gh repo view <url> --json visibility")
+    ref = repo_ref(origin)
+    command = "gh repo view {} --json visibility -q .visibility".format(ref)
+    if not shutil.which("gh"):
+        return ("WARN", "company: company/ is a clone of {}, and without gh its visibility can't be "
+                "checked".format(ref), "Install gh, or check by hand: " + command)
+    try:
+        result = subprocess.run(["gh", "repo", "view", ref, "--json", "visibility", "-q", ".visibility"],
+                                capture_output=True, text=True, timeout=15)
+        visibility = result.stdout.strip().upper() if result.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        visibility = ""
+    if visibility == "PUBLIC":
+        return ("FAIL", "company: company/ is a clone of {}, which is public".format(ref),
+                "Make that repo private now: anyone can read what's in it.")
+    if visibility in ("PRIVATE", "INTERNAL"):
+        return ("PASS", "company: company/ is a clone of {}, which is {}".format(ref, visibility.lower()), None)
+    return ("WARN", "company: couldn't check whether {} is private".format(ref),
+            "Check by hand: " + command)
+
+
 def check_company(root):
+    if (root / "company" / ".git").exists():
+        return check_company_repo(root / "company")
+    if git(root, "ls-files", "company/"):
+        return ("WARN", "company: the company record is committed in this harness, so it goes wherever "
+                "the harness is pushed", "Keep this repo private. Check: gh repo view --json visibility")
     record = root / "company" / "COMPANY.md"
     if record.is_file():
         return ("PASS", "company: company/COMPANY.md is written", None)
