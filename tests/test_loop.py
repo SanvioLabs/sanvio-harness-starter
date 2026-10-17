@@ -187,6 +187,19 @@ elif args[:2] == ["api", "--paginate"] and args[2].endswith("/dependencies/block
     path = os.path.join(state, "blocked-by.json")
     for n in (json.load(open(path)) if os.path.exists(path) else {}).get(args[2].split("/")[4], []):
         print(n)
+elif args[:2] == ["api", "--paginate"] and args[2].endswith("/timeline"):
+    # Each closed event's commit_id, or an empty line, from the issue's "timeline" in deps.json.
+    # A closed issue without one was closed by a merge.
+    import json
+    if os.path.exists(os.path.join(state, "timeline-fail")):
+        print("HTTP 502", file=sys.stderr)
+        sys.exit(1)
+    path = os.path.join(state, "deps.json")
+    found = (json.load(open(path)) if os.path.exists(path) else {}).get(args[2].split("/")[4]) or {}
+    merge = [{"event": "closed", "commit_id": "abc123"}] if found.get("state") == "closed" else []
+    for event in found.get("timeline", merge):
+        if event["event"] == "closed":
+            print(event.get("commit_id") or "")
 elif args[0] == "api" and args[1].startswith("repos/{owner}/{repo}/issues/"):
     # One issue by number from deps.json, {"N": {...}}; any number not in it isn't there.
     import json
@@ -647,6 +660,43 @@ class TestAPass(unittest.TestCase):
     def test_a_dependency_closed_as_not_planned_blocks_the_issue(self):
         self.assertIn("not taken: #3 was closed as not planned",
                       self.blocked_on({"3": {"state": "closed", "state_reason": "not_planned", "body": ""}}))
+
+    def test_a_dependency_a_merge_closed_lets_the_issue_be_taken(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                           "timeline": [{"event": "closed", "commit_id": "abc123"}]}})
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+
+    def test_a_dependency_closed_by_hand_blocks_the_issue_before_the_worktree(self):
+        with mock.patch.object(loop.Loop, "worktree") as made:
+            comment = self.blocked_on({"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                             "timeline": [{"event": "closed", "commit_id": None}]}})
+        made.assert_not_called()
+        self.assertIn("not taken: #3 was closed without a merged change, so its work isn't on main", comment)
+        self.assertIn("Reopen it and merge its work", comment)
+        self.assertIn("take the `Depends on #3` line out if the work is already on main", comment)
+
+    def test_only_the_last_time_a_dependency_was_closed_counts(self):
+        self.assertIn("#3 was closed without a merged change", self.blocked_on(
+            {"3": {"state": "closed", "state_reason": "completed", "body": "",
+                   "timeline": [{"event": "closed", "commit_id": "abc123"}, {"event": "reopened"},
+                                {"event": "closed", "commit_id": None}]}}))
+
+    def test_a_failed_read_of_how_a_dependency_closed_logs_one_error_and_takes_nothing(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": ""}})
+        (self.state / "timeline-fail").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertFalse(any("--add-label" in c for c in self.calls()))
+        errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("could not read its dependencies: HTTP 502", errors[0])
+
+    def test_a_dependency_closed_as_not_planned_is_blocked_without_reading_how(self):
+        self.blocked_on({"3": {"state": "closed", "state_reason": "not_planned", "body": ""}})
+        self.assertFalse(any(c.endswith("/timeline") or "/timeline " in c for c in self.calls()))
 
     def test_a_dependency_that_isnt_there_blocks_the_issue(self):
         self.assertIn("not taken: #3 isn't an issue", self.blocked_on({}))
