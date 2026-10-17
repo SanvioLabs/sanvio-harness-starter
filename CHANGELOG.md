@@ -31,10 +31,12 @@ fine).
 
 The review-pr workflow example now runs on Claude, Codex or a local Ollama
 model, picked with one `REVIEWER` repository variable. Left unset it stays on
-Claude, as before. Codex runs in its read-only sandbox with its key kept out
-of its commands. Ollama runs a model named in `REVIEW_MODEL` on a self-hosted
-runner labelled `ollama`, and holds no key. Neither CLI ever holds the other
-vendor's key, and any other `REVIEWER` value fails the run.
+Claude, as before. Each reviewer runs in its own step, which gets only its
+own key. Codex runs in its read-only sandbox, and because its commands can
+still read files across the runner, its report and its log are checked for
+its key before anything is posted. Ollama runs a model named in
+`REVIEW_MODEL` on a self-hosted runner labelled `ollama`, and its step holds
+no key. `REVIEWER` is read in any case, and any other value fails the run.
 
 Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
 

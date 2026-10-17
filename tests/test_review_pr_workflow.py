@@ -1,5 +1,9 @@
 """Run with: python3 -m unittest discover -s tests"""
+import os
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -58,8 +62,39 @@ class ReviewPrWorkflow(unittest.TestCase):
     def scope(self):
         return self.code.split("id: scope", 1)[1].split("- uses:", 1)[0]
 
-    def review(self):
-        return self.code.split("Run the review-pr skill", 1)[1].split("Post the report", 1)[0]
+    def steps(self):
+        """Each step under the job as (name, text), the name '' for one without."""
+        body = self.code.split("\n    steps:\n", 1)[1]
+        out = []
+        for text in re.split(r"^(?=      - )", body, flags=re.M):
+            if not text.strip():
+                continue
+            name = re.search(r"^      (?:- |  )name: \"?(.*?)\"?$", text, re.M)
+            out.append((name.group(1) if name else "", text))
+        return out
+
+    def step(self, name):
+        found = [text for each, text in self.steps() if each == name]
+        self.assertEqual(len(found), 1, "no single step named " + name)
+        return found[0]
+
+    def run_step(self, name, **env):
+        """Run a step's script as Actions would. Returns it, its outputs and what it added to the env."""
+        script = self.step(name).split("run: |\n", 1)[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            output, added = Path(tmp) / "output", Path(tmp) / "env"
+            output.touch()
+            added.touch()
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", textwrap.dedent(script)],
+                env={"PATH": os.environ["PATH"], "HEAD_REPO": "o/r", "THIS_REPO": "o/r", "REVIEWER": "claude",
+                     "REVIEW_MODEL": "", "ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "",
+                     "GITHUB_OUTPUT": str(output), "GITHUB_ENV": str(added), **env},
+                capture_output=True, text=True)
+            return result, output.read_text(), added.read_text()
+
+    def run_scope(self, reviewer, **env):
+        return self.run_step("Skip a pull request from a fork", REVIEWER=reviewer, **env)[:2]
 
     def test_it_runs_on_pull_request_and_never_the_target_variant(self):
         self.assertNotIn("pull_request_target", self.text)
@@ -154,40 +189,95 @@ class ReviewPrWorkflow(unittest.TestCase):
         self.assertIn("claude, codex or ollama", other)
         self.assertRegex(other, r"exit [1-9]")
 
+    def test_the_reviewer_is_read_in_any_case(self):
+        for value in ("claude", "Claude", "codex", "CODEX", "ollama", "Ollama"):
+            result, output = self.run_scope(value, ANTHROPIC_API_KEY="a", OPENAI_API_KEY="o", REVIEW_MODEL="m")
+            self.assertEqual(result.returncode, 0, value + ": " + result.stdout)
+            self.assertIn("review=true", output, value)
+        result, output = self.run_scope("gpt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("claude, codex or ollama", result.stdout)
+        self.assertNotIn("review=true", output)
+
+    def test_a_missing_key_skips_and_a_missing_model_fails(self):
+        for name, key in (("Claude", "ANTHROPIC_API_KEY"), ("Codex", "OPENAI_API_KEY")):
+            result, _, added = self.run_step("Skip when {} has no key".format(name))
+            self.assertEqual(result.returncode, 0, name)
+            self.assertIn("REVIEW_SKIPPED=true", added, name)
+            self.assertIn("::notice::", result.stdout, name)
+            result, _, added = self.run_step("Skip when {} has no key".format(name), **{key: "k"})
+            self.assertEqual(result.returncode, 0, name)
+            self.assertNotIn("REVIEW_SKIPPED", added, name)
+        result, output = self.run_scope("ollama")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("review=true", output)
+
+    def test_a_skipped_review_runs_nothing_after_the_key_checks(self):
+        names = [name for name, _ in self.steps()]
+        for name, text in self.steps()[names.index("Skip when Codex has no key") + 1:]:
+            self.assertIn("env.REVIEW_SKIPPED != 'true'", text, name or "the checkout")
+        for name, reviewer in (("Claude", "claude"), ("Codex", "codex")):
+            self.assertIn("env.REVIEWER == '{}'".format(reviewer), self.step("Skip when {} has no key".format(name)))
+
     def test_codex_runs_read_only_and_its_commands_get_no_environment(self):
-        call = re.search(r"codex exec[^<]*", branch(self.review(), "codex") or "")
-        self.assertIsNotNone(call, "no codex exec call in the codex branch")
+        call = re.search(r"codex exec[^<]*", self.step("Run the review-pr skill on Codex"))
+        self.assertIsNotNone(call, "no codex exec call in the Codex step")
         self.assertIn("--sandbox read-only", call.group(0))
         self.assertIn("-c shell_environment_policy.inherit=none", call.group(0))
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", self.code)
+
+    def test_only_codex_s_last_message_is_posted(self):
+        codex = self.step("Run the review-pr skill on Codex")
+        self.assertIn('--output-last-message "$RUNNER_TEMP/report.md"', codex)
+        self.assertIn('> "$RUNNER_TEMP/codex.log" 2>&1', codex)
+        self.assertNotIn("codex.log", self.step("Post the report as one comment"))
 
     def test_codex_is_pinned(self):
         self.assertRegex(self.code, r"npm install -g @openai/codex@\d+\.\d+\.\d+(\s|$)")
 
     def test_codex_without_its_key_skips_instead_of_failing(self):
-        codex = branch(self.scope(), "codex")
-        self.assertIsNotNone(codex, "the scope step's case has no codex) branch")
+        codex = self.step("Skip when Codex has no key")
         self.assertRegex(codex, r'-z "\$OPENAI_API_KEY"')
         self.assertIn("${{ secrets.OPENAI_API_KEY }}", self.scope())
 
-    def test_a_codex_report_holding_the_key_is_not_posted(self):
-        codex = branch(self.review(), "codex")
-        self.assertIsNotNone(codex, "the review step's case has no codex) branch")
-        self.assertIn('grep -qF -e "$OPENAI_API_KEY"', codex)
+    def test_a_codex_report_or_log_holding_the_key_is_not_posted(self):
+        codex = self.step("Run the review-pr skill on Codex")
+        self.assertIn('grep -qF -e "$OPENAI_API_KEY" "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/codex.log"', codex)
         self.assertLess(self.code.index('grep -qF -e "$OPENAI_API_KEY"'), self.code.index("Post the report"))
 
-    def test_each_cli_holds_only_its_own_key(self):
-        claude = branch(self.review(), "claude")
-        codex = branch(self.review(), "codex")
-        self.assertRegex(claude or "", r"env -u OPENAI_API_KEY claude -p")
-        self.assertRegex(codex or "", r"env -u ANTHROPIC_API_KEY codex exec")
+    def test_each_reviewer_s_step_holds_only_its_own_key(self):
+        expected = {
+            "Run the review-pr skill: build the prompt": set(),
+            "Run the review-pr skill on Claude": {"ANTHROPIC_API_KEY"},
+            "Run the review-pr skill on Codex": {"OPENAI_API_KEY"},
+            "Run the review-pr skill on Ollama": set(),
+        }
+        for name, keys in expected.items():
+            self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step(name))), keys, name)
+        for name, reviewer in (("Claude", "claude"), ("Codex", "codex"), ("Ollama", "ollama")):
+            self.assertIn("env.REVIEWER == '{}'".format(reviewer), self.step("Run the review-pr skill on " + name))
+        holding = [name for name, text in self.steps() if "secrets." in text]
+        self.assertEqual(sorted(holding), ["Run the review-pr skill on Claude", "Run the review-pr skill on Codex",
+                                           "Skip when Claude has no key", "Skip when Codex has no key"])
+        self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step("Skip when Claude has no key"))),
+                         {"ANTHROPIC_API_KEY"})
+        self.assertEqual(set(re.findall(r"secrets\.(\w+)", self.step("Skip when Codex has no key"))),
+                         {"OPENAI_API_KEY"})
+
+    def test_every_step_holding_a_key_checks_its_output_for_it(self):
+        for name, text in self.steps():
+            if name.startswith("Skip when"):
+                continue
+            for key in re.findall(r"secrets\.(\w+)", text):
+                self.assertIn('grep -qF -e "${}"'.format(key), text, name)
 
     def test_ollama_runs_a_named_model_on_a_self_hosted_runner_with_no_key(self):
         self.assertRegex(self.code, r"runs-on: \$\{\{ vars\.REVIEWER == 'ollama' && "
                                     r"fromJSON\('\[\"self-hosted\",\"ollama\"\]'\) \|\| 'ubuntu-latest' \}\}")
-        ollama = branch(self.review(), "ollama")
-        self.assertIsNotNone(ollama, "the review step's case has no ollama) branch")
-        self.assertRegex(ollama, r'env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY ollama run "\$REVIEW_MODEL"')
+        ollama = self.step("Run the review-pr skill on Ollama")
+        self.assertRegex(ollama, r'ollama run "\$REVIEW_MODEL"')
+        self.assertNotIn("secrets.", ollama)
+        self.assertNotIn("API_KEY", ollama)
         required = branch(self.scope(), "ollama")
         self.assertIsNotNone(required, "the scope step's case has no ollama) branch")
         self.assertRegex(required, r'-z "\$REVIEW_MODEL"')
