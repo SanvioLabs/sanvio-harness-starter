@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Where things live
+
+The README has a new *Where things live* section: the harness holds the method,
+your company record and code live in repos you own, and your company's systems
+are reached through connectors listed in `company/DATA.md`, never copied in. It
+names the three forms `company/` can take, including a short `COMPANY.md` that
+points at wiki pages, with a figure of the whole setup. `/orientation` now says this before its questions, and
+asks where the company record lives before it interviews you for one: here, in
+a company repo, or in a wiki.
+
+Files: [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`docs/company.md`](docs/company.md), [`docs/where-things-live.png`](docs/where-things-live.png), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing.
+
 ## 2026-10-17: company/ can be a private repo's clone
 
 `company/` is now ignored as a whole, so you can clone a private company repo

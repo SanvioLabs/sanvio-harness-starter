@@ -20,6 +20,11 @@ read, plus a few short scripts that run whatever the agent decides.
 | `company/`, [`projects/`](projects/) | Who you are, where your data is, your code | Read by the agent, never committed here |
 | [`examples/`](examples/) | One worked job with all five layers, to read and copy | You, and the agent when you point it there |
 
+The harness holds only the method. Your company record, your code and your
+company's systems stay where they live, under their own access control, and
+the harness records where they are. [Where things live](README.md#where-things-live) in the README
+has the three places and how the agent reaches each.
+
 The tool (Claude Code, Codex or Kiro) does the model calls, the tool calls, the
 MCP connections and the context handling. The harness writes none of that. It
 decides what the agent knows, what it's allowed to do, and what counts as done.

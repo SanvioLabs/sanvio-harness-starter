@@ -77,6 +77,31 @@ On Windows, clone with `git clone -c core.symlinks=true` from a terminal with
 Developer Mode on, or the two links below arrive as plain text files. If they
 do, [`AGENTS.md`](AGENTS.md) still works for every tool.
 
+## Where things live
+
+The harness holds the method. Everything else is reached where it lives.
+
+![Where things live. The harness holds the method; everything else stays where its owner keeps it. On the left, your harness on disk: my-harness/ holds AGENTS.md, steering/, skills/, gates/ and agents/, the method, tracked in the harness and shared with everyone who uses it. company/ is a clone of your-org/company, holding COMPANY.md (who you are) and DATA.md (where your systems are). projects/ holds billing/ and website/, each a clone of a repo your org owns, keeping its own access and history. DATA.md points to systems you run, such as Confluence, Google Drive, Jira and your CRM, reached through a connector (MCP). A cloned repo and a connector are the same idea: read where it lives, under its owner's access, never copied in.](docs/where-things-live.png)
+
+| Where | What | How the agent reaches it |
+|---|---|---|
+| In the harness | Rules, skills, gates, reviewers | Tracked here, in this repo |
+| In a repo you own | `company/`, [`projects/`](projects/) | Cloned in, under that repo's own access control |
+| In a system you run | Wikis, drives, trackers, CRMs | A connector or MCP server, listed in `company/DATA.md`. Read where it lives, never copied in |
+
+A cloned repo and a connector are one idea for different storage. Each is
+reached where it lives, stays under its owner's access control, and the
+harness records only where it is.
+
+`company/` can take any of three forms:
+
+- Local files, written by `/orientation`
+- A private repo cloned in with `git clone <url> company`
+- A short `COMPANY.md` whose sections name the wiki pages that hold the
+  answers, with that wiki's connector in `DATA.md`
+
+[`docs/company.md`](docs/company.md) has the detail.
+
 ## The five layers, one step at a time
 
 Each step is a tag. Check one out to see the harness as it stood at that point,

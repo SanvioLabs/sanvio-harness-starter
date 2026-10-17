@@ -2,6 +2,14 @@
 updated:
 ---
 
+<!--
+If the answers live in a wiki, a section can point at the page instead of
+holding the answer, with the wiki's connector listed in DATA.md. Under
+What we do, for example:
+
+Wiki: "Acme Handbook" space, page "Positioning"
+-->
+
 # Company
 
 The agent reads this before any company work. It says who you are, so the agent

@@ -92,5 +92,27 @@ class Agents(unittest.TestCase):
             self.assertFalse(tools & banned, "{} can {}".format(wrapper.relative_to(ROOT), sorted(tools & banned)))
 
 
+def section(text, start, end):
+    """The text from the line starting with start up to the next line starting with end."""
+    match = re.search(r"^{}.*?(?=^{}|\Z)".format(re.escape(start), re.escape(end)), text, re.M | re.S)
+    return match.group(0) if match else ""
+
+
+class WhereThingsLive(unittest.TestCase):
+    def test_readme_names_the_three_places(self):
+        text = section((ROOT / "README.md").read_text(), "## Where things live", "## ")
+        self.assertTrue(text, "README.md has no ## Where things live section")
+        rows = [line for line in text.splitlines() if line.startswith("|")]
+        body = [line for line in rows[1:] if not re.match(r"^\|[\s|:-]+\|$", line)]
+        self.assertEqual(len(body), 3, "the table should have one row per place things live")
+        self.assertIn("company/DATA.md", text)
+
+    def test_orientation_asks_where_the_company_record_lives(self):
+        text = section((ROOT / "skills" / "orientation" / "SKILL.md").read_text(), "### 5.", "### 6.")
+        self.assertTrue(text, "orientation has no step 5")
+        for choice in ("**Here.**", "**In a company repo.**", "git clone <url> company", "**In a wiki.**"):
+            self.assertIn(choice, text)
+
+
 if __name__ == "__main__":
     unittest.main()
