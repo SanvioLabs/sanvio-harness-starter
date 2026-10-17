@@ -17,7 +17,7 @@ Read these when their moment comes:
 
 | File | Read when |
 |---|---|
-| [`steering/writing.md`](steering/writing.md) | Writing anything a person outside the company will read |
+| [`steering/writing.md`](steering/writing.md) | Writing anything a person outside the company will read, or a README or doc that explains how something is set up |
 | [`steering/project-setup.md`](steering/project-setup.md) | Starting a new repo or project |
 | [`steering/building-and-testing.md`](steering/building-and-testing.md) | Writing or changing code, or writing tests for it |
 | [`steering/deploying.md`](steering/deploying.md) | Setting up infrastructure, deploying, or changing anything people use |

@@ -664,6 +664,18 @@ class Loop:
                 raise LookupError(out)
             return sorted(set(depends_on(text)) | {int(w) for w in out.split() if w.isdigit()})
 
+        def merged(n):
+            """Whether a commit closed n the last time it was closed: a merged change, not a hand.
+
+            The jq runs once per page with --paginate, so the last closed event is the last line out.
+            """
+            code, out = self.gh("api", "--paginate", "repos/{owner}/{repo}/issues/" + str(n) + "/timeline",
+                                "--jq", '.[] | select(.event=="closed") | .commit_id // ""')
+            if code != 0:
+                raise LookupError(out)
+            lines = out.splitlines()
+            return bool(lines) and bool(lines[-1].strip())
+
         def is_open(got):
             return bool(got) and not got.get("pull_request") and got.get("state") == "open"
 
@@ -679,6 +691,11 @@ class Loop:
                 reason = got.get("state_reason")
                 if got.get("state") == "closed" and reason not in (None, "completed"):
                     return "block", "#{} was closed as {}".format(d, reason.replace("_", " "))
+                # Closed as completed counts only when a merged change closed it: by hand, its work isn't in.
+                if got.get("state") == "closed" and not merged(d):
+                    return "block", ("#{0} was closed without a merged change, so its work isn't on {1}. Reopen "
+                                     "it and merge its work, or take the `Depends on #{0}` line out if the work "
+                                     "is already on {1}").format(d, self.cfg["base"])
             waits = [d for d in direct if d in busy or is_open(read(d))]
             # Follow what each open dependency waits on in turn: if it comes back here, none can start.
             seen, todo = set(waits), [(d, d) for d in waits]

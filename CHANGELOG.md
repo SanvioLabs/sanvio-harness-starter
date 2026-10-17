@@ -42,6 +42,28 @@ Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/inbox/inbox.py
 shortcut that emails it. Step 1 of [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), *Set up capture*,
 has both.
 
+## 2026-10-17: Setup gets a figure
+
+[`steering/writing.md`](steering/writing.md) now asks for a figure beside any README or doc that explains how
+something is set up, with alt text that carries what it shows, and
+[`AGENTS.md`](AGENTS.md) sends the agent there when it writes one. [`projects/README.md`](projects/README.md) gets
+the first: the harness and its projects on disk, and where to start the agent.
+
+Files: [`steering/writing.md`](steering/writing.md), [`AGENTS.md`](AGENTS.md), [`projects/README.md`](projects/README.md), [`docs/projects-layout.png`](docs/projects-layout.png)
+
+**Do:** nothing.
+
+## 2026-10-17: A dependency closed by hand blocks its issue
+
+The loop now checks how a dependency was closed. One that a merged change
+closed counts as met, as before. One closed by hand, so its work never reached
+the base branch, now blocks the issue that depends on it straight away, with a
+comment saying how to unblock it, instead of failing round after round.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-17: Company setup lives in the README
 
 How to keep the company record now sits in the README's *Where things live*

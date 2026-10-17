@@ -10,6 +10,8 @@ git clone <your repo>        # or several
 cd ..                         # then start your agent from the harness root
 ```
 
+![Your harness on disk. my-harness/ is one git repo, the harness: AGENTS.md, steering/ and skills/ hold the rules and skills, agents/ and .claude/hooks/ the reviewers and guards. projects/ is ignored by the harness, and holds billing/ and website/, each its own repo with its own history and CI. Start the agent in my-harness/: it loads the rules, skills, reviewers and guards, then point it at the work, "in projects/billing, fix the failing test". Not in my-harness/projects/billing/: it finds CLAUDE.md in the folder above, but no skills, no reviewers and no guards, and nothing tells you. Commit inside each project: the harness never sees your code, and each project keeps its own hooks and CI.](../docs/projects-layout.png)
+
 ## Start the agent at the harness root, not in the project
 
 Then point it at the project: "in projects/billing, fix the failing test".
