@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Loop review_agent
+
+A new `loop.json` key, `review_agent`, names the command that reviews, so a
+different model can review what the build agent wrote. It reviews each round in
+the issue loop and each pull request in `loop.py review`, held to read tools the
+same way `reader_agent` is, and for `review` it has to be `claude`. Planning
+stays with `reader_agent`. Empty, the default, means `reader_agent` reviews as
+before.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-16: Secret scan checks the gitleaks download
 
 The secret-scan workflow now checks the gitleaks binary against a SHA-256
