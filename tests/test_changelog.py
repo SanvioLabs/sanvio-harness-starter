@@ -80,9 +80,9 @@ class WhatsNewCommands(unittest.TestCase):
         self.assertEqual(len(found), 1, "one command starting " + starts)
         return found[0]
 
-    def run_in(self, folder, cmd):
+    def run_in(self, folder, cmd, env=None):
         import subprocess
-        done = subprocess.run(["bash", "-c", cmd], cwd=folder, capture_output=True, text=True)
+        done = subprocess.run(["bash", "-c", cmd], cwd=folder, capture_output=True, text=True, env=env)
         return [line for line in done.stdout.splitlines() if line]
 
     def test_since_a_date_lists_every_entry_on_or_after_it(self):
@@ -94,13 +94,15 @@ class WhatsNewCommands(unittest.TestCase):
         self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second", "## 2026-10-12: First"])
 
     def test_whats_new_lists_the_starters_headings_missing_here_in_order(self):
+        import os
         import tempfile
-        cmd = self.command("git show FETCH_HEAD:CHANGELOG.md | grep").replace("git show FETCH_HEAD:CHANGELOG.md", "cat starter.md")
+        cmd = self.command("""grep '^## ' "${TMPDIR:-/tmp}/whats-new/CHANGELOG.md" | grep""")
         mine = self.LOG.replace("## 2026-10-13: Third\n\nx\n\n## 2026-10-13: Second\n\nx\n\n", "")
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "starter.md").write_text(self.LOG)
-            (Path(tmp) / "CHANGELOG.md").write_text(mine)
-            got = self.run_in(tmp, cmd)
+            for folder, log in (("whats-new", self.LOG), ("copy", mine)):
+                (Path(tmp) / folder).mkdir()
+                (Path(tmp) / folder / "CHANGELOG.md").write_text(log)
+            got = self.run_in(Path(tmp) / "copy", cmd, env=dict(os.environ, TMPDIR=tmp))
         self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second"])
 
 

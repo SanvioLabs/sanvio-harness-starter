@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: What's new works in a downloaded copy
+
+"What's new" now reads the starter's `CHANGELOG.md` over HTTPS with `curl`
+instead of `git fetch`, so it works in a copy downloaded as a ZIP as well as in
+a clone. To show what an entry would change, it checks whether the copy is a
+git repo: in a clone it uses `git diff` as before, and in a download it fetches
+the starter's file with `curl` and shows a `diff -u`.
+
+Files: [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md), [`tests/test_changelog.py`](tests/test_changelog.py)
+
+**Do:** nothing.
+
 ## 2026-10-17: Playwright e2e job in the CI example
 
 The project CI example has an `e2e` job that runs `npx playwright test` when the
