@@ -81,6 +81,8 @@ do, [`AGENTS.md`](AGENTS.md) still works for every tool.
 
 The harness holds the method. Everything else is reached where it lives.
 
+![Where things live. The harness holds the method; everything else stays where its owner keeps it. On the left, your harness on disk: my-harness/ holds AGENTS.md, steering/, skills/, gates/ and agents/, the method, tracked in the harness and shared with everyone who uses it. company/ is a clone of your-org/company, holding COMPANY.md (who you are) and DATA.md (where your systems are). projects/ holds billing/ and website/, each a clone of a repo your org owns, keeping its own access and history. DATA.md points to systems you run, such as Confluence, Google Drive, Jira and your CRM, reached through a connector (MCP). A cloned repo and a connector are the same idea: read where it lives, under its owner's access, never copied in.](docs/where-things-live.png)
+
 | Where | What | How the agent reaches it |
 |---|---|---|
 | In the harness | Rules, skills, gates, reviewers | Tracked here, in this repo |

@@ -33,11 +33,11 @@ The README has a new *Where things live* section: the harness holds the method,
 your company record and code live in repos you own, and your company's systems
 are reached through connectors listed in `company/DATA.md`, never copied in. It
 names the three forms `company/` can take, including a short `COMPANY.md` that
-points at wiki pages. `/orientation` now says this before its questions, and
+points at wiki pages, with a figure of the whole setup. `/orientation` now says this before its questions, and
 asks where the company record lives before it interviews you for one: here, in
 a company repo, or in a wiki.
 
-Files: [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`tests/test_steering.py`](tests/test_steering.py)
+Files: [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`docs/company.md`](docs/company.md), [`docs/where-things-live.png`](docs/where-things-live.png), [`tests/test_steering.py`](tests/test_steering.py)
 
 **Do:** nothing.
 
