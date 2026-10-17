@@ -128,6 +128,10 @@ AGENT = """#!/usr/bin/env python3
 import os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
+# Which command started, by the words after the script, and for which step.
+step = "plan" if "You are planning" in prompt else "review" if "You are the reviewer" in prompt else "build"
+with open(os.path.join(state, "agents-started"), "a") as f:
+    f.write(" ".join(sys.argv[1:] + [step]) + "\\n")
 if "You are planning" in prompt:
     open(os.path.join(state, "plan-cwd"), "w").write(os.getcwd())
     open(os.path.join(state, "plan-prompt"), "w").write(prompt)
@@ -523,6 +527,43 @@ class TestAPass(unittest.TestCase):
         tree = Path(self.cfg["worktree_dir"]) / "issue-12"
         self.assertFalse((tree / "sneaky.txt").exists())
         self.assertNotIn("sneaky.txt", (self.work / ".loop" / "issue-12" / "diff.patch").read_text())
+
+    def tag_agents(self, review_agent=None):
+        """Give each agent command a word of its own, so agents-started says which one ran."""
+        agent = "{} {}".format(sys.executable, self.state.parent / "bin" / "agent")
+        self.cfg["agent"] = agent + " builder"
+        self.cfg["reader_agent"] = agent + " reader"
+        if review_agent is not None:
+            self.cfg["review_agent"] = agent + " " + review_agent
+
+    def started(self):
+        return (self.state / "agents-started").read_text().splitlines()
+
+    def test_with_review_agent_empty_the_reader_plans_and_reviews(self):
+        self.tag_agents()
+        self.assertEqual(self.cfg["review_agent"], "")
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started(), ["reader plan", "builder build", "reader review"])
+
+    def test_with_review_agent_left_out_the_reader_plans_and_reviews(self):
+        self.tag_agents()
+        del self.cfg["review_agent"]  # a cfg built without DEFAULTS
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started(), ["reader plan", "builder build", "reader review"])
+
+    def test_a_review_agent_reviews_and_the_reader_still_plans(self):
+        self.tag_agents(review_agent="second")
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started(), ["reader plan", "builder build", "second review"])
+
+    def test_a_review_agent_that_edits_files_has_them_thrown_away(self):
+        self.tag_agents(review_agent="second")
+        (self.state / "reviewer-edits").write_text("")
+        self.go()
+        self.assertIn("second review", self.started())
+        self.assertIn("reviewer edited files; discarded", "\n".join(self.lines()))
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        self.assertFalse((tree / "sneaky.txt").exists())
 
     def test_checkouts_live_outside_the_clone(self):
         self.go()
@@ -1645,6 +1686,31 @@ class TestReview(unittest.TestCase):
             self.assertEqual(self.agents_started(), 0, command)
             self.assertEqual(self.comments(), [], command)
             self.assertIn("not run: reader_agent isn't a claude command", self.reviews()[-1], command)
+
+    def test_a_review_agent_reviews_pull_requests_held_to_read_tools(self):
+        # The reader can't be confined, so a review that runs at all ran review_agent.
+        self.cfg["reader_agent"] = "codex exec"
+        path = self.bin / "second" / "claude"
+        path.parent.mkdir()
+        path.write_text(REVIEW_AGENT)
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+        self.cfg["review_agent"] = str(path) + " -p --model other --tools Bash,Read"
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual((self.state / "argv").read_text(),
+                         "-p --model other --restricted --strict-mcp-config --tools Read,Grep,Glob")
+        self.assertEqual(len(self.comments()), 1)
+
+    def test_a_review_agent_that_isnt_claude_is_never_started_on_a_pull_request(self):
+        self.cfg["review_agent"] = "codex exec"
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(self.agents_started(), 0)
+        self.assertEqual(self.comments(), [])
+        self.assertIn("not run: review_agent isn't a claude command", self.reviews()[-1])
 
     def test_the_posted_report_pings_nobody_and_says_what_it_is(self):
         self.reader("pinger", "#!/usr/bin/env python3\nimport sys\nsys.stdin.read()\n"
