@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Company setup lives in the README
+
+How to keep the company record now sits in the README's *Where things live*
+section, with the four forms it can take and how to share it, instead of in
+a separate `docs/company.md`. The company record template moved next to the
+skill that uses it, and the section's figure lost its own title, since the
+README heading above it already says it.
+
+Files: [`README.md`](README.md), [`docs/where-things-live.png`](docs/where-things-live.png), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`skills/orientation/COMPANY.example.md`](skills/orientation/COMPANY.example.md), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing. A link to `docs/company.md` now goes to the README's
+*Where things live* section.
+
 ## 2026-10-17: Where things live
 
 The README has a new *Where things live* section: the harness holds the method,

@@ -38,8 +38,8 @@ SHIPPED = ["steering/*.md", "examples/**/*", "skills/orientation/*", "skills/lea
            "skills/review-pr/*", "skills/review-tests/*", "skills/review-skill/*",
            "skills/whats-new/*", "CHANGELOG.md",
            "agents/reviewer.md", "agents/security-reviewer.md", "agents/ceo.md", "agents/cto.md",
-           "agents/cmo.md", "agents/gc.md", "gates/README.md", "docs/company.md",
-           "docs/COMPANY.example.md", "projects/README.md", "README.md", "HOW-IT-WORKS.md",
+           "agents/cmo.md", "agents/gc.md", "gates/README.md",
+           "projects/README.md", "README.md", "HOW-IT-WORKS.md",
            "EXERCISES.md", "STARTER-SKILLS.md", "scripts/*", "tests/*", ".claude/**/*",
            ".githooks/*", ".github/**/*"]
 
@@ -102,7 +102,13 @@ class WhereThingsLive(unittest.TestCase):
     def test_readme_names_the_three_places(self):
         text = section((ROOT / "README.md").read_text(), "## Where things live", "## ")
         self.assertTrue(text, "README.md has no ## Where things live section")
-        rows = [line for line in text.splitlines() if line.startswith("|")]
+        # The section's first table; a later one (the forms company/ takes) is its own.
+        rows = []
+        for line in text.splitlines():
+            if line.startswith("|"):
+                rows.append(line)
+            elif rows:
+                break
         body = [line for line in rows[1:] if not re.match(r"^\|[\s|:-]+\|$", line)]
         self.assertEqual(len(body), 3, "the table should have one row per place things live")
         self.assertIn("company/DATA.md", text)

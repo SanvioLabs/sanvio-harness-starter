@@ -93,14 +93,23 @@ A cloned repo and a connector are one idea for different storage. Each is
 reached where it lives, stays under its owner's access control, and the
 harness records only where it is.
 
-`company/` can take any of three forms:
+Every session reads `company/COMPANY.md` (who the company is) and
+`company/DATA.md` (where its data lives) before company work, because
+[`AGENTS.md`](AGENTS.md) says so. The record can take four forms. Pick by who should see it:
 
-- Local files, written by `/orientation`
-- A private repo cloned in with `git clone <url> company`
-- A short `COMPANY.md` whose sections name the wiki pages that hold the
-  answers, with that wiki's connector in `DATA.md`
+| Form | Fits when |
+|---|---|
+| Local files, written by `/orientation` (the default) | You work alone, or haven't decided yet |
+| Committed in a private copy of the harness | Your whole team shares one private harness |
+| A private repo cloned in with `git clone <url> company` | Several harnesses or people share one record, or the harness is public and the record can't be |
+| A short `COMPANY.md` whose sections name wiki pages, with the wiki's connector in `DATA.md` | The answers already live in a wiki |
 
-[`docs/company.md`](docs/company.md) has the detail.
+`company/` is gitignored, so by default the record stays on your machine. To
+commit it in your copy, first check the copy is private
+(`gh repo view --json visibility -q .visibility` prints `PRIVATE`), then
+delete the `company/` line from [`.gitignore`](.gitignore). With a company repo,
+`python3 scripts/check_setup.py` asks GitHub for its visibility and fails if
+it's public.
 
 ## The five layers, one step at a time
 
