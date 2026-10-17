@@ -63,7 +63,8 @@ which, ask. Also note which project under [`projects/`](../../projects/) it belo
 To run this skill on every pull request without anyone asking,
 [`examples/ci/review-pr.yml`](../../examples/ci/review-pr.yml) is a GitHub Actions workflow to copy into
 [`.github/workflows/`](../../.github/workflows/). It runs the skill headlessly and posts the report as one
-comment. The workflow posts; the skill still doesn't.
+comment. The workflow posts; the skill still doesn't. It runs on Claude, Codex
+or a local Ollama model, chosen with the `REVIEWER` repository variable.
 
 ## Rules
 

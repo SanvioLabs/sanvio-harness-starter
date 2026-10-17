@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Pick the pull-request reviewer
+
+The review-pr workflow example now runs on Claude, Codex or a local Ollama
+model, picked with one `REVIEWER` repository variable. Left unset it stays on
+Claude, as before. Each reviewer runs in its own step, which gets only its
+own key. Codex runs in its read-only sandbox, and because its commands can
+still read files across the runner, its report and its log are checked for
+its key before anything is posted. Ollama runs a model named in
+`REVIEW_MODEL` on a self-hosted runner labelled `ollama`, and its step holds
+no key. `REVIEWER` is read in any case, and any other value fails the run.
+
+Files: [`examples/ci/review-pr.yml`](examples/ci/review-pr.yml), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_review_pr_workflow.py`](tests/test_review_pr_workflow.py)
+
+**Do:** nothing to stay on Claude. To switch, set `REVIEWER` to `codex` or
+`ollama` (and `REVIEW_MODEL`), and add `OPENAI_API_KEY` for Codex.
+
 ## 2026-10-17: Idea inbox
 
 A new `inbox` skill keeps the ideas you have away from the desk. Email one to
