@@ -38,6 +38,15 @@ before.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
 
+## 2026-10-17: Anatomy picture at the top of the README
+
+The README opens with one picture of the whole harness: your coding agent in the
+middle, the eight parts around it, the company documents that feed each one, and
+the folder where each lives in this repo. The agent is named generically, since
+the same harness works for Claude Code, Codex and Kiro.
+
+Files: [`README.md`](README.md), [`docs/harness-anatomy.png`](docs/harness-anatomy.png)
+
 **Do:** nothing.
 
 ## 2026-10-16: Secret scan checks the gitleaks download
