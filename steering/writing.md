@@ -39,6 +39,16 @@ writes and one example they like, and suggest adding them there.
 - **Em dashes.** They're the most common tell of machine-written text. Use a
   colon, commas, parentheses, or two sentences.
 
+## Show how it's set up
+
+When a README, a doc or a guide explains how something is set up (what lives
+where, how the parts connect, what happens in what order), put a figure beside
+the words: a diagram, a screenshot or a short animation. People look at the
+picture first and read the text to check it. Give it alt text that carries
+everything the picture shows, so it works for a screen reader and for an agent
+reading the file. This holds for READMEs and docs inside the company too, which
+the rest of this file leaves alone.
+
 ## Lengths that work
 
 | Kind | Length |
