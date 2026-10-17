@@ -78,6 +78,87 @@ class LoopWorkflowExample(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN", text)
 
 
+PROJECT_CHECKS = ROOT / "examples" / "ci" / "project-checks.yml"
+
+
+def job_block(text, name):
+    """The lines of job `name` under `jobs:`, up to the next job, or None."""
+    jobs = top_level_block(text, "jobs")
+    if jobs is None:
+        return None
+    match = re.search(r"^  {}:[ \t]*\n((?:    .*\n?|[ \t]*\n)*)".format(re.escape(name)), jobs, re.M)
+    return match.group(1) if match else None
+
+
+def steps_of(job):
+    """Each `- ` step of a job, as its own block of lines."""
+    return re.split(r"(?m)^(?=      - )", job)[1:]
+
+
+def step_run_block(text, name):
+    """The lines of the `run: |` block under the step called `name`, or None."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*-\s*name:\s*{}\s*$".format(re.escape(name)), line):
+            break
+    else:
+        return None
+    for j in range(i + 1, len(lines)):
+        match = re.match(r"^(\s*)run:\s*\|\s*$", lines[j])
+        if match:
+            indent = len(match.group(1))
+            block = []
+            for body in lines[j + 1:]:
+                if body.strip() and len(body) - len(body.lstrip()) <= indent:
+                    break
+                block.append(body)
+            return block
+        if re.match(r"^\s*-\s", lines[j]):
+            return None
+    return None
+
+
+class ProjectChecksExample(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(PROJECT_CHECKS.exists(), "examples/ci/project-checks.yml is missing")
+        self.text = PROJECT_CHECKS.read_text()
+
+    def test_the_e2e_job_runs_playwright_only_when_the_project_has_a_config(self):
+        job = job_block(self.text, "e2e")
+        self.assertIsNotNone(job, "no e2e: job under jobs:")
+        steps = steps_of(job)
+        detect = [s for s in steps if re.search(r"(?m)^\s+id:\s*detect\s*$", s)]
+        self.assertEqual(len(detect), 1, "no detect step in the e2e job")
+        for config in ("playwright.config.ts", "playwright.config.js", "playwright.config.mjs"):
+            self.assertRegex(detect[0], r"-f\s+{}\b".format(re.escape(config)))
+        runs = [s for s in steps if re.search(r"(?m)^\s+(?:run:\s*)?npx playwright test\s*$", s)]
+        self.assertEqual(len(runs), 1, "no step runs npx playwright test")
+        self.assertRegex(runs[0], r"(?m)^\s+if:\s*steps\.detect\.outputs\.found == 'true'\s*$")
+
+    def test_coverage_runs_only_behind_the_pytest_cov_check(self):
+        block = step_run_block(self.text, "Tests")
+        self.assertIsNotNone(block, "no Tests step with a run: block")
+        guard = next((i for i, line in enumerate(block) if "import pytest_cov" in line), None)
+        self.assertIsNotNone(guard, "the Tests step doesn't check for pytest-cov")
+        indent = len(block[guard]) - len(block[guard].lstrip())
+        end = next(
+            (i for i in range(guard + 1, len(block))
+             if block[i].strip() in ("else", "fi") and len(block[i]) - len(block[i].lstrip()) == indent),
+            None,
+        )
+        self.assertIsNotNone(end, "the pytest-cov check has no else or fi")
+        uses = [i for i, line in enumerate(block) if "--cov" in line]
+        self.assertTrue(uses, "the Tests step never runs coverage")
+        for i in uses:
+            self.assertTrue(guard < i < end, "--cov outside the pytest-cov check: " + block[i].strip())
+
+    def test_the_workflow_sets_no_coverage_threshold(self):
+        # The bar is the project's, in its own pyproject.toml.
+        code = "\n".join(line for line in self.text.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("--cov-fail-under", code)
+        self.assertNotIn("fail_under", code)
+
+
 WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml")) + sorted((ROOT / "examples" / "ci").glob("*.yml"))
 
 

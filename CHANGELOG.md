@@ -39,6 +39,61 @@ Files: [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md), [`tests/test_ch
 
 **Do:** nothing.
 
+## 2026-10-17: Playwright e2e job in the CI example
+
+The project CI example has an `e2e` job that runs `npx playwright test` when the
+repo has a `playwright.config.ts`, `.js` or `.mjs`, skips with a notice when it
+doesn't, and keeps `playwright-report/` for seven days when the tests fail. The
+Playwright config has to start the app itself; the job needs no secrets.
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) says how to put e2e tests in the loop's `test_command`.
+
+Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_ci_example.py`](tests/test_ci_example.py), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** re-copy [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml) into each project's
+`.github/workflows/checks.yml` to take it.
+
+## 2026-10-17: Coverage as an opt-in check
+
+The example project workflow now runs `pytest --cov` when `pytest-cov` is a
+dev dependency, and plain `pytest` with a notice when it isn't. It sets no
+bar: the job fails on coverage only when the project sets `fail_under` under
+`[tool.coverage.report]` in its own `pyproject.toml`. The Node job says
+coverage belongs in the project's own `test` script. HOW-IT-WORKS shows how
+to make coverage part of a loop round through `test_command`, and says what a
+coverage pass doesn't prove. New tests check that `--cov` runs only behind the
+`pytest-cov` check and that the workflow sets no threshold.
+
+Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_ci_example.py`](tests/test_ci_example.py)
+
+**Do:** to gate on coverage in CI, add `pytest-cov` as a dev dependency, set
+`fail_under` under `[tool.coverage.report]` in the project's `pyproject.toml`,
+and copy the updated workflow. For the loop, put `--cov --cov-fail-under=N`
+in `test_command`.
+
+## 2026-10-17: Loop review_agent
+
+A new `loop.json` key, `review_agent`, names the command that reviews, so a
+different model can review what the build agent wrote. It reviews each round in
+the issue loop and each pull request in `loop.py review`, held to read tools the
+same way `reader_agent` is, and for `review` it has to be `claude`. Planning
+stays with `reader_agent`. Empty, the default, means `reader_agent` reviews as
+before.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
+## 2026-10-17: Anatomy picture at the top of the README
+
+The README opens with one picture of the whole harness: your coding agent in the
+middle, the eight parts around it, the company documents that feed each one, and
+the folder where each lives in this repo. The agent is named generically, since
+the same harness works for Claude Code, Codex and Kiro.
+
+Files: [`README.md`](README.md), [`docs/harness-anatomy.png`](docs/harness-anatomy.png)
+
+**Do:** nothing.
+
 ## 2026-10-16: Secret scan checks the gitleaks download
 
 The secret-scan workflow now checks the gitleaks binary against a SHA-256

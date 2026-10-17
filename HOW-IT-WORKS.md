@@ -124,12 +124,18 @@ keeps its default:
 |---|---|---|
 | `agent` | `claude -p --permission-mode acceptEdits` | The command that builds. The prompt arrives on stdin, so Codex or Kiro work the same way |
 | `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be |
+| `review_agent` | empty | The command that reviews, when it's set. Empty means `reader_agent` reviews. Held to read tools the same way, and for `review` it has to be `claude` |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
 | `review_query` | `review-requested:@me` | The GitHub search `loop.py review` runs to find pull requests that ask for you |
+
+To have one model build and another review it, set the two apart:
+
+    "agent": "claude -p --model <one model> --permission-mode acceptEdits",
+    "review_agent": "claude -p --model <another model>"
 
 **Before the first run,** run `python3 scripts/check_setup.py` and fix any FAIL. A
 warning the harness's session-start hook prints (an unset `core.hooksPath`, for
@@ -150,7 +156,15 @@ Then read `.loop/issue-N/` and the pull request it opened.
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put
-that command in `test_command`, which the script runs itself.
+that command in `test_command`, which the script runs itself. That includes
+end-to-end tests: `npm test && npx playwright test` runs them every round, and
+makes each round slower.
+
+**Coverage, if you want it.** Put it in `test_command`, for instance
+`"test_command": "uv run pytest --cov --cov-fail-under=80"`. The number is
+the project's to choose, and a round below it fails like any other test
+failure. A coverage pass shows which lines ran, not that a test would catch
+a change to them; [`skills/review-tests/`](skills/review-tests/) checks that.
 
 **From a conversation,** the [`skills/loop-control/`](skills/loop-control/) skill does the same jobs:
 it checks an issue is ready before labelling it, starts the loop, says what
@@ -222,7 +236,8 @@ or tokens into the comment, and the checkout's own [`.claude/`](.claude/) settin
 hooks never load. That's why review mode needs `reader_agent` to be `claude`
 itself (a path is fine, `npx` or `env` in front isn't): nothing here knows how
 to confine another tool, so with any other command it reviews nothing and logs
-why. The issue loop still takes Codex or Kiro, because the issues it builds
+why. When `review_agent` is set, it's the one that reviews, so it has to be
+`claude` too. The issue loop still takes Codex or Kiro, because the issues it builds
 from are checked first.
 
 The comment opens with a line saying an agent wrote it from the pull request's
