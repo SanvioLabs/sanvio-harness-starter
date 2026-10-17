@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Coverage as an opt-in check
+
+The example project workflow now runs `pytest --cov` when `pytest-cov` is a
+dev dependency, and plain `pytest` with a notice when it isn't. It sets no
+bar: the job fails on coverage only when the project sets `fail_under` under
+`[tool.coverage.report]` in its own `pyproject.toml`. The Node job says
+coverage belongs in the project's own `test` script. HOW-IT-WORKS shows how
+to make coverage part of a loop round through `test_command`, and says what a
+coverage pass doesn't prove. New tests check that `--cov` runs only behind the
+`pytest-cov` check and that the workflow sets no threshold.
+
+Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_ci_example.py`](tests/test_ci_example.py)
+
+**Do:** to gate on coverage in CI, add `pytest-cov` as a dev dependency, set
+`fail_under` under `[tool.coverage.report]` in the project's `pyproject.toml`,
+and copy the updated workflow. For the loop, put `--cov --cov-fail-under=N`
+in `test_command`.
+
 ## 2026-10-17: Loop review_agent
 
 A new `loop.json` key, `review_agent`, names the command that reviews, so a
