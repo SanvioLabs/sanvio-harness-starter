@@ -1,5 +1,7 @@
 # Harness starter
 
+![Anatomy of a harness. You hand a ticket or a prompt to your coding agent (Claude Code, Codex, Kiro or another), and an artifact comes out: a PR or a doc. Eight parts sit around the agent, each fed by documents your company already has. What it reads and reaches: steering, rules loaded into every session (AGENTS.md, steering/); skills, repeatable workflows (skills/); memory, kept in files (company/, docs/specs/); MCP servers, the systems you run (company/DATA.md). What keeps it honest: hooks that can block a tool call (.claude/hooks/, .githooks/); gates, checks before a change moves up (gates/, .github/workflows/); reviewers, a second reader that never edits (agents/); mods, what you see and can type (examples/mods/).](docs/harness-anatomy.png)
+
 Built and maintained by [Sanvio Labs](https://sanviolabs.com). Free under MIT.
 
 A harness is everything around the model: the rules it reads, the procedures it
