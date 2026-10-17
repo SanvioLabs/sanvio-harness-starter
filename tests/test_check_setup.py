@@ -105,14 +105,98 @@ class SetupCheck(unittest.TestCase):
         (self.root / "company" / "COMPANY.md").write_text("# Company\n")
         self.assertEqual(check_setup.check_company(self.root)[0], "PASS")
 
+    def company_repo(self, origin="https://user:tok@github.com/acme/company.git"):
+        company = self.root / "company"
+        company.mkdir()
+        subprocess.run(["git", "-C", str(company), "init", "-q"], check=True, env=ISOLATED)
+        if origin:
+            subprocess.run(["git", "-C", str(company), "remote", "add", "origin", origin],
+                           check=True, env=ISOLATED)
+
+    def fake_gh(self, script=None):
+        """PATH holds only git and, given a script, a fake gh that runs it. Its arguments go to gh.args."""
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "git").symlink_to(shutil.which("git"))
+        if script is not None:
+            gh = bin_dir / "gh"
+            gh.write_text('#!/bin/sh\necho "$@" >> "{}"\n{}\n'.format(self.root / "gh.args", script))
+            gh.chmod(0o755)
+        os.environ["PATH"] = str(bin_dir)
+
+    def assert_no_token(self, result):
+        _, line, fix = result
+        self.assertNotIn("tok", line + (fix or ""))
+        args = self.root / "gh.args"
+        if args.exists():
+            self.assertNotIn("tok", args.read_text())
+
+    def test_a_public_company_repo_fails(self):
+        self.company_repo()
+        self.fake_gh("echo PUBLIC")
+        status, line, _ = check_setup.check_company(self.root)
+        self.assertEqual(status, "FAIL")
+        self.assertIn("https://github.com/acme/company", line)
+
+    def test_a_private_company_repo_passes(self):
+        self.company_repo()
+        self.fake_gh("echo PRIVATE")
+        result = check_setup.check_company(self.root)
+        self.assertEqual(result[0], "PASS")
+        self.assert_no_token(result)
+
+    def test_an_internal_company_repo_passes(self):
+        self.company_repo()
+        self.fake_gh("echo INTERNAL")
+        result = check_setup.check_company(self.root)
+        self.assertEqual(result[0], "PASS")
+        self.assert_no_token(result)
+
+    def test_a_gh_error_warns_with_the_command(self):
+        self.company_repo()
+        self.fake_gh('echo "could not resolve $3 tok" >&2; exit 1')
+        result = check_setup.check_company(self.root)
+        self.assertEqual(result[0], "WARN")
+        self.assertIn("gh repo view https://github.com/acme/company --json visibility", result[2])
+        self.assert_no_token(result)
+
+    def test_no_gh_warns_with_the_command(self):
+        self.company_repo()
+        self.fake_gh()
+        status, _, fix = check_setup.check_company(self.root)
+        self.assertEqual(status, "WARN")
+        self.assertIn("gh repo view https://github.com/acme/company --json visibility", fix)
+
+    def test_a_company_repo_with_no_origin_warns(self):
+        self.company_repo(origin=None)
+        self.fake_gh("echo PRIVATE")
+        status, line, fix = check_setup.check_company(self.root)
+        self.assertEqual(status, "WARN")
+        self.assertIn("no origin", line)
+        self.assertIn("gh repo view", fix)
+
+    def test_an_ssh_origin_is_asked_about_as_https(self):
+        self.company_repo(origin="git@github.com:acme/company.git")
+        self.fake_gh("echo PRIVATE")
+        self.assertEqual(check_setup.check_company(self.root)[0], "PASS")
+        self.assertIn("https://github.com/acme/company", (self.root / "gh.args").read_text())
+
+    def test_a_company_record_committed_in_the_harness_warns(self):
+        (self.root / "company").mkdir()
+        (self.root / "company" / "COMPANY.md").write_text("# Company\n")
+        self.git("add", "company/COMPANY.md")
+        status, line, fix = check_setup.check_company(self.root)
+        self.assertEqual(status, "WARN")
+        self.assertIn("committed in this harness", line)
+        self.assertIn("gh repo view --json visibility", fix)
+
     def test_the_company_record_never_gets_committed(self):
         def ignored(path):
             return subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", path],
                                   env=ISOLATED).returncode == 0
+        self.assertTrue(ignored("company/README.md"))
         self.assertTrue(ignored("company/COMPANY.md"))
-        self.assertTrue(ignored("company/DATA.md"))
-        self.assertFalse(ignored("company/README.md"))
-        self.assertFalse(ignored("company/COMPANY.example.md"))
+        self.assertTrue(ignored("company/x/y"))
 
     def write_skill(self, folder, name):
         path = Path(folder) / name / "SKILL.md"
