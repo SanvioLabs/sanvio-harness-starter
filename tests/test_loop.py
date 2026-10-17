@@ -115,6 +115,37 @@ class TestPureParts(unittest.TestCase):
                "AWS_PROFILE": "x", "SSH_AUTH_SOCK": "x", "DB_PASSWORD": "x", "STRIPE_SECRET": "x", "LANG": "C"}
         self.assertEqual(sorted(loop.env_for_tests(env)), ["HOME", "LANG", "PATH"])
 
+    def test_a_named_agent_stands_for_the_command_that_does_its_job(self):
+        reader = "codex exec --sandbox read-only -c shell_environment_policy.inherit=none"
+        table = [
+            ("agent", "claude", "claude -p --permission-mode acceptEdits", None),
+            ("agent", "claude:opus", "claude -p --permission-mode acceptEdits --model opus", None),
+            ("agent", "codex", "codex exec --sandbox workspace-write -", None),
+            ("agent", "codex:gpt-5", "codex exec --sandbox workspace-write -m gpt-5 -", None),
+            ("agent", "ollama", None, "Ollama has no tools to edit files with"),
+            ("agent", "ollama:qwen3", None, "Ollama has no tools to edit files with"),
+        ]
+        for which in ("reader_agent", "review_agent"):
+            table += [
+                (which, "claude", "claude -p", None),
+                (which, "claude:opus", "claude -p --model opus", None),
+                (which, "codex", reader + " -", None),
+                (which, "codex:gpt-5", reader + " -m gpt-5 -", None),
+                (which, "ollama", None, "a model is needed"),
+                (which, "ollama:", None, "a model is needed"),
+                (which, "ollama:qwen3", "ollama run qwen3", None),
+                (which, "ollama:qwen3:8b", "ollama run qwen3:8b", None),
+            ]
+        for which in ("agent", "reader_agent", "review_agent"):
+            table += [
+                (which, "claude -p --model a:b", "claude -p --model a:b", None),
+                (which, "codex exec", "codex exec", None),
+                (which, "/usr/local/bin/ollama run 'my model'", "/usr/local/bin/ollama run 'my model'", None),
+            ]
+        for which, value, argv, why in table:
+            got = loop.command(dict(CFG, **{which: value}), which)
+            self.assertEqual(got, (shlex.split(argv) if argv else None, why), (which, value))
+
     def test_a_long_test_output_keeps_its_end(self):
         long = "a" * 50_000 + "THE FAILURE"
         cut = loop.tail(long, 1000)
@@ -135,6 +166,8 @@ with open(os.path.join(state, "agents-started"), "a") as f:
 if "You are planning" in prompt:
     open(os.path.join(state, "plan-cwd"), "w").write(os.getcwd())
     open(os.path.join(state, "plan-prompt"), "w").write(prompt)
+    if os.path.exists(os.path.join(state, "planner-edits")):
+        open("planned.txt", "w").write("x")
     print("Plan: add feature.txt.")
 elif "You are the reviewer" in prompt:
     if os.path.exists(os.path.join(state, "reviewer-edits")):
@@ -294,7 +327,8 @@ class TestAPass(unittest.TestCase):
         self.state.mkdir()
         bin_dir = tmp / "bin"
         bin_dir.mkdir()
-        for name, body in (("gh", GH), ("agent", AGENT), ("tmux", TMUX)):
+        # codex is the same stand-in under the name loop.json can give, found on PATH as the real one would be.
+        for name, body in (("gh", GH), ("agent", AGENT), ("codex", AGENT), ("tmux", TMUX)):
             path = bin_dir / name
             path.write_text(body)
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -577,6 +611,38 @@ class TestAPass(unittest.TestCase):
         self.assertIn("reviewer edited files; discarded", "\n".join(self.lines()))
         tree = Path(self.cfg["worktree_dir"]) / "issue-12"
         self.assertFalse((tree / "sneaky.txt").exists())
+
+    def test_an_agent_that_cant_do_its_job_stops_the_run_before_any_issue_is_taken(self):
+        for key, why in (("agent", "Ollama has no tools to edit files with"), ("reader_agent", "a model is needed")):
+            cfg = dict(self.cfg, **{key: "ollama"})
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = loop.Loop(self.work, cfg).run(once=True)
+            self.assertNotEqual(code, 0, key)
+            self.assertIn("ERROR {} in loop.json: {}".format(key, why), self.lines()[-1])
+            gh = self.state / "gh-calls"
+            self.assertNotIn("issue edit", gh.read_text() if gh.exists() else "", key)
+            self.assertFalse(Path(self.cfg["worktree_dir"]).exists(), key)
+            self.assertFalse((self.state / "agents-started").exists(), key)
+
+    def test_a_codex_reviewer_reads_in_its_sandbox_and_its_edits_are_thrown_away(self):
+        self.tag_agents()
+        self.cfg["review_agent"] = "codex:gpt-5"
+        (self.state / "reviewer-edits").write_text("")
+        self.assertEqual(self.go(), 0)
+        reviews = [s for s in self.started() if s.endswith(" review")]
+        self.assertEqual(len(reviews), 1, self.started())
+        for part in ("exec --sandbox read-only", "shell_environment_policy.inherit=none", "-m gpt-5 -"):
+            self.assertIn(part, reviews[0])
+        self.assertIn("reviewer edited files; discarded", "\n".join(self.lines()))
+        self.assertFalse((Path(self.cfg["worktree_dir"]) / "issue-12" / "sneaky.txt").exists())
+
+    def test_a_planner_that_edits_files_has_them_thrown_away(self):
+        self.cfg["reader_agent"] = "codex"
+        (self.state / "planner-edits").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertIn("planner edited files; discarded", "\n".join(self.lines()))
+        self.assertNotIn("planned.txt", (self.work / ".loop" / "issue-12" / "diff.patch").read_text())
+        self.assertFalse((Path(self.cfg["worktree_dir"]) / "issue-12" / "planned.txt").exists())
 
     def test_checkouts_live_outside_the_clone(self):
         self.go()
@@ -1761,6 +1827,33 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.agents_started(), 0)
         self.assertEqual(self.comments(), [])
         self.assertIn("not run: review_agent isn't a claude command", self.reviews()[-1])
+
+    def named_reader(self, name):
+        """The stand-in reader under a name loop.json can give, found on PATH as the real one would be."""
+        path = self.bin / name
+        path.write_text(REVIEW_AGENT)
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+    def test_a_named_ollama_reviews_a_pull_request_as_it_is_since_it_has_no_tools(self):
+        self.named_reader("ollama")
+        self.cfg["reader_agent"] = "ollama:qwen3"
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual((self.state / "argv").read_text(), "run qwen3")
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("REVIEW #7 {} posted".format(sha[:7]), self.reviews()[-1])
+
+    def test_codex_never_reviews_a_pull_request_and_the_log_says_why(self):
+        self.named_reader("codex")
+        self.cfg["review_agent"] = "codex"
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.go()
+        self.assertEqual(self.agents_started(), 0)
+        self.assertEqual(self.comments(), [])
+        self.assertIn("not run: review_agent is codex, whose read-only sandbox can still read files outside "
+                      "the checkout", self.reviews()[-1])
 
     def test_the_posted_report_pings_nobody_and_says_what_it_is(self):
         self.reader("pinger", "#!/usr/bin/env python3\nimport sys\nsys.stdin.read()\n"
