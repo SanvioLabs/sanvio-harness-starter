@@ -18,6 +18,9 @@ the example, then build your own job the same way at the root.
 
 It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 
+At the Humanbulb talk on 15 October 2026? [The slides are here](https://github.com/SanvioLabs/sanvio-harness-starter/releases/tag/talk-humanbulb-2026-10-15),
+as a PDF, a PowerPoint and an offline web page.
+
 ## Set up
 
 ```bash
