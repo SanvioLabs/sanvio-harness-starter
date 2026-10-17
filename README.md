@@ -1,7 +1,5 @@
 # Harness starter
 
-![Anatomy of a harness. You hand a ticket or a prompt to your coding agent (Claude Code, Codex, Kiro or another), and an artifact comes out: a PR or a doc. Eight parts sit around the agent, each fed by documents your company already has. What it reads and reaches: steering, rules loaded into every session (AGENTS.md, steering/); skills, repeatable workflows (skills/); memory, kept in files (company/, docs/specs/); MCP servers, the systems you run (company/DATA.md). What keeps it honest: hooks that can block a tool call (.claude/hooks/, .githooks/); gates, checks before a change moves up (gates/, .github/workflows/); reviewers, a second reader that never edits (agents/); mods, what you see and can type (examples/mods/).](docs/harness-anatomy.png)
-
 Built and maintained by [Sanvio Labs](https://sanviolabs.com). Free under MIT.
 
 A harness is everything around the model: the rules it reads, the procedures it
@@ -9,6 +7,8 @@ follows, the checks that stop it, and the other agents it hands work to. The
 model is the engine. The harness is what makes it safe to leave running.
 
 ![You ask an AI agent to draft the bakery proposal. On its own it leaves a rate as TBD, and the blank goes out to the client. Then the harness appears around it: instructions it reads (rates.json, templates/), steps it follows (skills/draft-proposal), a second reader (proposal-reviewer.md), and checks that stop it (the proposal gate, CI). The same request and the same mistake: this time the gate blocks it, the agent fills the rate from the rate card, the reader and the gate agree, and only then does it go out.](docs/what-is-a-harness.gif)
+
+![Anatomy of a harness. You hand a ticket or a prompt to your coding agent (Claude Code, Codex, Kiro or another), and an artifact comes out: a PR or a doc. Eight parts sit around the agent, each fed by documents your company already has. What it reads and reaches: steering, rules loaded into every session (AGENTS.md, steering/); skills, repeatable workflows (skills/); memory, kept in files (company/, docs/specs/); MCP servers, the systems you run (company/DATA.md). What keeps it honest: hooks that can block a tool call (.claude/hooks/, .githooks/); gates, checks before a change moves up (gates/, .github/workflows/); reviewers, a second reader that never edits (agents/); mods, what you see and can type (examples/mods/).](docs/harness-anatomy.png)
 
 This repo is the smallest harness that still does the job. The root is
 generic: rules, skills, a reviewer, the checks, and a place for your company
