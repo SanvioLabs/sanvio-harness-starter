@@ -81,6 +81,20 @@ class LoopWorkflowExample(unittest.TestCase):
 PROJECT_CHECKS = ROOT / "examples" / "ci" / "project-checks.yml"
 
 
+def job_block(text, name):
+    """The lines of job `name` under `jobs:`, up to the next job, or None."""
+    jobs = top_level_block(text, "jobs")
+    if jobs is None:
+        return None
+    match = re.search(r"^  {}:[ \t]*\n((?:    .*\n?|[ \t]*\n)*)".format(re.escape(name)), jobs, re.M)
+    return match.group(1) if match else None
+
+
+def steps_of(job):
+    """Each `- ` step of a job, as its own block of lines."""
+    return re.split(r"(?m)^(?=      - )", job)[1:]
+
+
 def step_run_block(text, name):
     """The lines of the `run: |` block under the step called `name`, or None."""
     lines = text.splitlines()
@@ -108,6 +122,18 @@ class ProjectChecksExample(unittest.TestCase):
     def setUp(self):
         self.assertTrue(PROJECT_CHECKS.exists(), "examples/ci/project-checks.yml is missing")
         self.text = PROJECT_CHECKS.read_text()
+
+    def test_the_e2e_job_runs_playwright_only_when_the_project_has_a_config(self):
+        job = job_block(self.text, "e2e")
+        self.assertIsNotNone(job, "no e2e: job under jobs:")
+        steps = steps_of(job)
+        detect = [s for s in steps if re.search(r"(?m)^\s+id:\s*detect\s*$", s)]
+        self.assertEqual(len(detect), 1, "no detect step in the e2e job")
+        for config in ("playwright.config.ts", "playwright.config.js", "playwright.config.mjs"):
+            self.assertRegex(detect[0], r"-f\s+{}\b".format(re.escape(config)))
+        runs = [s for s in steps if re.search(r"(?m)^\s+(?:run:\s*)?npx playwright test\s*$", s)]
+        self.assertEqual(len(runs), 1, "no step runs npx playwright test")
+        self.assertRegex(runs[0], r"(?m)^\s+if:\s*steps\.detect\.outputs\.found == 'true'\s*$")
 
     def test_coverage_runs_only_behind_the_pytest_cov_check(self):
         block = step_run_block(self.text, "Tests")

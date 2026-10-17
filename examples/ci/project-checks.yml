@@ -102,3 +102,42 @@ jobs:
           npm run --if-present typecheck
           npm run --if-present test
           npm run --if-present build
+
+  # The Playwright config has to start the app itself, with its webServer
+  # setting: nothing else here serves it. A project whose tests need a deployed
+  # URL has to supply that URL; this job has none to give.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Look for a Playwright config
+        id: detect
+        run: |
+          if [ -f playwright.config.ts ] || [ -f playwright.config.js ] || [ -f playwright.config.mjs ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No playwright.config.ts, playwright.config.js or playwright.config.mjs, so the e2e tests skip."
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.detect.outputs.found == 'true'
+        with:
+          node-version: lts/*
+      - name: Install
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Install browsers
+        if: steps.detect.outputs.found == 'true'
+        run: npx playwright install --with-deps
+      - name: End-to-end tests
+        if: steps.detect.outputs.found == 'true'
+        run: npx playwright test
+      - name: Keep the report from a failed run
+        if: failure() && steps.detect.outputs.found == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

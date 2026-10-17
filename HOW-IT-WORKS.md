@@ -156,7 +156,9 @@ Then read `.loop/issue-N/` and the pull request it opened.
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put
-that command in `test_command`, which the script runs itself.
+that command in `test_command`, which the script runs itself. That includes
+end-to-end tests: `npm test && npx playwright test` runs them every round, and
+makes each round slower.
 
 **Coverage, if you want it.** Put it in `test_command`, for instance
 `"test_command": "uv run pytest --cov --cov-fail-under=80"`. The number is
