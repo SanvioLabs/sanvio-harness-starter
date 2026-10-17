@@ -52,11 +52,20 @@ jobs:
           else
             echo "::notice::ruff isn't a dev dependency, so lint skips."
           fi
+      # Coverage runs once pytest-cov is a dev dependency. The bar is
+      # fail_under under [tool.coverage.report] in the project's
+      # pyproject.toml; with none set, coverage is reported and never fails
+      # the job.
       - name: Tests
         if: steps.detect.outputs.found == 'true'
         run: |
           if uv run pytest --version >/dev/null 2>&1; then
-            uv run pytest
+            if uv run python -c "import pytest_cov" >/dev/null 2>&1; then
+              uv run pytest --cov
+            else
+              echo "::notice::pytest-cov isn't a dev dependency, so coverage skips."
+              uv run pytest
+            fi
           else
             echo "::notice::pytest isn't a dev dependency, so tests skip."
           fi
@@ -84,7 +93,8 @@ jobs:
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
       # --if-present is the guard: a script the project hasn't defined yet is
-      # skipped rather than failing the build.
+      # skipped rather than failing the build. Coverage belongs in the
+      # project's own test script, with its bar.
       - name: Lint, types, tests, build
         if: steps.detect.outputs.found == 'true'
         run: |
