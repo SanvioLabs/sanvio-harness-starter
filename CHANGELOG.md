@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Playwright e2e job in the CI example
+
+The project CI example has an `e2e` job that runs `npx playwright test` when the
+repo has a `playwright.config.ts`, `.js` or `.mjs`, skips with a notice when it
+doesn't, and keeps `playwright-report/` for seven days when the tests fail. The
+Playwright config has to start the app itself; the job needs no secrets.
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) says how to put e2e tests in the loop's `test_command`.
+
+Files: [`examples/ci/project-checks.yml`](examples/ci/project-checks.yml), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_ci_example.py`](tests/test_ci_example.py), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** re-copy `examples/ci/project-checks.yml` into each project's
+`.github/workflows/checks.yml` to take it.
+
 ## 2026-10-16: Secret scan checks the gitleaks download
 
 The secret-scan workflow now checks the gitleaks binary against a SHA-256
