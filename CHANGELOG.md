@@ -37,7 +37,7 @@ points at wiki pages, with a figure of the whole setup. `/orientation` now says 
 asks where the company record lives before it interviews you for one: here, in
 a company repo, or in a wiki.
 
-Files: [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`docs/company.md`](docs/company.md), [`docs/where-things-live.png`](docs/where-things-live.png), [`tests/test_steering.py`](tests/test_steering.py)
+Files: [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`docs/COMPANY.example.md`](docs/COMPANY.example.md), [`docs/where-things-live.png`](docs/where-things-live.png), [`tests/test_steering.py`](tests/test_steering.py)
 
 **Do:** nothing.
 
