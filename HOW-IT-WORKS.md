@@ -127,9 +127,9 @@ keeps its default:
 
 | Key | Default | Is |
 |---|---|---|
-| `agent` | `claude -p --permission-mode acceptEdits` | The command that builds. The prompt arrives on stdin, so Codex or Kiro work the same way |
-| `reader_agent` | `claude -p` | The command that plans and reviews. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be |
-| `review_agent` | empty | The command that reviews, when it's set. Empty means `reader_agent` reviews. Held to read tools the same way, and for `review` it has to be `claude` |
+| `agent` | `claude -p --permission-mode acceptEdits` | The command that builds, or a name: `claude` or `codex`, with `:<model>` if you like. `ollama` can't build: it has no tools to edit files with. The prompt arrives on stdin, so any other command line works the same way |
+| `reader_agent` | `claude -p` | The command that plans and reviews, or a name: `claude`, `codex` or `ollama:<model>`. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be `claude` or `ollama:<model>` |
+| `review_agent` | empty | The command that reviews, when it's set, or a name: `claude`, `codex` or `ollama:<model>`. Empty means `reader_agent` reviews. Held to read tools the same way, and for `review` it has to be `claude` or `ollama:<model>` |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
@@ -141,6 +141,19 @@ To have one model build and another review it, set the two apart:
 
     "agent": "claude -p --model <one model> --permission-mode acceptEdits",
     "review_agent": "claude -p --model <another model>"
+
+Or name the tool, and the loop gives it the flags its job needs. Codex
+reviews, in its read-only sandbox, with:
+
+    {"review_agent": "codex"}
+
+To build with Claude and review with a model on your own machine:
+
+    {"review_agent": "ollama:qwen3"}
+
+A name can carry a model, as in `claude:<model>` or `codex:<model>`. Ollama
+needs one. A name that can't do its job, `ollama` as `agent` or `ollama` with
+no model, stops the run before it takes an issue, and the log says why.
 
 **Before the first run,** run `python3 scripts/check_setup.py` and fix any FAIL. A
 warning the harness's session-start hook prints (an unset `core.hooksPath`, for
@@ -239,11 +252,14 @@ whatever tools or permissions `loop.json` gave it: it can read the checkout and
 nothing outside it, so a pull request written to steer it can't get your keys
 or tokens into the comment, and the checkout's own [`.claude/`](.claude/) settings and
 hooks never load. That's why review mode needs `reader_agent` to be `claude`
-itself (a path is fine, `npx` or `env` in front isn't): nothing here knows how
-to confine another tool, so with any other command it reviews nothing and logs
-why. When `review_agent` is set, it's the one that reviews, so it has to be
-`claude` too. The issue loop still takes Codex or Kiro, because the issues it builds
-from are checked first.
+itself (a path is fine, `npx` or `env` in front isn't), or `ollama:<model>`,
+which runs as it is because it has no tools to reach anything with. Nothing
+here knows how to confine another tool, so with any other command it reviews
+nothing and logs why. That includes `codex`: its read-only sandbox can still
+read files outside the checkout, and what it read could end up in the posted
+comment. When `review_agent` is set, it's the one that reviews, so the same
+holds for it. The issue loop still takes Codex or Kiro, because the issues it
+builds from are checked first.
 
 The comment opens with a line saying an agent wrote it from the pull request's
 own text, and an `@` in the report can't mention anyone, so text planted in a

@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-17: Name the loop's agents
+
+`agent`, `reader_agent` and `review_agent` in `loop.json` can now be just a
+name, `claude`, `codex` or `ollama:<model>`, with an optional model, and the
+loop supplies the flags each job needs. `{"review_agent": "ollama:qwen3"}`
+builds with Claude and reviews with a local model. A name that can't do its
+job stops the run before it takes an issue. In `loop.py review`, an
+`ollama:<model>` reviewer now runs, and `codex` is refused with the reason.
+Anything a planner edits is now thrown away, as a reviewer's edits already
+were. Command lines work as before.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-17: A dependency closed by hand blocks its issue
 
 The loop now checks how a dependency was closed. One that a merged change

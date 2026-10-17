@@ -53,11 +53,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULTS = {
-    # The command that starts an agent session. The prompt arrives on stdin.
+    # The command that starts an agent session. The prompt arrives on stdin. A name, claude or codex,
+    # with an optional :model, stands for the right command (see command()).
     "agent": "claude -p --permission-mode acceptEdits",
     # The agent that plans and reviews. It is told not to edit, and any edit is thrown away.
+    # claude, codex or ollama:<model> names one, as for agent.
     "reader_agent": "claude -p",
     # The agent that reviews, held to read tools the same way. Empty means reader_agent reviews.
+    # Named the same way as reader_agent.
     "review_agent": "",
     # Run by this script, never by the agent, so the agent can't grade its own work.
     "test_command": "python3 -m unittest discover -s tests",
@@ -88,6 +91,8 @@ STATUS_KEEP = 20  # issues kept in status.json, newest first
 UNTRUSTED_CLAUDE = ["--restricted", "--strict-mcp-config", "--tools", "Read,Grep,Glob"]
 # What agent() returns when it won't start a reader it can't confine on someone else's files.
 REFUSED = 125
+# The agents loop.json can name instead of giving a command line, each with an optional :model.
+AGENT_NAMES = ("claude", "codex", "ollama")
 # Who may write an issue the loop builds from as it stands. Anyone else's issue is taken only as it
 # was when someone with triage rights labelled it, with nothing hidden in it.
 TRUSTED_AUTHORS = {"OWNER", "MEMBER", "COLLABORATOR"}
@@ -194,6 +199,38 @@ def confined(cmd):
             continue
         out.append(word)
     return out + UNTRUSTED_CLAUDE
+
+
+def named(value):
+    """(name, model) when value is claude, codex or ollama with an optional :model, else (None, "").
+
+    It splits on the first colon only, so an Ollama tag stays whole: ollama:qwen3:8b runs qwen3:8b.
+    """
+    name, _, model = (value or "").strip().partition(":")
+    return (name, model.strip()) if name in AGENT_NAMES else (None, "")
+
+
+def command(cfg, which):
+    """(argv, None) for the agent cfg[which] names, or (None, why) when it can't do that job.
+
+    which is "agent", the builder, or a reader: reader_agent or review_agent. A name stands for the
+    command that does the job with that tool; any other value is a command line, split as it is.
+    """
+    name, model = named(cfg[which])
+    if name is None:
+        return shlex.split(cfg[which]), None
+    build = which == "agent"
+    if name == "claude":
+        argv = ["claude", "-p"] + (["--permission-mode", "acceptEdits"] if build else [])
+        return argv + (["--model", model] if model else []), None
+    if name == "codex":
+        sandbox = ["workspace-write"] if build else ["read-only", "-c", "shell_environment_policy.inherit=none"]
+        return ["codex", "exec", "--sandbox"] + sandbox + (["-m", model] if model else []) + ["-"], None
+    if build:
+        return None, "Ollama has no tools to edit files with"
+    if not model:
+        return None, "a model is needed"
+    return ["ollama", "run", model], None
 
 
 def safe_to_post(report):
@@ -521,18 +558,15 @@ class Loop:
         untrusted means cwd holds a stranger's files, and their text may be written to steer the agent.
         Claude Code then runs restricted: the read tools only, confined to that folder, so nothing
         outside it (keys, tokens, other repos) can end up in a posted report, and no settings, hooks
-        or MCP servers are loaded from anywhere. Any other command is refused with REFUSED, because
-        nothing here knows how to confine it.
+        or MCP servers are loaded from anywhere. A named ollama runs as it is, since it has no tools.
+        Any other command is refused with REFUSED, because nothing here knows how to confine it.
 
         confine asks for the same where it can be had, and runs any other command as it is: for an
         issue the loop has already checked the author of.
         """
-        cmd = shlex.split(self.cfg[which])
-        held = confined(cmd)
-        if untrusted and held is None:
-            return REFUSED, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
-        if (untrusted or confine) and held is not None:
-            cmd = held
+        cmd, why = self.argv(which, untrusted, confine)
+        if cmd is None:
+            return REFUSED, why
         if number is None:
             return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
         self.halt_if_interrupted()
@@ -541,6 +575,25 @@ class Loop:
         result = self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr)
         self.halt_if_interrupted()  # its exit code is the Ctrl-C's kill, not something it got wrong
         return result
+
+    def argv(self, which, untrusted=False, confine=False):
+        """(the command agent() runs for which, None), or (None, why it won't run it). See agent().
+
+        The reasons are fixed strings: review_run() logs them on one line.
+        """
+        cmd, why = command(self.cfg, which)
+        if cmd is None:
+            return None, "{} can't run: {}".format(which, why)
+        name = named(self.cfg[which])[0]
+        held = confined(cmd)
+        if (untrusted or confine) and held is not None:
+            return held, None
+        if untrusted and name == "codex":
+            return None, ("{} is codex, whose read-only sandbox can still read files outside the checkout, "
+                          "which could end up in a posted comment").format(which)
+        if untrusted and name != "ollama":
+            return None, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
+        return cmd, None
 
     def stream(self, cmd, cwd, prompt, path, which, stderr=True):
         """sh() for an agent, with each line it says appended to path as it arrives, for its window to show."""
@@ -810,6 +863,7 @@ class Loop:
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
         code, plan = self.agent("reader_agent", shape_prompt(issue), tree, confine=True, number=number)
+        self.discard_edits(tree, "SHAPE", "planner", number)
         if code != 0 or not plan.strip():
             return self.block(number, "shape failed (agent exit {})".format(code))
         (folder / "plan.md").write_text(plan)
@@ -854,10 +908,7 @@ class Loop:
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent(self.reviewer(), review_prompt(plan, diff, tout or "(no output)", tcode),
                                        tree, confine=True, number=number)
-            if self.git("status", "--porcelain", cwd=tree)[1].strip():
-                self.git("checkout", "--", ".", cwd=tree)
-                self.git("clean", "-fdq", cwd=tree)
-                self.log("REVIEW", "reviewer edited files; discarded", number)
+            self.discard_edits(tree, "REVIEW", "reviewer", number)
             (folder / "review.md").write_text(review)
             verdict = parse_verdict(review) if rcode == 0 else "FIX"
 
@@ -873,6 +924,14 @@ class Loop:
         self.lesson(number, self.cfg["max_rounds"], problems, passed=False)
         self.block(number, "still failing after {} rounds, see .loop/issue-{}/".format(
             self.cfg["max_rounds"], number), rounds=self.cfg["max_rounds"])
+
+    def discard_edits(self, tree, step, who, number):
+        """Throw away whatever a reader changed in the worktree. It was told not to edit, and only
+        claude can be held to read tools; codex or another command could have written anyway."""
+        if self.git("status", "--porcelain", cwd=tree)[1].strip():
+            self.git("checkout", "--", ".", cwd=tree)
+            self.git("clean", "-fdq", cwd=tree)
+            self.log(step, "{} edited files; discarded".format(who), number)
 
     def scale(self, issue, branch, rounds, problems):
         number = issue["number"]
@@ -994,6 +1053,12 @@ class Loop:
     def work(self, once, only, dry_run):
         """Start a worker per ready issue, up to max_workers at once. A stop starts nothing new and
         waits for each worker, which stops itself before its next round."""
+        # An agent that can't do its job is found before any issue is taken, not one blocked issue later.
+        for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
+            why = command(self.cfg, which)[1]
+            if why:
+                self.log("ERROR", "{} in loop.json: {}, so no issue is taken".format(which, why))
+                return 1
         idle = False
         running = {}  # issue number -> its worker thread
         most = workers(self.cfg)
@@ -1248,8 +1313,10 @@ class Loop:
                 return True, sha, "timed out after {}s".format(self.cfg["agent_timeout"]), True
             if code == 127:
                 return True, sha, "agent command not found", True
-            if code == REFUSED:
-                return True, sha, "not run: {} isn't a claude command, so it can't be confined".format(who), True
+            # Asked again, not taken from what agent() said: an agent of its own can exit 125 too.
+            refused = self.argv(who, untrusted=True)[1] if code == REFUSED else None
+            if refused:
+                return True, sha, "not run: " + refused, True
             if code != 0:
                 return True, sha, "agent exit {}".format(code), True
             if not report.strip():
