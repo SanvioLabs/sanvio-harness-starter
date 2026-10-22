@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Check the starter
+
+"Check the starter" lists what the public starter has shipped since your copy
+was taken from it, oldest first, from a scratch clone it never runs anything
+in. It flags each commit that touches a file you adapted, and recommends take,
+merge by hand, skip or ask for each. It names the commands and never takes
+anything itself. It finds where you left off from a `starter: <sha>` line in
+this file's header, or else from the newest heading both logs share.
+[`skills/review-skill/`](skills/review-skill/) now points here for changes from the starter's own
+`main`.
+
+Files: [`skills/check-starter/`](skills/check-starter/), [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`tests/test_changelog.py`](tests/test_changelog.py)
+
+**Do:** nothing. After you take the starter's changes, add `starter: <sha>`
+above the first entry here, so the next check starts from there.
+
 ## 2026-10-22: Inbox reads your mail
 
 `inbox` is now a read of your mail, not an idea list. Say "inbox" or "check
