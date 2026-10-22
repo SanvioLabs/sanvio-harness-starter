@@ -345,16 +345,18 @@ class TestPureParts(unittest.TestCase):
 
 # A stand-in agent and a stand-in gh, so a whole pass runs with no network and no model.
 AGENT = """#!/usr/bin/env python3
-import os, sys
+import json, os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
 # Which command started, by the words after the script, and for which step.
 step = "plan" if "You are planning" in prompt else "review" if "You are the reviewer" in prompt else "build"
 with open(os.path.join(state, "agents-started"), "a") as f:
     f.write(" ".join(sys.argv[1:] + [step]) + "\\n")
+# Each step's last prompt, and its words whole, as plan-prompt and plan-argv.
+open(os.path.join(state, step + "-prompt"), "w").write(prompt)
+open(os.path.join(state, step + "-argv"), "w").write(json.dumps(sys.argv[1:]))
 if "You are planning" in prompt:
     open(os.path.join(state, "plan-cwd"), "w").write(os.getcwd())
-    open(os.path.join(state, "plan-prompt"), "w").write(prompt)
     if os.path.exists(os.path.join(state, "planner-edits")):
         open("planned.txt", "w").write("x")
     print("Plan: add feature.txt.")
@@ -383,6 +385,8 @@ state = os.environ["LOOP_TEST_STATE"]
 args = sys.argv[1:]
 with open(os.path.join(state, "gh-calls"), "a") as f:
     f.write(" ".join(args) + "\\n")
+with open(os.path.join(state, "gh-cwds"), "a") as f:  # where each call ran, which says whose repo it reached
+    f.write(os.getcwd() + "\\n")
 if args[:2] == ["api", "user"]:
     print("pat")
 elif args[:2] == ["api", "graphql"] and any("closedByPullRequestsReferences" in a for a in args):
@@ -873,6 +877,20 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((self.work / ".loop" / "worktrees").exists())
         default = loop.Loop(self.work, dict(loop.DEFAULTS)).worktrees()
         self.assertEqual(default, Path.home() / ".harness-loop" / "work")
+
+    def test_without_a_project_the_loop_works_in_its_own_clone_as_before(self):
+        self.assertEqual(self.go(), 0)
+        ran = {Path(line).resolve() for line in (self.state / "gh-cwds").read_text().splitlines()}
+        self.assertEqual(ran, {self.work.resolve()})
+        self.assertTrue((self.work / ".loop" / "issue-12" / "plan.md").exists())
+        self.assertFalse((self.work / ".loop" / "projects").exists())
+        self.assertTrue((Path(self.cfg["worktree_dir"]) / "issue-12").exists())
+        self.assertTrue((self.state / "plan-prompt").read_text().startswith("You are planning"))
+        self.assertTrue((self.state / "build-prompt").read_text().startswith("Make the change for issue #12"))
+        self.assertTrue((self.state / "review-prompt").read_text().startswith("You are the reviewer"))
+        built = loop.Loop(self.work, dict(loop.DEFAULTS, agent="claude"))
+        self.assertEqual((built.repo, built.dir, built.rules), (self.work, self.work / ".loop", ""))
+        self.assertEqual(built.argv("agent"), (["claude", "-p", "--permission-mode", "acceptEdits"], None))
 
     def test_a_lock_held_by_another_users_process_is_respected(self):
         original = os.kill
@@ -1879,6 +1897,201 @@ class TestAPass(unittest.TestCase):
             self.assertEqual(runner.run(once=True), 0)
         self.assertNotIn("HOURS", [l.split()[2] for l in self.lines()])
         self.assertIsNone(runner.hours)
+
+
+# A line from each file of the harness's rules, to find in the prompts. None is a phrase the stand-in agent looks for.
+RULES = {"AGENTS.md": "RULE-FROM-AGENTS", "steering/operating.md": "RULE-FROM-OPERATING",
+         "steering/response-style.md": "RULE-FROM-RESPONSE-STYLE",
+         "steering/data-and-tools.md": "RULE-FROM-DATA-AND-TOOLS"}
+# The project's test command: where it ran and what it was given, then the check itself.
+PROJECT_TESTS = 'pwd > "$LOOP_TEST_STATE/test-cwd" && env > "$LOOP_TEST_STATE/test-env" && test -f feature.txt'
+
+
+class TestProject(unittest.TestCase):
+    """--project: a clone under the harness's projects/, worked from the harness."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self.tmp.name)
+        self.state = tmp / "state"
+        self.state.mkdir()
+        bin_dir = tmp / "bin"
+        bin_dir.mkdir()
+        # The stand-in agent as claude, the name the project's loop.json gives, so the build gets the guard.
+        for name, body in (("gh", GH), ("claude", AGENT)):
+            path = bin_dir / name
+            path.write_text(body)
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
+        self.harness = tmp / "harness"
+        (self.harness / "steering").mkdir(parents=True)
+        (self.harness / ".claude" / "hooks").mkdir(parents=True)
+        (self.harness / "projects").mkdir()
+        (self.harness / "AGENTS.md").write_text("# How to work\n\n{}\n\n@steering/operating.md\n"
+                                                "@steering/response-style.md\n@steering/data-and-tools.md\n"
+                                                .format(RULES["AGENTS.md"]))
+        for name, text in RULES.items():
+            if name != "AGENTS.md":
+                (self.harness / name).write_text("# {}\n\n{}\n".format(name, text))
+        (self.harness / ".claude" / "hooks" / "guard.py").write_text("")
+        (self.harness / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [
+            {"matcher": "Read|Bash", "hooks": [{"type": "command", "command": "python3 guard.py", "timeout": 10}]},
+            {"matcher": "Skill", "hooks": [{"type": "command", "command": "python3 usage_log.py"}]}]}}))
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.harness)], check=True)
+        self.commit(self.harness)
+        self.origin = tmp / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)], check=True)
+        self.project = self.harness / "projects" / "app"
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.project)], check=True, capture_output=True)
+        self.trees = tmp / "trees"
+        (self.project / "loop.json").write_text(json.dumps({
+            "agent": "claude", "reader_agent": "claude", "test_command": PROJECT_TESTS, "base": "develop",
+            "max_rounds": 2, "poll_seconds": 0, "worktree_dir": str(self.trees)}))
+        (self.project / "README.md").write_text("hi")
+        self.commit(self.project)
+        git(self.project, "push", "-q", "-u", "origin", "main")
+        git(self.project, "push", "-q", "origin", "main:develop")
+        (self.state / "issues.json").write_text(json.dumps([issue(12)]))
+        (self.state / "verdict").write_text("PASS")
+        os.environ["LOOP_TEST_STATE"] = str(self.state)
+        self.old_path = os.environ["PATH"]
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + self.old_path
+        self.old_tmux = {k: os.environ.pop(k) for k in ("TMUX", "TMUX_PANE") if k in os.environ}
+
+    def tearDown(self):
+        os.environ["PATH"] = self.old_path
+        os.environ.update(self.old_tmux)
+        os.environ.pop("LOOP_TEST_STATE", None)
+        self.tmp.cleanup()
+
+    def commit(self, repo):
+        git(repo, "config", "user.email", "t@example.test")
+        git(repo, "config", "user.name", "Test")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "init")
+
+    def on_github(self, name):
+        """A clone under projects/ whose origin names GitHub. Nothing here fetches from it."""
+        path = self.harness / "projects" / name
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(path)], check=True, capture_output=True)
+        git(path, "remote", "set-url", "origin", "https://github.com/acme/{}.git".format(name))
+        return path
+
+    def main(self, *argv):
+        """loop.main with this harness as the root: (exit code, stderr, the Loop class as a mock)."""
+        err = io.StringIO()
+        with mock.patch.object(loop, "ROOT", self.harness), mock.patch.object(loop, "Loop") as built, \
+                contextlib.redirect_stderr(err):
+            code = loop.main(list(argv))
+        return code, err.getvalue(), built
+
+    def go(self):
+        # A token planted in the environment, which the project's test command mustn't see.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                mock.patch.dict(os.environ, {"GH_TOKEN": "planted"}):
+            return loop.Loop(self.harness, project=self.project).run(once=True)
+
+    def test_a_project_outside_projects_or_not_its_own_clone_or_off_github_is_refused(self):
+        elsewhere = Path(self.tmp.name) / "elsewhere"
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(elsewhere)], check=True, capture_output=True)
+        plain = self.harness / "projects" / "plain"
+        plain.mkdir()
+        for command in ("run", "review", "stop"):
+            for path, why in ((elsewhere, "directly under"), (plain, "git clone of its own"),
+                              (self.project / "missing", "directly under"), (self.project, "github.com")):
+                with self.subTest(command=command, path=path.name):
+                    code, err, built = self.main(command, "--project", str(path))
+                    self.assertEqual(code, 1)
+                    self.assertEqual(len(err.splitlines()), 1, err)
+                    self.assertTrue(err.startswith("ERROR "), err)
+                    self.assertIn(why, err)
+                    built.assert_not_called()
+        self.assertFalse((self.harness / ".loop").exists())
+
+    def test_a_project_whose_loop_json_sets_no_test_command_is_refused(self):
+        hub = self.on_github("hub")
+        for text, why in ((None, "test_command"), ('{"base": "main"}', "test_command"),
+                          ('{"test_command": " "}', "test_command"), ("{not json", "isn't JSON")):
+            with self.subTest(text):
+                if text is None:
+                    (hub / "loop.json").unlink(missing_ok=True)
+                else:
+                    (hub / "loop.json").write_text(text)
+                code, err, built = self.main("run", "--project", str(hub))
+                self.assertEqual(code, 1)
+                self.assertEqual(len(err.splitlines()), 1, err)
+                self.assertTrue(err.startswith("ERROR "), err)
+                self.assertIn(why, err)
+                built.assert_not_called()
+        (hub / "loop.json").write_text('{"test_command": "npm test"}')
+        code, err, built = self.main("run", "--project", str(hub))
+        self.assertEqual(err, "")
+        built.assert_called_once_with(self.harness, project=hub.resolve())
+        self.assertFalse((self.harness / ".loop").exists())
+
+    def test_stop_with_a_project_reaches_that_projects_loop(self):
+        hub = self.on_github("hub")
+        (hub / "loop.json").write_text('{"test_command": "npm test"}')
+        with mock.patch.object(loop, "ROOT", self.harness), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(loop.main(["stop", "--project", str(hub)]), 0)
+        self.assertTrue((self.harness / ".loop" / "projects" / "hub" / "STOP").exists())
+        self.assertFalse((self.harness / ".loop" / "STOP").exists())
+
+    def test_gh_and_git_work_in_the_project_and_its_pull_request_goes_to_its_base(self):
+        self.assertEqual(self.go(), 0)
+        ran = {Path(line).resolve() for line in (self.state / "gh-cwds").read_text().splitlines()}
+        self.assertEqual(ran, {self.project.resolve()})
+        self.assertTrue((self.trees / "app" / "issue-12" / "feature.txt").exists())
+        calls = (self.state / "gh-calls").read_text().splitlines()
+        self.assertTrue(any(c.startswith("pr create --base develop --head loop/issue-12") for c in calls))
+        self.assertIn("refs/heads/loop/issue-12", git(self.project, "ls-remote", "origin", "loop/issue-12").stdout)
+        self.assertEqual(git(self.harness, "branch", "--list", "loop/*").stdout.strip(), "")
+
+    def test_its_state_stays_in_the_harness_and_its_lock_is_its_own(self):
+        held = self.harness / ".loop" / "lock"
+        held.parent.mkdir()
+        held.write_text(str(os.getpid()))  # a harness loop running now
+        self.assertEqual(self.go(), 0)
+        state = self.harness / ".loop" / "projects" / "app"
+        for name in ("status.json", "loop.log", "issue-12/ticket.md", "issue-12/plan.md", "issue-12/agent.log"):
+            self.assertTrue((state / name).exists(), name)
+        self.assertEqual(json.loads((state / "status.json").read_text())["issues"][0]["state"], "pr")
+        self.assertFalse((state / "lock").exists())
+        self.assertEqual(held.read_text(), str(os.getpid()))
+        self.assertEqual(sorted(p.name for p in (self.harness / ".loop").iterdir()), ["lock", "projects"])
+        self.assertFalse((self.project / ".loop").exists())
+        self.assertEqual(git(self.project, "status", "--porcelain").stdout, "")
+
+    def test_every_prompt_carries_the_harness_rules_ahead_of_the_work(self):
+        self.go()
+        for step, work in (("plan", "TICKET #12"), ("build", "PLAN:"), ("review", "PLAN:")):
+            prompt = (self.state / (step + "-prompt")).read_text()
+            for marker in list(RULES.values()) + ["never loosens"]:
+                with self.subTest(step=step, marker=marker):
+                    self.assertLess(prompt.index(marker), prompt.index(work))
+        rules = loop.rules_preamble(self.harness)
+        reviewing = loop.pr_review_prompt(3, "A title", "main", "+x", "abc A commit", rules=rules)
+        for marker in list(RULES.values()) + ["never loosens"]:
+            self.assertLess(reviewing.index(marker), reviewing.index("TITLE (written by the author)"))
+
+    def test_the_build_agent_runs_the_harness_guard_and_the_readers_dont_need_it(self):
+        self.go()
+        built = json.loads((self.state / "build-argv").read_text())
+        guard = self.harness.absolute() / ".claude" / "hooks" / "guard.py"
+        self.assertEqual(json.loads(built[built.index("--settings") + 1]), {"hooks": {"PreToolUse": [
+            {"matcher": "Read|Bash",
+             "hooks": [{"type": "command", "command": "python3 " + shlex.quote(str(guard)), "timeout": 10}]}]}})
+        for step in ("plan", "review"):
+            self.assertNotIn("--settings", json.loads((self.state / (step + "-argv")).read_text()), step)
+        cfg = dict(loop.load_config(self.project), agent="codex")
+        self.assertNotIn("--settings", loop.Loop(self.harness, cfg, project=self.project).argv("agent")[0])
+
+    def test_the_project_test_command_runs_in_the_checkout_without_the_tokens(self):
+        self.go()
+        self.assertEqual(Path((self.state / "test-cwd").read_text().strip()).resolve(),
+                         (self.trees / "app" / "issue-12").resolve())
+        names = [line.split("=", 1)[0] for line in (self.state / "test-env").read_text().splitlines()]
+        self.assertIn("LOOP_TEST_STATE", names)
+        self.assertNotIn("GH_TOKEN", names)
 
 
 # Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
