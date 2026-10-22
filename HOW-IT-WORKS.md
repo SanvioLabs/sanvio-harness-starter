@@ -187,7 +187,7 @@ refused before the loop starts. `loop.py stop` still ends it sooner.
 **In working hours.** `"hours": "Mon-Fri 09:00-17:00"` in `loop.json`, or
 `--hours "Mon-Fri 09:00-17:00"` on `run` or `review` for one run (it replaces
 the `loop.json` value), keeps the loop to those hours in the machine's local
-time. Days are `Mon` to `Sun`, alone, as a range (`Fri-Mon` wraps) or in a
+time. Days are `Mon` to `Sun`, capitalised as shown (`mon` is refused), alone, as a range (`Fri-Mon` wraps) or in a
 comma list (`Mon,Wed-Fri`), then `HH:MM-HH:MM` on a 24-hour clock. A window
 that crosses midnight belongs to the day it starts: `Fri 22:00-06:00` covers
 early Saturday, not early Friday. Outside the hours the loop starts no new

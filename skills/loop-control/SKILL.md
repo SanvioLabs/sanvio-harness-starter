@@ -51,7 +51,7 @@ it gets read before it's labelled.
    number then `m`, `h` or `d`). After that time it takes no new issue, lets
    each running one finish, logs `END --for 8h reached` and exits. To keep it
    to working hours, add `--hours "Mon-Fri 09:00-17:00"` (local time, days `Mon`
-   to `Sun` as a day, a range or a comma list, then `HH:MM-HH:MM`), or set
+   to `Sun`, capitalised as shown, as a day, a range or a comma list, then `HH:MM-HH:MM`), or set
    `"hours"` in `loop.json`; `--hours` replaces the `loop.json` value for that
    run. A window that crosses midnight belongs to the day it starts:
    `Fri 22:00-06:00` covers early Saturday. Outside the hours it starts nothing,

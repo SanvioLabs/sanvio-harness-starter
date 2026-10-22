@@ -80,10 +80,11 @@ def until_line(start, seconds, text):
     return "- UNTIL {} (--for {})".format(datetime.fromtimestamp(start + seconds).strftime("%Y-%m-%d %H:%M"), text)
 
 
-def local(day, hhmm):
-    """time.time() at hhmm local time on day, Mon to Sun, in the week that starts Monday 4 January 2027."""
+def local(day, hhmm, week=0):
+    """time.time() at hhmm local time on day, Mon to Sun, in the week that starts Monday 4 January 2027,
+    or week weeks after it."""
     hour, minute = (int(n) for n in hhmm.split(":"))
-    return datetime(2027, 1, 4 + loop.DAYS.index(day), hour, minute).timestamp()
+    return datetime(2027, 1, 4 + 7 * week + loop.DAYS.index(day), hour, minute).timestamp()
 
 
 class TestPureParts(unittest.TestCase):
@@ -129,6 +130,7 @@ class TestPureParts(unittest.TestCase):
         for bad, why in (("Mon 9-5", "write days then HH:MM-HH:MM"), ("Funday 09:00-17:00", "isn't a day"),
                          ("Mon 09:00-09:00", "starts and ends at the same time"),
                          ("Mon 09:00-24:00", "24-hour clock"), ("Mon, 09:00-17:00", "isn't a day"),
+                         ("mon-fri 09:00-17:00", "isn't a day"),
                          (9, "isn't working hours"), (["Mon-Fri 09:00-17:00"], "isn't working hours")):
             with self.subTest(bad):
                 with self.assertRaises(ValueError) as refused:
@@ -1760,7 +1762,7 @@ class TestAPass(unittest.TestCase):
     def test_outside_the_hours_the_run_waits_says_so_once_and_takes_the_issue_when_they_start(self):
         clock = Clock()
         clock.now = local("Fri", "18:00")
-        clock.then = self.stop_at(clock, local("Mon", "10:00"))
+        clock.then = self.stop_at(clock, local("Mon", "10:00", week=1))  # the Monday after that Friday
         looked = []
         original = loop.Loop.discover
 
@@ -1770,7 +1772,7 @@ class TestAPass(unittest.TestCase):
 
         with mock.patch.object(loop.Loop, "discover", discover):
             self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock), 0)
-        self.assertEqual(looked[0], local("Mon", "09:00"))  # after 63 hourly polls, none of which looked
+        self.assertEqual(looked[0], local("Mon", "09:00", week=1))  # after 63 hourly polls, none of which looked
         lines = self.lines()
         hours = [l for l in lines if l.split()[2] == "HOURS"]
         self.assertEqual(len(hours), 1)
@@ -2410,6 +2412,32 @@ class TestReview(unittest.TestCase):
         self.assertEqual(self.agents_started(), 0)
         self.assertEqual(self.comments(), [])
         self.assertNotIn("pr list", "\n".join(self.calls()))
+
+    def test_a_review_running_when_the_hours_end_is_posted_and_starts_no_other(self):
+        one, two = self.push(7, "a.txt"), self.push(8, "b.txt")
+        self.list_prs(self.pr(7, one), self.pr(8, two))
+        self.cfg.update(hours="Mon-Fri 09:00-17:00", poll_seconds=3600)
+        clock = Clock()
+        clock.now = local("Mon", "16:00")
+        clock.then = lambda: clock.now >= local("Mon", "18:00") and (self.work / ".loop" / "STOP").write_text("")
+        runner = loop.Loop(self.work, self.cfg)
+        original = runner.review_run
+
+        def run_then_late(pr):
+            result = original(pr)
+            clock.now = local("Mon", "17:30")  # the hours end during the first review
+            return result
+
+        runner.review_run = run_then_late
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.review(), 0)
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertEqual(len(self.reviews()), 1)
+        self.assertIn("REVIEW #7 {} posted".format(one[:7]), self.reviews()[0])
+        hours = [l.split(" ", 1)[1] for l in self.lines() if l.split()[2] == "HOURS"]
+        self.assertEqual(hours, ["- HOURS outside Mon-Fri 09:00-17:00, next start Tue 09:00"])
+        self.assertTrue(self.lines()[-1].endswith(" - STOPPED stop file found"), self.lines()[-1])
 
     def test_inside_the_hours_the_review_reviews_as_without_them(self):
         sha = self.push(7, "thing.txt")

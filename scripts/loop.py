@@ -184,7 +184,7 @@ def parse_hours(text):
         raise ValueError("{!r} has a time that isn't on a 24-hour clock: 00:00 to 23:59".format(text))
     days = set()
     for part in names.split(","):
-        ends = [day.capitalize() for day in part.split("-")]
+        ends = part.split("-")
         if len(ends) > 2 or any(day not in DAYS for day in ends):
             raise ValueError("{!r} isn't a day or a range of days: use Mon to Sun, such as Mon-Fri or Sat,Sun".format(part))
         first, last = DAYS.index(ends[0]), DAYS.index(ends[-1])
@@ -1407,7 +1407,7 @@ class Loop:
             prs = self.pulls()
             worked = False
             for pr in prs or []:
-                if self.stopped() or self.expired():
+                if self.stopped() or self.expired() or self.off_hours():
                     break
                 worked = self.review_one(pr) or worked
             if worked:
