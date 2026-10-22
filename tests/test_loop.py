@@ -22,12 +22,35 @@ import loop  # noqa: E402
 
 CFG = dict(loop.DEFAULTS)
 EM_DASH = chr(0x2014)  # a code point, so this file passes its own check
+STALE = ("- STALE scripts/loop.py changed since this run started; "
+         "run python3 scripts/loop.py stop, then start it again to use it")
 
 
 def issue(number, labels=("loop-ready",), assignees=(), title="Add the thing"):
     return {"number": number, "title": title, "body": "body",
             "labels": [{"name": n} for n in labels],
             "assignees": [{"login": a} for a in assignees]}
+
+
+def loop_copy(folder):
+    """A copy of loop.py in folder, for loop.SELF to point at, so a test can change it under a running loop."""
+    copy = Path(folder) / "loop_copy.py"
+    copy.write_bytes(Path(loop.__file__).read_bytes())
+    return copy
+
+
+def polls_then_stop(loop_dir, last, first=None):
+    """A stand-in for time.sleep: first() on the first poll, then a stop file on poll number last."""
+    polls = []
+
+    def sleep(seconds):
+        polls.append(seconds)
+        if len(polls) == 1 and first:
+            first()
+        if len(polls) == last:
+            (Path(loop_dir) / "STOP").write_text("")
+
+    return sleep
 
 
 def no_loop_sleep(msg):
@@ -200,6 +223,74 @@ class TestPureParts(unittest.TestCase):
         self.assertTrue(cut.endswith("THE FAILURE"))
         self.assertLess(len(cut), 1100)
         self.assertEqual(loop.tail("short"), "short")
+
+    UNITTEST_OUTPUT = ("FAR-UP-LINE\n" + "x\n" * 10 + "test_a ... ok\ntest_b ... ok\ntest_c ... ok\n\n"
+                       + "-" * 70 + "\nRan 3 tests in 0.004s\n\nOK\n")
+
+    def body(self, **kwargs):
+        parts = dict(number=12, rounds=2, numstat="3\t1\tscripts/x.py\n-\t-\tlogo.png\n",
+                     test_command="python3 -m unittest", plan="Plan: add x.", review="Looks right.\nVERDICT: PASS",
+                     tests=self.UNITTEST_OUTPUT)
+        parts.update(kwargs)
+        return loop.pr_body(**parts)
+
+    def test_a_pull_request_opens_with_what_it_closes_and_who_merges(self):
+        body = self.body()
+        self.assertTrue(body.startswith("Closes #12.\n"))
+        self.assertIn("after 2 rounds", body)
+        self.assertIn("doesn't merge", body)
+        self.assertIn("after 1 round.", self.body(rounds=1))
+        self.assertNotIn(EM_DASH, body)
+
+    def test_a_pull_request_lists_its_files_with_their_line_counts(self):
+        body = self.body()
+        self.assertIn("`scripts/x.py` +3 −1", body)
+        self.assertIn("`logo.png` binary", body)
+        self.assertIn("couldn't be read", self.body(numstat=None))
+
+    def test_a_pull_request_shows_the_test_command_and_the_last_test_lines(self):
+        body = self.body()
+        self.assertIn("`python3 -m unittest`", body)
+        self.assertIn("Ran 3 tests", body)
+        self.assertIn("\nOK\n", body)
+        self.assertNotIn("FAR-UP-LINE", body)
+        self.assertNotIn("test_a ... ok", body)
+        # A stray fence in the output can't close the block the lines sit in.
+        self.assertIn("~~~~\n```\nRan", self.body(tests="```\nRan 1 test\n"))
+
+    def test_a_pull_request_carries_the_review_in_full_and_the_plan_folded(self):
+        review = "Line one.\n\nLine two.\nVERDICT: PASS"
+        body = self.body(review=review, plan="Plan: add x.\nThen y.")
+        self.assertIn(review, body)
+        folded = body[body.index("<details><summary>Plan</summary>"):]
+        self.assertIn("Plan: add x.\nThen y.", folded)
+        self.assertTrue(folded.rstrip().endswith("</details>"))
+
+    def test_a_pull_request_pings_nobody(self):
+        body = self.body(plan="Ask @someone.", review="cc @someone\nVERDICT: PASS", tests="@someone broke it\n")
+        self.assertNotIn("@someone", body)
+        self.assertEqual(body.count("@​someone"), 3)
+
+    def test_a_long_plan_is_cut_first_and_says_where_the_rest_is(self):
+        review = "R" * 5000 + "\nVERDICT: PASS"
+        body = self.body(plan="P" * 70_000, review=review)
+        self.assertLessEqual(len(body), loop.PR_BODY_CAP)
+        self.assertIn(review, body)
+        self.assertIn("Cut at", body)
+        self.assertIn("`.loop/issue-12/plan.md`", body)
+        self.assertTrue(body.rstrip().endswith("</details>"))
+
+    def test_a_long_plan_and_review_are_both_cut(self):
+        body = self.body(plan="P" * 70_000, review="R" * 70_000)
+        self.assertLessEqual(len(body), loop.PR_BODY_CAP)
+        self.assertIn("`.loop/issue-12/plan.md`", body)
+        self.assertIn("`.loop/issue-12/review.md`", body)
+        self.assertIn("Ran 3 tests", body)
+
+    def test_a_missing_file_says_so(self):
+        body = self.body(plan=None, review=None, tests=None)
+        for name in ("plan.md", "review.md", "test-output.txt"):
+            self.assertIn("`{}` wasn't there.".format(name), body)
 
 
 # A stand-in agent and a stand-in gh, so a whole pass runs with no network and no model.
@@ -500,6 +591,29 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(comments), 1)
         self.assertIn("The loop opened https://example.test/pull/1 after 1 round:", comments[0])
         self.assertIn("doesn't merge", comments[0])
+
+    def pr_create_body(self):
+        text = (self.state / "gh-calls").read_text()
+        return text.split("pr create ", 1)[1].split("--body ", 1)[1].split("\nissue edit ", 1)[0]
+
+    def test_the_pull_request_says_what_changed_how_it_was_tested_and_what_the_review_said(self):
+        self.go()
+        body = self.pr_create_body()
+        self.assertIn("`feature.txt` +1", body)
+        self.assertIn("VERDICT: PASS", body)
+        self.assertIn("test -f feature.txt", body)
+        self.assertIn("Plan: add feature.txt.", body)
+
+    def test_a_missing_plan_still_opens_the_pull_request(self):
+        real = loop.Loop.scale
+
+        def scale(runner, issue, *args):
+            (runner.dir / "issue-{}".format(issue["number"]) / "plan.md").unlink()
+            return real(runner, issue, *args)
+        with mock.patch.object(loop.Loop, "scale", scale):
+            self.go()
+        self.assertIn("`plan.md` wasn't there.", self.pr_create_body())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
 
     def test_a_blocked_issue_says_why_and_how_to_retry(self):
         (self.state / "verdict").write_text("FIX")
@@ -1075,6 +1189,63 @@ class TestAPass(unittest.TestCase):
         self.assertFalse(tree.exists())
         self.assertEqual(len(polls), 2)
         self.assertEqual([l.split()[2] for l in self.lines()].count("IDLE"), 1)  # still once, over two polls
+
+    def run_polling(self, copy, sleep):
+        """A run with no --once, its loop.py at copy and its sleeps taken by sleep. Returns the exit code."""
+        with mock.patch.object(loop, "SELF", copy), \
+                mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=sleep)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).run()
+
+    def stale_lines(self):
+        return [l for l in self.lines() if l.split()[2] == "STALE"]
+
+    def test_loop_py_changed_while_idle_logs_one_stale_line(self):
+        (self.state / "issues.json").write_text("[]")
+        copy = loop_copy(self.tmp.name)
+        sleep = polls_then_stop(self.work / ".loop", 2, lambda: copy.write_text(copy.read_text() + "\n# new\n"))
+        self.assertEqual(self.run_polling(copy, sleep), 0)
+        stale = self.stale_lines()
+        self.assertEqual(len(stale), 1)
+        self.assertTrue(stale[0].endswith(STALE), stale[0])
+
+    def test_loop_py_changed_is_logged_once_over_many_polls(self):
+        (self.state / "issues.json").write_text("[]")
+        copy = loop_copy(self.tmp.name)
+        sleep = polls_then_stop(self.work / ".loop", 4, lambda: copy.write_text(copy.read_text() + "\n# new\n"))
+        self.assertEqual(self.run_polling(copy, sleep), 0)
+        self.assertEqual(len(self.stale_lines()), 1)
+
+    def test_loop_py_unchanged_logs_no_stale_line(self):
+        (self.state / "issues.json").write_text("[]")
+        copy = loop_copy(self.tmp.name)
+        self.assertEqual(self.run_polling(copy, polls_then_stop(self.work / ".loop", 3)), 0)
+        self.assertEqual(self.stale_lines(), [])
+
+    def test_loop_py_unreadable_at_the_start_logs_no_stale_line(self):
+        (self.state / "issues.json").write_text("[]")
+        missing = Path(self.tmp.name) / "missing.py"
+        sleep = polls_then_stop(self.work / ".loop", 2, lambda: missing.write_text("# appeared later\n"))
+        self.assertEqual(self.run_polling(missing, sleep), 0)
+        self.assertEqual(self.stale_lines(), [])
+
+    def test_loop_py_unreadable_on_a_poll_logs_no_stale_line_and_still_stops(self):
+        (self.state / "issues.json").write_text("[]")
+        copy = loop_copy(self.tmp.name)
+        self.assertEqual(self.run_polling(copy, polls_then_stop(self.work / ".loop", 2, copy.unlink)), 0)
+        self.assertEqual(self.stale_lines(), [])
+        self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
+
+    def test_loop_py_changed_after_an_issue_leaves_the_issue_as_it_was(self):
+        (self.state / "labels-follow").write_text("")  # so the next poll finds nothing ready
+        copy = loop_copy(self.tmp.name)
+        sleep = polls_then_stop(self.work / ".loop", 2, lambda: copy.write_text(copy.read_text() + "\n# new\n"))
+        self.assertEqual(self.run_polling(copy, sleep), 0)
+        steps = [l.split()[2] for l in self.lines() if l.split()[1] == "#12"]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+        self.assertNotIn("ERROR", [l.split()[2] for l in self.lines()])
+        self.assertEqual(len(self.stale_lines()), 1)
 
     def test_a_failed_pull_request_read_removes_nothing(self):
         tree = self.open_then_idle("MERGED")
@@ -1835,6 +2006,19 @@ class TestReview(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(runner.review(once=False), 0)
         self.assertEqual(self.lines()[-1].split()[2], "STOPPED")
+
+    def test_loop_py_changed_while_watching_logs_one_stale_line(self):
+        self.list_prs()
+        copy = loop_copy(self.tmp.name)
+        runner = loop.Loop(self.work, self.cfg)
+        sleep = polls_then_stop(runner.dir, 3, lambda: copy.write_text(copy.read_text() + "\n# new\n"))
+        with mock.patch.object(loop, "SELF", copy), \
+                mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=sleep)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.review(once=False), 0)
+        stale = [l for l in self.lines() if l.split()[2] == "STALE"]
+        self.assertEqual(len(stale), 1)
+        self.assertTrue(stale[0].endswith(STALE), stale[0])
 
     def test_a_hook_in_the_pull_requests_own_files_never_runs(self):
         marker = self.state / "hook-ran"
