@@ -385,6 +385,17 @@ with open(os.path.join(state, "gh-calls"), "a") as f:
     f.write(" ".join(args) + "\\n")
 if args[:2] == ["api", "user"]:
     print("pat")
+elif args[:2] == ["api", "graphql"] and any("closedByPullRequestsReferences" in a for a in args):
+    # The pull requests that close issue N: its "closed_by" in deps.json, [{"merged": ...}], none by default.
+    import json
+    if os.path.exists(os.path.join(state, "closed-by-fail")):
+        print("HTTP 502", file=sys.stderr)
+        sys.exit(1)
+    path = os.path.join(state, "deps.json")
+    n = [a for a in args if a.startswith("n=")][0][2:]
+    found = (json.load(open(path)) if os.path.exists(path) else {}).get(n) or {}
+    nodes = found.get("closed_by", [])
+    print(json.dumps({"data": {"repository": {"issue": {"closedByPullRequestsReferences": {"nodes": nodes}}}}}))
 elif args[:2] == ["api", "graphql"]:
     # The issue as GitHub has it now: graphql.json when a test sets it, else the listed issue, by an owner.
     import json
@@ -954,6 +965,49 @@ class TestAPass(unittest.TestCase):
         self.assertIn("not taken: #3 was closed without a merged change, so its work isn't on main", comment)
         self.assertIn("Reopen it and merge its work", comment)
         self.assertIn("take the `Depends on #3` line out if the work is already on main", comment)
+
+    def closed_by_lookups(self):
+        return [c for c in self.calls() if "closedByPullRequestsReferences" in c]
+
+    def test_a_dependency_a_merged_pull_request_closed_lets_the_issue_be_taken(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                           "timeline": [{"event": "closed", "commit_id": None}],
+                                           "closed_by": [{"merged": True}]}})
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+
+    def test_a_dependency_a_commit_closed_is_taken_without_asking_which_pull_requests_close_it(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                           "timeline": [{"event": "closed", "commit_id": "abc123"}]}})
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+        self.assertEqual(self.closed_by_lookups(), [])
+
+    def test_a_dependency_closed_by_hand_with_no_pull_request_is_blocked_after_asking(self):
+        comment = self.blocked_on({"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                         "timeline": [{"event": "closed", "commit_id": None}]}})
+        self.assertIn("not taken: #3 was closed without a merged change, so its work isn't on main", comment)
+        self.assertTrue(self.closed_by_lookups())
+
+    def test_a_dependency_whose_pull_request_never_merged_blocks_the_issue(self):
+        self.assertIn("not taken: #3 was closed without a merged change, so its work isn't on main",
+                      self.blocked_on({"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                             "timeline": [{"event": "closed", "commit_id": None}],
+                                             "closed_by": [{"merged": False}]}}))
+
+    def test_a_failed_read_of_which_pull_requests_close_a_dependency_logs_one_error_and_takes_nothing(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")],
+                               deps={"3": {"state": "closed", "state_reason": "completed", "body": "",
+                                           "timeline": [{"event": "closed", "commit_id": None}]}})
+        (self.state / "closed-by-fail").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertFalse(any("--add-label" in c for c in self.calls()))
+        errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("could not read its dependencies: HTTP 502", errors[0])
 
     def test_only_the_last_time_a_dependency_was_closed_counts(self):
         self.assertIn("#3 was closed without a merged change", self.blocked_on(

@@ -10,6 +10,10 @@ Someone else's skill is someone else's instructions, running with your
 permissions. Read it the way you'd read a stranger's shell script before piping
 it to `sh`. Most are fine. Some aren't, and the bad ones don't look bad.
 
+Changes from the public starter's own `main` aren't outside skills: this copy
+came from there. [`check-starter`](../check-starter/SKILL.md) reads those. A fork, another branch or
+anything else gets the full review below.
+
 ## Inputs
 
 The skill's URL or path. If there's a licence, note it. If there's none, stop
