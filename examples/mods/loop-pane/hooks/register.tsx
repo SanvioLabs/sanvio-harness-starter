@@ -251,9 +251,9 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {/* Two rows whatever the state, so nothing under the header moves when it wraps. */}
-        <Box key="header" flexDirection="row">
+        {/* The layout pushes the state to the right edge, not padding: Claude Desktop's font needn't be monospace. */}
+        <Box key="header" flexDirection="row" justifyContent="space-between">
           <Text bold>{top.left}</Text>
-          {!top.wraps && <Text>{' '.repeat(width - top.left.length - top.right.text.length)}</Text>}
           {!top.wraps && state}
         </Box>
         {top.wraps ? state : <Text> </Text>}

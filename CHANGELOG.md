@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
+
+The [loop pane](examples/mods/loop-pane/)'s header now pushes the loop's state
+to the right edge with the layout instead of padding spaces, which only line up
+in a fixed-width font. Its tests now also draw the pane as Claude Desktop's Code
+tab would, so a change that breaks it there fails. Whether Desktop loads the
+starter's plugins at all is still to be tried by hand, under the issue about
+where the starter runs.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** nothing
+
 ## 2026-10-17: Name the loop's agents
 
 `agent`, `reader_agent` and `review_agent` in `loop.json` can now be just a
