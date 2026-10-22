@@ -60,7 +60,7 @@ gives the command and the person runs it.
    cleared: skip all three and say `/orientation` writes it. A connector being
    there isn't permission to read it. List and search calls only. Never an accept, decline,
    reply, label, draft or update call. Today's meetings go in as one line each
-   with their time.
+   with their time. For email: read as [`skills/inbox/`](../inbox/SKILL.md) says.
 4. **Name what was skipped.** One line per source that wasn't read, saying why:
    `Calendar: skipped, no calendar connector in this session.` or
    `GitHub: skipped, gh isn't signed in.` or

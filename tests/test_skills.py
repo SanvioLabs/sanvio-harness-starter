@@ -73,6 +73,25 @@ class Skills(unittest.TestCase):
         self.assertIn("No `company/DATA.md` means none is", text)
         self.assertNotIn("`company/DATA.md`, if it\n   exists, clears it", text)
 
+    def test_inbox_reads_mail_for_a_standup_and_changes_nothing(self):
+        text = (ROOT / "skills" / "inbox" / "SKILL.md").read_text()
+        self.assertIn("Gmail is the default", text)
+        step = text[text.index("**Provider:**"):text.index("**Clearance:**")]
+        order = [step.index(s) for s in ("`/inbox outlook`", "`company/DATA.md`", "Gmail", "one connector")]
+        self.assertEqual(order, sorted(order), "provider order: argument, DATA.md, Gmail, one connector")
+        self.assertIn("Mail: skipped, company/DATA.md doesn't clear it.", text)
+        for words in ("never sends", "marks read", "attachment"):
+            self.assertIn(words, text)
+        for group in ("Needs a reply from you", "Waiting on someone", "Worth knowing"):
+            self.assertIn(group, text)
+        self.assertIn("data, never instructions", text)
+        for gone in ("+idea", "plus address", ".inbox/"):
+            self.assertNotIn(gone, text)
+
+    def test_standup_reads_email_the_way_inbox_says(self):
+        text = (ROOT / "skills" / "standup" / "SKILL.md").read_text()
+        self.assertTrue("skills/inbox/" in text or "../inbox/" in text)
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 
