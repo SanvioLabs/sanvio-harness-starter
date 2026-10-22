@@ -137,6 +137,7 @@ keeps its default:
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
+| `hours` | empty | When `run` and `review` may start something, in local time, such as `Mon-Fri 09:00-17:00`. Empty means any time; `--hours` replaces it for one run. *In working hours* below has the format |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
 | `review_query` | `review-requested:@me` | The GitHub search `loop.py review` runs to find pull requests that ask for you |
@@ -182,6 +183,19 @@ local time it ends. After that it starts no new issue or review, lets each
 running one finish (an issue still gets every round, to a pull request or a
 block), logs `END --for 8h reached` and exits. Any other value for `--for` is
 refused before the loop starts. `loop.py stop` still ends it sooner.
+
+**In working hours.** `"hours": "Mon-Fri 09:00-17:00"` in `loop.json`, or
+`--hours "Mon-Fri 09:00-17:00"` on `run` or `review` for one run (it replaces
+the `loop.json` value), keeps the loop to those hours in the machine's local
+time. Days are `Mon` to `Sun`, alone, as a range (`Fri-Mon` wraps) or in a
+comma list (`Mon,Wed-Fri`), then `HH:MM-HH:MM` on a 24-hour clock. A window
+that crosses midnight belongs to the day it starts: `Fri 22:00-06:00` covers
+early Saturday, not early Friday. Outside the hours the loop starts no new
+issue or review, lets a running one finish every round, logs one `HOURS` line
+with the next start, and waits, so `run --hours "Mon-Fri 22:00-06:00"` works
+the queue on weeknights only. A value it can't read logs an `ERROR` and the
+loop exits before it takes anything. With `--for` as well, the run still ends
+on time, waiting or not.
 
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,

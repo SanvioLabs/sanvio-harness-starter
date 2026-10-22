@@ -80,6 +80,12 @@ def until_line(start, seconds, text):
     return "- UNTIL {} (--for {})".format(datetime.fromtimestamp(start + seconds).strftime("%Y-%m-%d %H:%M"), text)
 
 
+def local(day, hhmm):
+    """time.time() at hhmm local time on day, Mon to Sun, in the week that starts Monday 4 January 2027."""
+    hour, minute = (int(n) for n in hhmm.split(":"))
+    return datetime(2027, 1, 4 + loop.DAYS.index(day), hour, minute).timestamp()
+
+
 class TestPureParts(unittest.TestCase):
     def test_verdict_is_the_last_line_and_defaults_to_fix(self):
         self.assertEqual(loop.parse_verdict("ok\nVERDICT: PASS"), "PASS")
@@ -112,6 +118,48 @@ class TestPureParts(unittest.TestCase):
         runner.run.assert_any_call(once=False, only=None, dry_run=False, until=("8h", 8 * 3600))
         runner.review.assert_called_once_with(once=False, until=("90m", 90 * 60))
         runner.run.assert_called_with(once=False, only=None, dry_run=False, until=None)
+
+    def test_hours_take_days_ranges_and_lists_and_a_window_past_midnight(self):
+        self.assertEqual(loop.parse_hours("Mon-Fri 09:00-17:00"), (frozenset({0, 1, 2, 3, 4}), 540, 1020))
+        self.assertEqual(loop.parse_hours("Sat,Sun 10:00-12:00"), (frozenset({5, 6}), 600, 720))
+        self.assertEqual(loop.parse_hours("Mon,Wed-Fri 22:00-06:00"), (frozenset({0, 2, 3, 4}), 1320, 360))
+        self.assertEqual(loop.parse_hours("Fri-Mon 09:00-17:00")[0], frozenset({4, 5, 6, 0}))
+
+    def test_hours_that_dont_say_when_are_refused_with_why(self):
+        for bad, why in (("Mon 9-5", "write days then HH:MM-HH:MM"), ("Funday 09:00-17:00", "isn't a day"),
+                         ("Mon 09:00-09:00", "starts and ends at the same time"),
+                         ("Mon 09:00-24:00", "24-hour clock"), ("Mon, 09:00-17:00", "isn't a day"),
+                         (9, "isn't working hours"), (["Mon-Fri 09:00-17:00"], "isn't working hours")):
+            with self.subTest(bad):
+                with self.assertRaises(ValueError) as refused:
+                    loop.parse_hours(bad)
+                self.assertIn(why, str(refused.exception))
+
+    def test_a_window_past_midnight_belongs_to_the_day_it_starts(self):
+        hours = loop.parse_hours("Fri 22:00-06:00")
+        self.assertTrue(loop.inside(hours, local("Fri", "23:00")))
+        self.assertTrue(loop.inside(hours, local("Sat", "03:00")))
+        self.assertFalse(loop.inside(hours, local("Fri", "03:00")))
+        self.assertFalse(loop.inside(hours, local("Sat", "06:00")))
+
+    def test_working_hours_hold_from_their_start_up_to_their_end(self):
+        hours = loop.parse_hours("Mon-Fri 09:00-17:00")
+        self.assertTrue(loop.inside(hours, local("Mon", "09:00")))
+        self.assertTrue(loop.inside(hours, local("Fri", "16:59")))
+        self.assertFalse(loop.inside(hours, local("Fri", "17:00")))
+        self.assertFalse(loop.inside(hours, local("Sat", "12:00")))
+
+    def test_the_next_start_skips_the_days_without_hours(self):
+        hours = loop.parse_hours("Mon-Fri 09:00-17:00")
+        self.assertEqual(loop.next_start(hours, local("Fri", "18:00")), datetime(2027, 1, 11, 9, 0))
+        self.assertEqual(loop.next_start(hours, local("Tue", "08:00")), datetime(2027, 1, 5, 9, 0))
+
+    def test_hours_given_on_the_command_line_replace_loop_jsons(self):
+        for command in ("run", "review"):
+            with self.subTest(command), mock.patch.object(loop, "Loop") as built:
+                loop.main([command, "--hours", "Sat,Sun 10:00-12:00"])
+                built.return_value.cfg.__setitem__.assert_called_once_with("hours", "Sat,Sun 10:00-12:00")
+                self.assertEqual(built.return_value.hours_from, "--hours")
 
     def test_findings_skip_the_verdict(self):
         text = "Missing a test.\n\nHeader is wrong.\nVERDICT: FIX"
@@ -1661,6 +1709,121 @@ class TestAPass(unittest.TestCase):
         self.assertIsNone(runner.deadline)
         self.assertFalse(runner.expired())
 
+    # -- hours ------------------------------------------------------------
+
+    def go_hours(self, hours, clock, **kwargs):
+        """A run with these hours on clock, polling hourly. clock.then says when it stops."""
+        self.cfg.update(hours=hours, poll_seconds=3600)
+        (self.state / "labels-follow").write_text("")
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).run(**kwargs)
+
+    def stop_at(self, clock, when):
+        """A clock.then that writes the stop file once the clock reaches when."""
+        return lambda: clock.now >= when and (self.work / ".loop" / "STOP").write_text("")
+
+    def assert_nothing_taken(self):
+        gh = self.state / "gh-calls"
+        self.assertNotIn("issue edit", gh.read_text() if gh.exists() else "")
+        self.assertFalse(Path(self.cfg["worktree_dir"]).exists())
+        self.assertFalse((self.state / "agents-started").exists())
+
+    def test_bad_hours_in_loop_json_stop_the_run_before_any_issue_is_taken(self):
+        self.cfg["hours"] = "Mon 9-5"
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = loop.Loop(self.work, self.cfg).run(once=True)
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR hours in loop.json: 'Mon 9-5' isn't working hours", self.lines()[-1])
+        self.assertTrue(self.lines()[-1].endswith(", so nothing is taken"), self.lines()[-1])
+        self.assertFalse((self.work / ".loop" / "lock").exists())
+        self.assert_nothing_taken()
+
+    def test_bad_hours_on_the_command_line_stop_the_run_and_say_so(self):
+        real = loop.Loop
+        for command in ("run", "review"):
+            with self.subTest(command), mock.patch.object(loop, "Loop", lambda: real(self.work, dict(self.cfg))), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                code = loop.main([command, "--once", "--hours", "Funday 09:00-17:00"])
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR --hours: 'Funday' isn't a day", self.lines()[-1])
+            self.assertTrue(self.lines()[-1].endswith(", so nothing is taken"), self.lines()[-1])
+            self.assert_nothing_taken()
+
+    def test_inside_the_hours_a_run_opens_its_pull_request_as_without_them(self):
+        clock = Clock()
+        clock.now = local("Wed", "10:00")
+        self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock, once=True), 0)
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
+        self.assertEqual(self.prs_opened(), ["loop/issue-12"])
+
+    def test_outside_the_hours_the_run_waits_says_so_once_and_takes_the_issue_when_they_start(self):
+        clock = Clock()
+        clock.now = local("Fri", "18:00")
+        clock.then = self.stop_at(clock, local("Mon", "10:00"))
+        looked = []
+        original = loop.Loop.discover
+
+        def discover(this, *args, **kwargs):
+            looked.append(clock.now)
+            return original(this, *args, **kwargs)
+
+        with mock.patch.object(loop.Loop, "discover", discover):
+            self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock), 0)
+        self.assertEqual(looked[0], local("Mon", "09:00"))  # after 63 hourly polls, none of which looked
+        lines = self.lines()
+        hours = [l for l in lines if l.split()[2] == "HOURS"]
+        self.assertEqual(len(hours), 1)
+        self.assertTrue(hours[0].endswith(" - HOURS outside Mon-Fri 09:00-17:00, next start Mon 09:00"), hours[0])
+        steps = [l.split()[2] for l in lines]
+        self.assertEqual(steps[:6], ["HOURS", "DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
+        self.assertEqual(self.prs_opened(), ["loop/issue-12"])
+
+    def test_once_outside_the_hours_takes_nothing_and_exits(self):
+        clock = Clock(then=lambda: self.fail("polled with --once"))
+        clock.now = local("Sat", "12:00")
+        self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock, once=True), 0)
+        self.assertEqual([l.split(" ", 1)[1] for l in self.lines()],
+                         ["- HOURS outside Mon-Fri 09:00-17:00, next start Mon 09:00"])
+        self.assert_nothing_taken()
+
+    def test_an_issue_running_when_the_hours_end_still_gets_every_round(self):
+        (self.state / "verdict").write_text("FIX")  # two rounds, then blocked
+        clock = Clock()
+        clock.now = local("Mon", "16:00")
+        clock.then = self.stop_at(clock, local("Mon", "17:30"))
+        original = loop.Loop.agent
+
+        def agent(this, which, prompt, cwd, **kwargs):
+            result = original(this, which, prompt, cwd, **kwargs)
+            if "You are planning" in prompt:
+                clock.now = local("Mon", "17:30")  # the hours end as the issue is planned
+            return result
+
+        with mock.patch.object(loop.Loop, "agent", agent):
+            self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock), 0)
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "BUILD", "VALIDATE",
+                                 "BLOCKED", "HOURS", "STOPPED"])
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["round"]), ("blocked", 2))
+
+    def test_for_ends_a_run_that_is_waiting_for_its_hours(self):
+        clock = Clock()
+        clock.now = start = local("Sat", "12:00")
+        clock.then = lambda: clock.now > start + 3 * 3600 and self.fail("polled past --for")
+        self.assertEqual(self.go_hours("Mon-Fri 09:00-17:00", clock, until=("2h", 7200)), 0)
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["UNTIL", "HOURS", "END"])
+        self.assert_nothing_taken()
+
+    def test_without_hours_there_is_no_hours_line(self):
+        runner = loop.Loop(self.work, self.cfg)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.run(once=True), 0)
+        self.assertNotIn("HOURS", [l.split()[2] for l in self.lines()])
+        self.assertIsNone(runner.hours)
+
 
 # Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
 # folder, and an agent that records what it was asked, where, and leaves a file behind.
@@ -2232,6 +2395,32 @@ class TestReview(unittest.TestCase):
         self.assertEqual(len(self.comments()), 1)
         self.assertIn("REVIEW #7 {} posted".format(one[:7]), self.reviews()[0])
         self.assertTrue(self.lines()[-1].endswith(" - END --for 8h reached"), self.lines()[-1])
+
+    def test_outside_the_hours_the_review_waits_and_reviews_nothing(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.cfg.update(hours="Mon-Fri 09:00-17:00", poll_seconds=3600)
+        clock = Clock()
+        clock.now = local("Sun", "12:00")
+        clock.then = lambda: clock.now >= local("Sun", "15:00") and (self.work / ".loop" / "STOP").write_text("")
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(loop.Loop(self.work, self.cfg).review(), 0)
+        self.assertEqual([l.split(" ", 1)[1] for l in self.lines()],
+                         ["- HOURS outside Mon-Fri 09:00-17:00, next start Mon 09:00", "- STOPPED stop file found"])
+        self.assertEqual(self.agents_started(), 0)
+        self.assertEqual(self.comments(), [])
+        self.assertNotIn("pr list", "\n".join(self.calls()))
+
+    def test_inside_the_hours_the_review_reviews_as_without_them(self):
+        sha = self.push(7, "thing.txt")
+        self.list_prs(self.pr(7, sha))
+        self.cfg["hours"] = "Mon-Fri 09:00-17:00"
+        clock = Clock()
+        clock.now = local("Tue", "11:00")
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(loop.Loop(self.work, self.cfg).review(once=True), 0)
+        self.assertEqual(self.agents_started(), 1)
+        self.assertNotIn("HOURS", [l.split()[2] for l in self.lines()])
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@
 """The loop: take a ready issue, plan it, build it, check it, open a pull request.
 
 Usage:
-    python3 scripts/loop.py run [--once] [--issue N] [--dry-run] [--for DURATION]
-    python3 scripts/loop.py review [--once] [--for DURATION]
+    python3 scripts/loop.py run [--once] [--issue N] [--dry-run] [--for DURATION] [--hours HOURS]
+    python3 scripts/loop.py review [--once] [--for DURATION] [--hours HOURS]
     python3 scripts/loop.py stop
 
 One pass is one turn of the flywheel:
@@ -23,6 +23,11 @@ request, edited in place on later commits. It never approves, merges or pushes.
 
 --for 8h (or 90m, 2d) on either one starts nothing new once that long has passed, lets what's
 running finish, and then exits, logging an END line. An UNTIL line at the start says when.
+
+hours in loop.json, or --hours, such as "Mon-Fri 09:00-17:00", is when either one may start
+something, in local time. Outside them it starts nothing, lets what's running finish, logs an HOURS
+line once with the next start, and waits. A window that crosses midnight, Fri 22:00-06:00, belongs
+to the day it starts.
 
 Watch it with:  tail -f .loop/loop.log
 The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
@@ -51,7 +56,7 @@ import sys
 import threading
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +83,9 @@ DEFAULTS = {
     "agent_timeout": 1800,
     "test_timeout": 1800,
     "poll_seconds": 60,
+    # When run and review may start something, in local time, such as "Mon-Fri 09:00-17:00".
+    # Empty means any time. --hours overrides it for one run.
+    "hours": "",
     # Which open pull requests `review` takes: a GitHub search qualifier string.
     "review_query": "review-requested:@me",
     # Where the build checkouts go. Empty means ~/.harness-loop/<this folder's name>. Keep it outside the
@@ -119,6 +127,8 @@ SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|AC
 DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
 DURATION = re.compile(r"[1-9][0-9]*[mhd]")  # --for's value, whole
 UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")  # in datetime.weekday() order
+HOURS = re.compile(r"(\S+) ([0-9]{2}):([0-9]{2})-([0-9]{2}):([0-9]{2})")  # hours' value, whole
 
 
 class Interrupted(BaseException):
@@ -158,6 +168,57 @@ def duration(text):
         raise argparse.ArgumentTypeError(
             "{!r} isn't a length of time: use a whole number then m, h or d: 90m, 8h, 2d".format(text))
     return text, int(text[:-1]) * UNIT_SECONDS[text[-1]]
+
+
+def parse_hours(text):
+    """hours' value, such as "Mon-Fri 09:00-17:00", as (weekdays, start minute, end minute).
+
+    Days are single days, ranges or comma lists of them, and a range can wrap: Fri-Mon. A ValueError
+    says why anything else is refused.
+    """
+    found = isinstance(text, str) and HOURS.fullmatch(text.strip())
+    if not found:
+        raise ValueError("{!r} isn't working hours: write days then HH:MM-HH:MM, such as Mon-Fri 09:00-17:00".format(text))
+    names, numbers = found.group(1), [int(n) for n in found.groups()[1:]]
+    if numbers[0] > 23 or numbers[2] > 23 or numbers[1] > 59 or numbers[3] > 59:
+        raise ValueError("{!r} has a time that isn't on a 24-hour clock: 00:00 to 23:59".format(text))
+    days = set()
+    for part in names.split(","):
+        ends = [day.capitalize() for day in part.split("-")]
+        if len(ends) > 2 or any(day not in DAYS for day in ends):
+            raise ValueError("{!r} isn't a day or a range of days: use Mon to Sun, such as Mon-Fri or Sat,Sun".format(part))
+        first, last = DAYS.index(ends[0]), DAYS.index(ends[-1])
+        days.update(n % 7 for n in range(first, first + (last - first) % 7 + 1))
+    start, end = numbers[0] * 60 + numbers[1], numbers[2] * 60 + numbers[3]
+    if start == end:
+        raise ValueError("{!r} starts and ends at the same time".format(text))
+    return frozenset(days), start, end
+
+
+def inside(hours, ts):
+    """Whether the moment ts, a time.time(), falls within hours, in local time.
+
+    A window that crosses midnight belongs to the day it starts: Fri 22:00-06:00 holds early on
+    Saturday, not early on Friday.
+    """
+    days, start, end = hours
+    now = datetime.fromtimestamp(ts)
+    minute = now.hour * 60 + now.minute
+    if start < end:
+        return now.weekday() in days and start <= minute < end
+    return (now.weekday() in days and minute >= start) or ((now.weekday() - 1) % 7 in days and minute < end)
+
+
+def next_start(hours, ts):
+    """The local datetime at which hours next begin after the moment ts, a time.time()."""
+    days, start, _ = hours
+    now = datetime.fromtimestamp(ts)
+    day = now.replace(hour=start // 60, minute=start % 60, second=0, microsecond=0)
+    for offset in range(8):
+        begins = day + timedelta(days=offset)
+        if begins > now and begins.weekday() in days:
+            return begins
+    return None  # not reached: every set of hours has a day
 
 
 def load_config(root):
@@ -474,6 +535,9 @@ class Loop:
         self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
         self.deadline = None  # with --for, the time.time() after which nothing new starts
         self.for_text = None  # and --for as it was typed, for the log
+        self.hours = None  # parse_hours() of the hours setting, once locked() has read it
+        self.hours_from = "hours in loop.json"  # where that setting came from, for an error; main() may say --hours
+        self.outside = False  # outside the hours and logged so, until they begin again
         self.started_with = None  # fingerprint() when work() or watch() began, so stale() can compare
 
     # -- plumbing ---------------------------------------------------------
@@ -573,6 +637,21 @@ class Loop:
     def expired(self):
         """--for's time is up: start nothing new. Not part of stopped(), so a running issue keeps its rounds."""
         return self.deadline is not None and time.time() >= self.deadline
+
+    def off_hours(self):
+        """Outside the working hours: start nothing. Logs once each time they end. False without hours."""
+        if self.hours is None:
+            return False
+        now = time.time()
+        if inside(self.hours, now):
+            self.outside = False
+            return False
+        if not self.outside:
+            self.outside = True
+            begins = next_start(self.hours, now)
+            self.log("HOURS", "outside {}, next start {} {}".format(
+                self.cfg["hours"], DAYS[begins.weekday()], begins.strftime("%H:%M")))
+        return True
 
     def halt_if_interrupted(self):
         """Raise Interrupted after a Ctrl-C, so a worker whose agent it killed doesn't take that for a failure."""
@@ -1131,6 +1210,13 @@ class Loop:
             if tmux:
                 self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
                 self.write_watch(tmux)
+            if self.cfg.get("hours"):
+                # Before work(), so a bad value is found before any issue or pull request is taken.
+                try:
+                    self.hours = parse_hours(self.cfg["hours"])
+                except ValueError as err:
+                    self.log("ERROR", "{}: {}, so nothing is taken".format(self.hours_from, err))
+                    return 1
             if until:
                 # A line of its own: START is logged only inside tmux.
                 self.for_text, seconds = until
@@ -1185,6 +1271,14 @@ class Loop:
                     continue
                 if self.expired():
                     break
+                if self.off_hours():
+                    if once or dry_run or only is not None:
+                        break
+                    if running:
+                        self.reap(running, self.cfg["poll_seconds"])  # they finish every round meanwhile
+                    else:
+                        time.sleep(self.cfg["poll_seconds"])
+                    continue
                 issue = self.discover(only, dry_run, busy=running)
                 if issue is None:
                     if running:
@@ -1305,6 +1399,11 @@ class Loop:
             return 1
         idle = False
         while not self.stopped() and not self.expired():
+            if self.off_hours():
+                if once:
+                    break
+                time.sleep(self.cfg["poll_seconds"])
+                continue
             prs = self.pulls()
             worked = False
             for pr in prs or []:
@@ -1469,14 +1568,21 @@ def main(argv=None):
     run.add_argument("--dry-run", action="store_true", help="say which issue it would take, then exit")
     run.add_argument("--for", dest="until", type=duration, metavar="DURATION",
                      help="take no new issue after this long (90m, 8h, 2d); running issues finish, then exit")
+    run.add_argument("--hours", metavar="HOURS",
+                     help='take issues only in these local hours, such as "Mon-Fri 09:00-17:00"; overrides loop.json')
     review = sub.add_parser("review", help="review each pull request that asks for you, once per commit")
     review.add_argument("--once", action="store_true", help="review what is waiting, then exit")
     review.add_argument("--for", dest="until", type=duration, metavar="DURATION",
                         help="start no new review after this long (90m, 8h, 2d); a running one finishes, then exit")
+    review.add_argument("--hours", metavar="HOURS",
+                        help='review only in these local hours, such as "Mon-Fri 09:00-17:00"; overrides loop.json')
     sub.add_parser("stop", help="ask a running loop to stop after its current step")
     args = parser.parse_args(argv)
 
     loop = Loop()
+    if getattr(args, "hours", None) is not None:
+        # Checked by locked(), as loop.json's is, so a bad value is refused in the log, not by argparse.
+        loop.cfg["hours"], loop.hours_from = args.hours, "--hours"
     if args.command == "stop":
         (loop.dir / "STOP").write_text("")
         print("Stop requested. The loop ends at its next step.")
