@@ -140,6 +140,7 @@ instructions.
 | Example | Shows |
 |---|---|
 | [`examples/proposal/`](examples/proposal/) | Drafting a client proposal: inputs, rules, a skill (`skills/draft-proposal/SKILL.md` inside it), a gate, the hook block and a review brief. Also when asked whether a proposal is ready to send or can enter Shape or Build: its README's *Ready to send, and ready for Build* |
+| [`examples/typescript/`](examples/typescript/) | A TypeScript project tested with Node alone: `node --test` runs the `.ts` tests with no build step, `tsc` checks the types, and its README gives the loop's `test_command`. Read it when starting a TypeScript project or putting one on the loop |
 | [`examples/mods/harness-lens/`](examples/mods/harness-lens/) | A Claude Code mod that shows which layer just acted, above the prompt. On by default from [`.claude/settings.json`](.claude/settings.json); `/lens` lists the session |
 | [`examples/mods/loop-pane/`](examples/mods/loop-pane/) | A Claude Code mod: `/loop-pane` opens a pane showing [`scripts/loop.py`](scripts/loop.py)'s queue, each issue's step and round, and its pull request, and on a Mac opens a read-only window on the loop's tmux session. On by default; it never changes the loop |
 | [`examples/mods/github-status/`](examples/mods/github-status/) | A Claude Code mod that shows the repo's running actions, open pull requests and open issues above the prompt, read through `gh`. On by default; it only reads, and `/github` reads now |

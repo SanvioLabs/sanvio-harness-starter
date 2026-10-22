@@ -16,7 +16,9 @@ and your code. One worked job sits in [`examples/proposal/`](examples/proposal/)
 proposals, because a proposal is where the cheap mistakes live: a placeholder
 left in, a rate somebody made up, a total that doesn't add up. None of those are
 hard. All of them ship anyway when the process lives in your head. You read
-the example, then build your own job the same way at the root.
+the example, then build your own job the same way at the root. For code,
+[`examples/typescript/`](examples/typescript/) is a TypeScript project the loop can test with Node
+alone.
 
 It works with Claude Code, Codex and Kiro. Nothing in it is tied to one tool.
 

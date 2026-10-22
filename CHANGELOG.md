@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: TypeScript example
+
+A new example, [`examples/typescript/`](examples/typescript/), shows a TypeScript project tested
+with Node alone: Node 22.18.0 and newer run the `.ts` tests directly with
+`node --test`, `tsc` checks the types, and `typescript` is the one dependency.
+Its README gives the loop setting,
+`"test_command": "npm ci && npm run typecheck && npm test"`. CI gains a
+`typescript` job that runs the example on Node 22.18.0, and a harness test
+copies the example, runs it, breaks it and expects it to fail. Without Node
+22.18.0 or newer, that test skips.
+
+Files: [`examples/typescript/`](examples/typescript/), [`tests/test_typescript_example.py`](tests/test_typescript_example.py), [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** nothing
+
 ## 2026-10-22: GitHub status mod on by default
 
 The [GitHub status mod](examples/mods/github-status/) now loads by itself, like
