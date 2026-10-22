@@ -93,17 +93,58 @@ class WhatsNewCommands(unittest.TestCase):
             got = self.run_in(tmp, cmd)
         self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second", "## 2026-10-12: First"])
 
-    def test_whats_new_lists_the_starters_headings_missing_here_in_order(self):
+
+class WhatsNewAgainstItsRemote(unittest.TestCase):
+    """The remote commands in skills/whats-new/SKILL.md, run as written in a clone whose origin moved on."""
+
+    command = WhatsNewCommands.command
+    run_in = WhatsNewCommands.run_in
+
+    def setUp(self):
         import os
         import tempfile
-        cmd = self.command("""grep '^## ' "${TMPDIR:-/tmp}/whats-new/CHANGELOG.md" | grep""")
-        mine = self.LOG.replace("## 2026-10-13: Third\n\nx\n\n## 2026-10-13: Second\n\nx\n\n", "")
-        with tempfile.TemporaryDirectory() as tmp:
-            for folder, log in (("whats-new", self.LOG), ("copy", mine)):
-                (Path(tmp) / folder).mkdir()
-                (Path(tmp) / folder / "CHANGELOG.md").write_text(log)
-            got = self.run_in(Path(tmp) / "copy", cmd, env=dict(os.environ, TMPDIR=tmp))
-        self.assertEqual(got, ["## 2026-10-13: Third", "## 2026-10-13: Second"])
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        tmp = Path(self.tmp.name)
+        self.remote, self.copy, self.other = tmp / "remote.git", tmp / "copy", tmp / "other"
+        self.git(tmp, "init", "-q", "--bare", "-b", "main", str(self.remote))
+        self.git(tmp, "init", "-q", "-b", "main", "seed")
+        self.commit(tmp / "seed", WhatsNewCommands.LOG)
+        self.git(tmp / "seed", "push", "-q", str(self.remote), "main")
+        self.git(tmp, "clone", "-q", str(self.remote), str(self.copy))
+        self.git(tmp, "clone", "-q", str(self.remote), str(self.other))
+        self.add_heading(self.other, "## 2026-10-14: Remote-only")
+        self.git(self.other, "push", "-q", "origin", "main")
+        self.add_heading(self.copy, "## 2026-10-14: Local-only")
+        self.git(self.copy, "fetch", "-q", "origin")
+
+    def git(self, folder, *args):
+        import subprocess
+        identity = ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false"]
+        subprocess.run(["git"] + identity + list(args), cwd=folder, env=self.env, check=True, capture_output=True)
+
+    def commit(self, folder, log):
+        (folder / "CHANGELOG.md").write_text(log)
+        self.git(folder, "add", "CHANGELOG.md")
+        self.git(folder, "commit", "-q", "-m", "log")
+
+    def add_heading(self, folder, heading):
+        log = (folder / "CHANGELOG.md").read_text()
+        self.commit(folder, log.replace("Intro.\n\n", "Intro.\n\n{}\n\nx\n\n".format(heading)))
+
+    def test_whats_new_lists_only_the_remotes_headings_missing_here(self):
+        cmd = self.command("git show origin/HEAD:CHANGELOG.md")
+        self.assertEqual(self.run_in(self.copy, cmd, env=self.env), ["## 2026-10-14: Remote-only"])
+
+    def test_the_count_is_ahead_then_behind(self):
+        cmd = self.command("git rev-list --left-right --count")
+        self.assertEqual(self.run_in(self.copy, cmd, env=self.env), ["1\t1"])
+        self.add_heading(self.other, "## 2026-10-15: Remote again")
+        self.git(self.other, "push", "-q", "origin", "main")
+        self.git(self.copy, "fetch", "-q", "origin")
+        self.assertEqual(self.run_in(self.copy, cmd, env=self.env), ["1\t2"])
 
 
 if __name__ == "__main__":

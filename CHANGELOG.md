@@ -2,8 +2,8 @@
 
 Newest first. Each entry has a dated heading with a short name that never
 changes, what it adds, the files it touched, and **Do:** what you need to do to
-take it. Ask the agent "what's new" and [`skills/whats-new/`](skills/whats-new/) reads this, and the
-starter's copy, and tells you what you don't have yet.
+take it. Ask the agent "what's new" and [`skills/whats-new/`](skills/whats-new/) reads this, and your
+remote's copy, and tells you what you don't have yet.
 
 Changing your own harness? Any noticeable change gets an entry at the top, in
 the same change, not later. Then "what's new" works for your team too.
@@ -26,6 +26,19 @@ one feature are one entry. The heading is `## YYYY-MM-DD: Name`, and the name
 never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
+
+## 2026-10-22: What's new reads your own remote
+
+"What's new" and "am I up to date" now fetch from this copy's own `origin`
+and compare its [`CHANGELOG.md`](CHANGELOG.md) with yours, instead of reading the public
+starter's. They also say how many commits you're ahead and behind, and name
+`git pull --ff-only` to take the changes, saying when it would refuse. It
+still only reports. What the starter has that your copy doesn't is now a
+question for the starter check, not this skill.
+
+Files: [`skills/whats-new/`](skills/whats-new/), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
+
+**Do:** nothing
 
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
