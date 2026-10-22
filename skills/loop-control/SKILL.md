@@ -49,7 +49,15 @@ it gets read before it's labelled.
    ready issue (`run` alone, which keeps going until the queue is empty). For
    every ready issue over a set time, such as overnight, add `--for 8h` (a whole
    number then `m`, `h` or `d`). After that time it takes no new issue, lets
-   each running one finish, logs `END --for 8h reached` and exits.
+   each running one finish, logs `END --for 8h reached` and exits. To keep it
+   to working hours, add `--hours "Mon-Fri 09:00-17:00"` (local time, days `Mon`
+   to `Sun`, capitalised as shown, as a day, a range or a comma list, then `HH:MM-HH:MM`), or set
+   `"hours"` in `loop.json`; `--hours` replaces the `loop.json` value for that
+   run. A window that crosses midnight belongs to the day it starts:
+   `Fri 22:00-06:00` covers early Saturday. Outside the hours it starts nothing,
+   lets a running issue finish, logs one `HOURS` line with the next start and
+   waits. A value it can't read logs an `ERROR` and it exits having taken
+   nothing.
 4. Start it in tmux when `command -v tmux` finds it, so it outlives this
    conversation and the person can open it and watch. One session per clone,
    named after the folder (tmux won't take a dot or a colon in a name), with the
@@ -68,7 +76,7 @@ it gets read before it's labelled.
    when this session ends.
 5. Check it started: `tail -3 .loop/loop.log` shows a `START` line naming
    the tmux session (none without tmux), an `UNTIL` line with `--for`'s end
-   time, then `DISCOVER` or `IDLE`. Then say
+   time, then `DISCOVER`, `IDLE` or `HOURS`. Then say
    how to watch it: `tmux attach -t <name>` (`Ctrl-b d` leaves it
    running), `/loop-pane` in Claude Code, or `tail -f .loop/loop.log`.
 
