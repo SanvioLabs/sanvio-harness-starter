@@ -46,10 +46,34 @@ claude plugin disable github-status@sanvio-harness-starter --scope local
 
 `/github` reads GitHub straight away and prints the line.
 
+## Your projects
+
+The line is the harness's repo. Repos cloned under [`projects/`](../../../projects/) are read
+with the command, from a session at the harness root:
+
+| Type | Prints |
+|---|---|
+| `/github acme` (or `/github projects/acme`) | The line for the repo cloned in `projects/acme`, read now |
+| `/github all` | The harness's line, then one per folder under [`projects/`](../../../projects/) with a GitHub `origin`, in name order, then how many folders have none |
+
+```
+harness: SanvioLabs/sanvio-harness-starter · 0 actions running · 2 open pull requests · 5 open issues
+acme: acme/app · 1 action running · 4 open pull requests · 12 open issues
+1 folder under projects/ has no GitHub remote.
+```
+
+A name is one folder directly under [`projects/`](../../../projects/). Anything that could reach
+outside it, such as `../x`, `a/b` or a leading `.`, is refused before anything
+runs. A folder with no GitHub `origin` says so and `gh` isn't called. A repo
+whose read fails says GitHub is unavailable on its own line, and the others
+still print. Reading a project never changes the line above the prompt.
+
 ## What it doesn't do
 
 It only reads. It never changes anything on GitHub. When the session starts
-it runs `git remote get-url origin` in the folder the session started in, and
+it runs `git remote get-url origin` in the folder the session started in (and,
+for `/github <name>` or `/github all`, in each folder under [`projects/`](../../../projects/) it
+reads), and
 on a github.com remote, at most once every two minutes, it makes three reads
 through `gh`, each with a time limit:
 
@@ -62,9 +86,10 @@ through `gh`, each with a time limit:
 read that fails, for any reason, shows as unavailable or stale and stops
 nothing.
 
-It shows the repo the session started in, from its `origin` remote. It
-doesn't choose another remote or repo, list workflows one by one, or link to
-GitHub.
+The line shows the repo the session started in, from its `origin` remote.
+Other repos are read only through `/github <name>` and `/github all`, from
+folders under [`projects/`](../../../projects/). It doesn't choose another remote, list workflows
+one by one, or link to GitHub.
 
 ## Changing it
 

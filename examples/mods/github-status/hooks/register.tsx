@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { QUERY, due, failed, lineFor, parseCounts, parseRemote } from './logic'
+import { QUERY, allText, due, failed, lineFor, parseCounts, parseRemote, projectName } from './logic'
 import type { Tone } from './logic'
+import type { Counts, GitHubState } from '../types'
 
 const COMMAND = 'github'
 // How often the timer asks whether a read is due. due() holds reads to one per two minutes.
@@ -39,6 +40,64 @@ async function gh($: EngineInterface, args: string[]): Promise<string> {
 const runs = (name: string, status: 'in_progress' | 'queued') =>
   ['api', '--method', 'GET', `repos/${name}/actions/runs?status=${status}&per_page=1`]
 
+// One repo's counts, from the three reads. Throws when any read fails or answers in the wrong shape.
+async function readCounts($: EngineInterface, name: string): Promise<Counts> {
+  const [owner, short] = name.split('/') as [string, string]
+  const [graphql, running, queued] = await Promise.all([
+    gh($, ['api', 'graphql', '-f', `query=${QUERY}`, '-f', `owner=${owner}`, '-f', `name=${short}`]),
+    gh($, runs(name, 'in_progress')),
+    gh($, runs(name, 'queued')),
+  ])
+  const counts = parseCounts(graphql, running, queued)
+  if (!counts) throw new Error('unexpected answer')
+  return counts
+}
+
+// A project's line for /github, read now. Unavailable when the read fails.
+async function projectLine($: EngineInterface, name: string): Promise<string> {
+  try {
+    return lineFor({ kind: 'counts', repo: name, counts: await readCounts($, name), at: Date.now() }, Date.now()).text
+  } catch {
+    return lineFor({ kind: 'unavailable', repo: name }, Date.now()).text
+  }
+}
+
+// The folders directly under projects/ at the harness root, by name. None when there's no projects/.
+async function projectFolders($: EngineInterface, root: string): Promise<string[] | null> {
+  const entries = await $.fs.list(`${root}/projects`).catch(() => null)
+  if (!entries) return null
+  return entries.filter(f => f.kind === 'dir' && !f.name.startsWith('.')).map(f => f.name).sort()
+}
+
+// A project folder's GitHub repo, only when the folder is a clone of its own. A plain folder has no .git,
+// and git there would answer with the harness's remote instead.
+async function projectRepo($: EngineInterface, root: string, name: string): Promise<string | null> {
+  const folder = `${root}/projects/${name}`
+  return (await $.fs.exists(`${folder}/.git`).catch(() => false)) ? originRepo($, folder) : null
+}
+
+// /github <name>: one project's repo.
+async function oneProject($: EngineInterface, root: string, name: string): Promise<string> {
+  const folders = await projectFolders($, root)
+  if (!folders) return "There's no projects/ folder where this session started."
+  if (!folders.includes(name)) return `projects/${name} isn't a folder.`
+  const found = await projectRepo($, root, name)
+  if (!found) return `projects/${name} has no GitHub origin remote, so there's nothing to read.`
+  return `${name}: ${await projectLine($, found)}`
+}
+
+// /github all: the harness, then every project with a GitHub origin.
+async function allProjects($: EngineInterface, root: string): Promise<string> {
+  // Read now, like the projects, rather than through the line's state: a read already under way
+  // would leave that empty.
+  const harness = repo ? await projectLine($, repo) : lineFor({ kind: 'no-remote' }, Date.now()).text
+  const folders = (await projectFolders($, root)) ?? []
+  const remotes = await Promise.all(folders.map(async name => ({ name, found: await projectRepo($, root, name) })))
+  const withRemote = remotes.filter((r): r is { name: string; found: string } => r.found !== null)
+  const projects = await Promise.all(withRemote.map(async r => ({ name: r.name, text: await projectLine($, r.found) })))
+  return allText(harness, projects, folders.length - withRemote.length, folders.length)
+}
+
 // One read of GitHub, if one is due. Every failure is caught and shows as unavailable, or as stale counts.
 async function refresh($: EngineInterface, isAsked = false): Promise<void> {
   const name = repo
@@ -48,16 +107,9 @@ async function refresh($: EngineInterface, isAsked = false): Promise<void> {
   isReading = true
   try {
     await update($, attemptAtom, () => now)
-    await update($, statusAtom, prev => (prev && prev.kind !== 'no-remote' && prev.repo === name ? prev : { kind: 'reading', repo: name }))
-    const [owner, short] = name.split('/') as [string, string]
-    const [graphql, running, queued] = await Promise.all([
-      gh($, ['api', 'graphql', '-f', `query=${QUERY}`, '-f', `owner=${owner}`, '-f', `name=${short}`]),
-      gh($, runs(name, 'in_progress')),
-      gh($, runs(name, 'queued')),
-    ])
-    const counts = parseCounts(graphql, running, queued)
-    if (!counts) throw new Error('unexpected answer')
-    await update($, statusAtom, () => ({ kind: 'counts', repo: name, counts, at: Date.now() }))
+    await update($, statusAtom, (prev): GitHubState | null => (prev && prev.kind !== 'no-remote' && prev.repo === name ? prev : { kind: 'reading', repo: name }))
+    const counts = await readCounts($, name)
+    await update($, statusAtom, (): GitHubState => ({ kind: 'counts', repo: name, counts, at: Date.now() }))
   } catch {
     await update($, statusAtom, prev => failed(prev, name)).catch(() => {})
   } finally {
@@ -71,7 +123,7 @@ export const register: Register = on => {
     await update($, launchAtom, prev => prev ?? e.cwd)
     await $.command.register({
       name: COMMAND,
-      description: "Read GitHub now: the repo's running actions, open pull requests and open issues",
+      description: "Read GitHub now: the repo's running actions, open pull requests and open issues. /github <project> or /github all for repos under projects/",
     })
     const launch = await read($, launchAtom)
     repo = launch ? await originRepo($, launch) : null
@@ -83,7 +135,17 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: COMMAND }, async $ => {
+  on('command.run', { command: COMMAND }, async ($, e) => {
+    const arg = e.args.trim()
+    if (arg) {
+      // Another repo, read once now. The line above the prompt stays the harness's.
+      const root = await read($, launchAtom)
+      if (!root) return { text: 'This session has no folder yet.' }
+      if (arg === 'all') return { text: await allProjects($, root) }
+      const picked = projectName(arg)
+      if ('why' in picked) return { text: picked.why }
+      return { text: await oneProject($, root, picked.name) }
+    }
     if (!repo) return { text: "This session's folder has no GitHub origin remote, so there's nothing to read." }
     await refresh($, true).catch(() => {})
     const status = await read($, statusAtom)

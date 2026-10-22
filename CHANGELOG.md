@@ -47,6 +47,17 @@ Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_l
 **Do:** nothing. Without `--project` the loop works the harness, as before. To
 use it on a project, give the project a `loop.json` with `test_command`.
 
+## 2026-10-22: /github reads your projects
+
+`/github acme` reads the repo cloned in `projects/acme`, and `/github all`
+reads the harness and every folder under [`projects/`](projects/) with a GitHub remote,
+one line each, from a session at the harness root. `/github` alone and the line
+above the prompt are the harness's repo, as before. It still only reads.
+
+Files: [`examples/mods/github-status/`](examples/mods/github-status/)
+
+**Do:** nothing
+
 ## 2026-10-22: TypeScript example
 
 A new example, [`examples/typescript/`](examples/typescript/), shows a TypeScript project tested

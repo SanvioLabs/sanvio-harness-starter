@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { LIMIT_MS, QUERY, due, failed, lineFor, parseCounts, parseRemote } from './logic'
+import { LIMIT_MS, QUERY, allText, due, failed, lineFor, parseCounts, parseRemote, projectName } from './logic'
 import type { Counts } from '../types'
 
 const REPO = 'SanvioLabs/sanvio-harness-starter'
@@ -90,5 +90,29 @@ describe('the limit', () => {
   })
   test('one from /github is allowed whenever', () => {
     expect(due(NOW - 1_000, NOW, true)).toBe(true)
+  })
+})
+
+describe('a project name', () => {
+  test('a folder under projects/, with or without the prefix', () => {
+    expect(projectName('acme')).toEqual({ name: 'acme' })
+    expect(projectName(' projects/acme-app/ ')).toEqual({ name: 'acme-app' })
+    expect(projectName('web_2.0')).toEqual({ name: 'web_2.0' })
+  })
+  test('anything that could reach outside projects/ is refused', () => {
+    for (const arg of ['../secrets', 'acme/sub', '/etc', '.hidden', 'projects/../x', 'a..b', '~/x', 'two words']) {
+      expect('why' in projectName(arg)).toBe(true)
+    }
+  })
+})
+
+describe('/github all', () => {
+  test('the harness first, then each project, then the folders without a remote', () => {
+    expect(allText('h/r · 0 actions running', [{ name: 'acme', text: 'a/b · 1 action running' }], 2, 3)).toBe(
+      'harness: h/r · 0 actions running\nacme: a/b · 1 action running\n2 folders under projects/ have no GitHub remote.')
+  })
+  test('one folder without a remote, and none under projects/', () => {
+    expect(allText('x', [], 1, 1)).toBe('harness: x\n1 folder under projects/ has no GitHub remote.')
+    expect(allText('x', [], 0, 0)).toBe('harness: x\nNo folders under projects/.')
   })
 })
