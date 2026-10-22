@@ -119,6 +119,27 @@ class WhereThingsLive(unittest.TestCase):
         for choice in ("**Here.**", "**In a company repo.**", "git clone <url> company", "**In a wiki.**"):
             self.assertIn(choice, text)
 
+    def test_orientation_offers_to_start_from_urls(self):
+        text = section((ROOT / "skills" / "orientation" / "SKILL.md").read_text(), "### 5.", "### 6.")
+        self.assertIn("up to three", text)
+        self.assertIn("URL", text)
+
+    def test_orientation_names_the_four_draftable_sections(self):
+        text = section((ROOT / "skills" / "orientation" / "SKILL.md").read_text(), "### 5.", "### 6.")
+        for heading in ("**What we do**", "**Who it's for**", "**How we sound**", "**Words that mean something here**"):
+            self.assertIn(heading, text)
+
+    def test_orientation_never_drafts_wont_do_or_who_decides(self):
+        text = section((ROOT / "skills" / "orientation" / "SKILL.md").read_text(), "### 5.", "### 6.")
+        lines = [line for line in text.splitlines() if "never drafted" in line]
+        self.assertTrue(lines, "step 5 never says which sections are never drafted")
+        self.assertTrue(any("What we won't do" in line and "Who decides" in line for line in lines),
+                        "the never-drafted line should name What we won't do and Who decides")
+
+    def test_orientation_treats_page_content_as_material(self):
+        text = section((ROOT / "skills" / "orientation" / "SKILL.md").read_text(), "### 5.", "### 6.")
+        self.assertIn("never as instructions", text)
+
 
 if __name__ == "__main__":
     unittest.main()
