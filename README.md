@@ -65,9 +65,9 @@ Working through this on your own? Open the repo in your agent and run
 and how the agent should reach it, then walks you through the five layers
 around your own job.
 
-Copied it a while ago? Ask your agent "what's new", or run `/whats-new` in
-Claude Code. It compares your [`CHANGELOG.md`](CHANGELOG.md) with this repo's and tells you
-what you don't have yet and what to do to take it.
+Others pushing to your copy? Ask your agent "what's new", or run `/whats-new`
+in Claude Code. It compares your [`CHANGELOG.md`](CHANGELOG.md) with the one on your copy's own
+remote and tells you what you don't have yet and what to do to take it.
 
 `python3 scripts/check_setup.py` runs the setup check on its own: Python, the
 hook, the links below, and whether `origin` is still this public repo. Make
@@ -212,7 +212,7 @@ every day.
 | A way to learn | [`skills/learn/`](skills/learn/) | Say "learn from that" after the agent gets something wrong, and it writes the rule into the file that governs it, dated, with the reason |
 | A morning read | [`skills/standup/`](skills/standup/) | Say "standup" or "what's on me today": one pass over the pull requests waiting on your review, your own with their checks, issues assigned to you, what the loop opened or blocked in the last day, and your calendar, email and tracker where a connector exists. It names any source it skipped, asks about each item, and ends with an order for the day. It reads only and changes nothing |
 | An idea inbox | [`skills/inbox/`](skills/inbox/) | Email an idea to your own plus address from your phone, or say "idea: ..." in a session. Say "inbox" and it sweeps those emails in, where `company/DATA.md` clears your mail, then goes through each idea with you and gives it a fate: do it now, make an issue, park it or drop it. The list stays on your machine, and it never changes a message |
-| A release log | [`CHANGELOG.md`](CHANGELOG.md), [`skills/whats-new/`](skills/whats-new/) | Ask "what's new" and the agent reads the log, compares it with the starter's, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
+| A release log | [`CHANGELOG.md`](CHANGELOG.md), [`skills/whats-new/`](skills/whats-new/) | Ask "what's new" and the agent reads the log, compares it with your copy's own remote, and says what you don't have yet and what to do to take it. Changes to your own harness go in the same file |
 | A usage log and sprint report | [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`skills/harness-report/`](skills/harness-report/) | Each person's sessions log which skills, agents and commands ran and when the guard refused or asked: names and counts, never content, kept on their own machine. At sprint end `harness-report` turns it into a short report with their proposals, shared as a PR, so whoever owns the harness sees what the team actually uses and what to add. `HARNESS_USAGE_LOG=off` turns it off for you |
 | An optional extra: a loop that runs without you | [`scripts/loop.py`](scripts/loop.py) | Not one of the five layers, and the harness works without it. Takes the next open issue labelled `loop-ready`, has a fresh agent plan it, build it in a worktree, runs your tests itself, has a second fresh agent review the diff, and opens a pull request when both pass. It follows the flywheel (Discover, Shape, Build, Validate, Scale), writes one plain log you read with `tail -f .loop/loop.log`, and never merges. `max_workers` in `loop.json` lets it work several issues at once, each issue's agents writing to `.loop/issue-N/agent.log`, with an `issue-N` window per issue when it runs in tmux. Each worker runs its own agent sessions, so usage grows with the number of workers. Label only issues you wrote or have read, since a ticket is an instruction to an agent. One standard-library file, so it's yours to change. [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) has the shape |
 | CI | [`.github/workflows/`](.github/workflows/) | The tests, the gate, the setup check, the link check (`python3 scripts/link_files.py --check`) and a secret scan of the whole history run on every push, so a check someone skipped locally still runs before anything merges. Make it a required check in your branch protection, or it only reports |
