@@ -85,6 +85,7 @@
   "enabledPlugins": {
     "harness-lens@sanvio-harness-starter": true,
     "loop-pane@sanvio-harness-starter": true,
+    "github-status@sanvio-harness-starter": true,
     "stelliad@sanvio-harness-starter": true
   }
 }
