@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop pull requests describe themselves
+
+A pull request the loop opens now carries what a reviewer on GitHub needs: the
+files changed with their line counts, the test command and the last lines of
+its output, the review in full, and the plan, collapsed. Mentions in the
+agents' text can't ping anyone. A description that would pass GitHub's limit
+cuts the plan first, then the review, and says where the full file is. Before
+this, it said `Closes #N` and pointed at `.loop/` on the machine that ran it.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
+
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
 The [loop pane](examples/mods/loop-pane/)'s header now pushes the loop's state

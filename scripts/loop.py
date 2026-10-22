@@ -84,6 +84,8 @@ VERDICT = re.compile(r"^\s*VERDICT:\s*(PASS|FIX)\s*$", re.I | re.M)
 OUTPUT_CAP = 100_000
 REVIEW_MARKER = "<!-- loop-review-pr-report -->"  # first line of the one comment per pull request
 REVIEW_CAP = 60_000  # a report is cut here: a GitHub comment holds 65,536 characters
+PR_BODY_CAP = 60_000  # a pull request's description is cut to this: GitHub holds 65,536 characters
+PR_TEST_LINES = 5  # how many lines from the end of the test output the description shows
 SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
@@ -324,10 +326,55 @@ def review_prompt(plan, diff, tests, code):
     ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests))
 
 
-def pr_body(number):
-    """Closes the issue when the pull request merges into the default branch."""
-    return ("Closes #{n}.\n\nOpened by the loop. Plan, test output and review are in "
-            ".loop/issue-{n}/ on the machine that ran it.\n").format(n=number)
+def pr_body(number, rounds, numstat, test_command, plan, review, tests):
+    """The pull request's description: what a reviewer on GitHub needs without this machine.
+
+    numstat is `git diff --numstat` of the branch, or None when git couldn't read it. plan, review
+    and tests are the files' text, or None for a file that wasn't there. The agents' text goes out
+    with its mentions made harmless. Over PR_BODY_CAP, the plan is cut first, then the review.
+    """
+    def missing(name):
+        return "`{}` wasn't there.".format(name)
+
+    def clip(text, room, name):
+        keep = max(room - 200, 0)  # room for the line that says where the rest is
+        return text[:keep] + ("\n\nCut at {:,} characters. The full file is `.loop/issue-{}/{}` on the "
+                              "machine that ran the loop.").format(keep, number, name)
+
+    if numstat is None:
+        files = "The diff couldn't be read."
+    else:
+        rows = []
+        for line in numstat.splitlines():
+            added, removed, path = (line.split("\t", 2) + ["", ""])[:3]
+            if not path:
+                continue
+            rows.append("- `{}` binary".format(path) if added == "-" and removed == "-"
+                        else "- `{}` +{} −{}".format(path, added, removed))
+        files = "\n".join(rows) or "No files changed."
+    if tests is None:
+        shown = missing("test-output.txt")
+    else:
+        last = [line for line in tests.splitlines() if line.strip()][-PR_TEST_LINES:]
+        shown = "~~~~\n{}\n~~~~".format(safe_to_post("\n".join(last))) if last else "The tests printed nothing."
+    head = ("Closes #{n}.\n\nOpened by the loop after {r} round{s}. The loop doesn't merge.\n\n"
+            "## Files\n\n{files}\n\n## Tests\n\n`{cmd}`\n\n{shown}\n\n").format(
+        n=number, r=rounds, s="" if rounds == 1 else "s", files=files, cmd=test_command, shown=shown)
+
+    review_text = missing("review.md") if review is None else safe_to_post(review.strip())
+    plan_text = missing("plan.md") if plan is None else safe_to_post(plan.strip())
+
+    def body():
+        return "{}## Review\n\n{}\n\n<details><summary>Plan</summary>\n\n{}\n\n</details>\n".format(
+            head, review_text, plan_text)
+
+    over = len(body()) - PR_BODY_CAP
+    if over > 0 and plan is not None:
+        plan_text = clip(plan_text, len(plan_text) - over, "plan.md")
+    over = len(body()) - PR_BODY_CAP
+    if over > 0 and review is not None:
+        review_text = clip(review_text, len(review_text) - over, "review.md")
+    return body()
 
 
 def pr_review_prompt(number, title, base, diff, commits, skill=""):
@@ -946,7 +993,13 @@ class Loop:
             code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
             return self.block(number, "push failed: " + out.strip()[:200])
-        body = pr_body(number)
+        # In the clone, which shares the worktree's refs. A git that fails still opens the pull request.
+        code, numstat = self.git("diff", "--numstat", "origin/{}...{}".format(self.cfg["base"], branch))
+        folder = self.dir / "issue-{}".format(number)
+        saved = {name: (folder / name).read_text() if (folder / name).exists() else None
+                 for name in ("plan.md", "review.md", "test-output.txt")}
+        body = pr_body(number, rounds, numstat if code == 0 else None, self.cfg["test_command"],
+                       saved["plan.md"], saved["review.md"], saved["test-output.txt"])
         code, out = self.gh("pr", "create", "--base", self.cfg["base"], "--head", branch,
                             "--title", "{} (#{})".format(issue["title"], number), "--body", body)
         if code != 0:
