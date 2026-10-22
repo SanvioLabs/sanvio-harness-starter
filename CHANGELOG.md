@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: /github reads your projects
+
+`/github acme` reads the repo cloned in `projects/acme`, and `/github all`
+reads the harness and every folder under [`projects/`](projects/) with a GitHub remote,
+one line each, from a session at the harness root. `/github` alone and the line
+above the prompt are the harness's repo, as before. It still only reads.
+
+Files: [`examples/mods/github-status/`](examples/mods/github-status/)
+
+**Do:** nothing
+
 ## 2026-10-22: TypeScript example
 
 A new example, [`examples/typescript/`](examples/typescript/), shows a TypeScript project tested

@@ -93,3 +93,21 @@ export function lineFor(state: GitHubState, now: number): Line {
       return { text: `${countsText(state.repo, state.counts)} · as of ${age(now - state.at)} ago`, tone: 'warn' }
   }
 }
+
+// The folder under projects/ that a /github argument names: `acme` or `projects/acme`, one folder deep.
+// Anything that could reach outside projects/ is refused before anything runs.
+export function projectName(arg: string): { name: string } | { why: string } {
+  const name = arg.trim().replace(/^projects\//, '').replace(/\/$/, '')
+  if (/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(name) && !name.includes('..')) return { name }
+  return { why: `"${arg.trim()}" isn't a project: give the name of a folder under projects/, such as /github acme, or /github all.` }
+}
+
+// What /github all prints: the harness's line, each project's in name order, then the folders it couldn't read.
+export function allText(harness: string, projects: { name: string; text: string }[], withoutRemote: number, folders: number): string {
+  const lines = [`harness: ${harness}`, ...projects.map(p => `${p.name}: ${p.text}`)]
+  if (folders === 0) lines.push('No folders under projects/.')
+  else if (withoutRemote > 0) {
+    lines.push(`${withoutRemote} ${withoutRemote === 1 ? 'folder' : 'folders'} under projects/ ${withoutRemote === 1 ? 'has' : 'have'} no GitHub remote.`)
+  }
+  return lines.join('\n')
+}
