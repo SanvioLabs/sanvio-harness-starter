@@ -2,9 +2,9 @@
 """The loop: take a ready issue, plan it, build it, check it, open a pull request.
 
 Usage:
-    python3 scripts/loop.py run [--once] [--issue N] [--dry-run] [--for DURATION] [--hours HOURS]
-    python3 scripts/loop.py review [--once] [--for DURATION] [--hours HOURS]
-    python3 scripts/loop.py stop
+    python3 scripts/loop.py run [--once] [--issue N] [--dry-run] [--for DURATION] [--hours HOURS] [--project PATH]
+    python3 scripts/loop.py review [--once] [--for DURATION] [--hours HOURS] [--project PATH]
+    python3 scripts/loop.py stop [--project PATH]
 
 One pass is one turn of the flywheel:
 
@@ -41,6 +41,11 @@ they said it. Checkouts live outside the clone, in ~/.harness-loop/. It never me
 max_workers in loop.json (default 1) is how many issues it works at once, each on its own thread
 and each agent its own session, so usage grows with it. Inside tmux each issue gets a window,
 issue-N, that follows its agent.log and closes when the issue ends.
+
+--project projects/<name> works a clone under projects/ instead of the harness: its GitHub repo's
+issues and pull requests, its loop.json, which has to set test_command, and its checkouts under
+~/.harness-loop/<harness>/<name>/. Its state stays in the harness, in .loop/projects/<name>/. The
+agents get the harness's rules in their prompts, and a claude build agent the harness's guard.
 Standard library only; needs git and the gh CLI, signed in.
 """
 import argparse
@@ -137,6 +142,10 @@ DURATION = re.compile(r"[1-9][0-9]*[mhd]")  # --for's value, whole
 UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")  # in datetime.weekday() order
 HOURS = re.compile(r"(\S+) ([0-9]{2}):([0-9]{2})-([0-9]{2}):([0-9]{2})")  # hours' value, whole
+# An origin on GitHub, by HTTPS or SSH: gh reads the project's issues and pull requests from it.
+GITHUB_REMOTE = re.compile(r"^(https://([^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)", re.I)
+STEERING = re.compile(r"(?m)^@(steering/[\w.-]+\.md)\s*$")  # the steering files AGENTS.md loads every session
+NEVER_LOOSENS = "The project's own AGENTS.md or CLAUDE.md adds to these rules and never loosens them."
 
 
 class Interrupted(BaseException):
@@ -236,6 +245,59 @@ def load_config(root):
     if path.exists():
         cfg.update(json.loads(path.read_text()))
     return cfg
+
+
+def project_root(path, root=None):
+    """The clone at path, resolved, when the loop may work it as a project; else None, after one ERROR
+    line on stderr saying why.
+
+    It has to be a folder directly under the harness's projects/, a git clone of its own with a GitHub
+    origin, and its loop.json has to set test_command: the default tests the harness, not the project.
+    """
+    projects = Path(root or ROOT).resolve() / "projects"
+    folder = Path(path).expanduser().resolve()
+
+    def refuse(why):
+        print("ERROR --project {}: {}".format(path, why), file=sys.stderr)
+
+    def git(*args):
+        try:
+            done = subprocess.run(["git", "-C", str(folder)] + list(args), capture_output=True, text=True)
+        except OSError:
+            return ""
+        return done.stdout.strip() if done.returncode == 0 else ""
+
+    if not folder.is_dir() or folder.parent != projects:
+        return refuse("it isn't a folder directly under {}".format(projects))
+    top = git("rev-parse", "--show-toplevel")
+    if not top or Path(top).resolve() != folder:
+        return refuse("it isn't a git clone of its own; clone the repo into {}".format(projects))
+    if not GITHUB_REMOTE.match(git("remote", "get-url", "origin")):
+        return refuse("its origin isn't on github.com, where the loop finds its issues")
+    try:
+        cfg = json.loads((folder / "loop.json").read_text())
+    except OSError:
+        cfg = {}
+    except ValueError as err:
+        return refuse("its loop.json isn't JSON: {}".format(err))
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("test_command"), str) or not cfg["test_command"].strip():
+        return refuse("its loop.json doesn't set test_command, the command that tests the project")
+    return folder
+
+
+def rules_preamble(root):
+    """The harness's rules, for an agent in a project's checkout, which holds none of them: AGENTS.md
+    and the steering files it loads every session, then how the project's own rules rank."""
+    agents_file = Path(root) / "AGENTS.md"
+    agents = agents_file.read_text() if agents_file.exists() else ""
+    parts = ["AGENTS.md:\n" + agents.strip()]
+    for name in STEERING.findall(agents):
+        path = Path(root) / name
+        if path.exists():
+            parts.append("{}:\n{}".format(name, path.read_text().strip()))
+    return ("These are the rules of the harness this work runs under. The checkout you are in doesn't "
+            "hold them, and they apply to everything below.\n\n{}\n\n{}\n\n").format(
+        "\n\n".join(parts), NEVER_LOOSENS)
 
 
 def parse_verdict(text):
@@ -373,8 +435,9 @@ def pick(issues, me, cfg, only=None):
     return None
 
 
-def shape_prompt(issue):
-    return (
+def shape_prompt(issue, rules=""):
+    """rules, for a project, is rules_preamble(): it goes first, ahead of the ticket. So for every prompt."""
+    return rules + (
         "You are planning, not building. Do not edit any file.\n"
         "Read the ticket below and the rules in AGENTS.md. Write the smallest version of "
         "this change that would count as done, as plain markdown under 40 lines: what "
@@ -390,9 +453,9 @@ def tail(text, size=20_000):
     return text if len(text) <= size else "...\n" + text[-size:]
 
 
-def build_prompt(number, plan, review="", tests=""):
+def build_prompt(number, plan, review="", tests="", rules=""):
     """Everything goes in the prompt: an agent in a worktree can't read the loop's own folder."""
-    prompt = (
+    prompt = rules + (
         "Make the change for issue #{n} in this git worktree.\n"
         "Keep to the plan below. Don't commit, push or use git for anything but reading. "
         "Don't run the test suite: the loop runs it. When the change is in place, say in "
@@ -406,8 +469,8 @@ def build_prompt(number, plan, review="", tests=""):
     return prompt
 
 
-def review_prompt(plan, diff, tests, code):
-    return (
+def review_prompt(plan, diff, tests, code, rules=""):
+    return rules + (
         "You are the reviewer, in a fresh context. Do not edit any file.\n"
         "Below are the plan, the diff, and the test output (the tests exited {code}). Say "
         "whether the change does what the plan asks, and list the problems that matter, "
@@ -469,11 +532,14 @@ def pr_body(number, rounds, numstat, test_command, plan, review, tests):
     return body()
 
 
-def pr_review_prompt(number, title, base, diff, commits, skill=""):
-    """Everything goes in the prompt, and all of it after the first lines is text a stranger may have written."""
+def pr_review_prompt(number, title, base, diff, commits, skill="", rules=""):
+    """Everything goes in the prompt, and all of it after the first lines is text a stranger may have written.
+
+    rules, for a project, comes first, with the trusted lines.
+    """
     note = ("It is copied below from the loop's own clone: the checkout's copy may differ, so use this one. "
             if skill else "")
-    prompt = (
+    prompt = rules + (
         "You are reviewing pull request #{n}, in a fresh context. Do not edit any file. Do not "
         "approve, merge or post anything: the script posts your report.\n"
         "Follow skills/review-pr/SKILL.md for the change between origin/{base} and HEAD. {note}"
@@ -522,11 +588,20 @@ def block_comment(number, why, rounds, cfg, said=None):
 
 
 class Loop:
-    def __init__(self, root=ROOT, cfg=None):
+    def __init__(self, root=ROOT, cfg=None, project=None):
+        """root is the harness. project, from project_root(), is a clone under projects/ to work instead.
+
+        self.repo is the clone gh and git run in: the project, or the harness without one. The state
+        stays in the harness either way, a project's in .loop/projects/<name>/, out of its repo.
+        """
         self.root = Path(root)
-        self.cfg = cfg or load_config(self.root)
-        self.dir = self.root / ".loop"
-        self.dir.mkdir(exist_ok=True)
+        self.project = Path(project) if project else None
+        self.repo = self.project or self.root
+        self.cfg = cfg or load_config(self.repo)
+        self.dir = self.root / ".loop" / "projects" / self.project.name if self.project else self.root / ".loop"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        # The checkout a project's agents work in holds none of the harness's rules, so the prompts carry them.
+        self.rules = rules_preamble(self.root) if self.project else ""
         self.me = None
         self.said = set()  # skips and tidy lines already logged by this process, so a poll doesn't repeat them
         self.unposted = {}  # pull request number -> (sha, comment) the agent wrote and GitHub refused
@@ -634,10 +709,11 @@ class Loop:
         return done.returncode, (done.stdout or "") + ((done.stderr or "") if stderr else "")
 
     def git(self, *args, cwd=None):
-        return self.sh(["git"] + list(args), cwd=cwd)
+        return self.sh(["git"] + list(args), cwd=cwd or self.repo)
 
     def gh(self, *args, stdin=None):
-        return self.sh(["gh"] + list(args), stdin=stdin)
+        """In self.repo, so {owner}/{repo} and every list, edit and pull request are its GitHub repo's."""
+        return self.sh(["gh"] + list(args), cwd=self.repo, stdin=stdin)
 
     def stopped(self):
         return (self.dir / "STOP").exists()
@@ -765,7 +841,25 @@ class Loop:
                           "which could end up in a posted comment").format(which)
         if untrusted and name != "ollama":
             return None, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
+        if which == "agent" and self.project and Path(cmd[0]).name == "claude":
+            cmd = cmd + ["--settings", self.guard_settings()]
         return cmd, None
+
+    def guard_settings(self):
+        """--settings for a claude build agent in a project's checkout, which holds none of the harness's
+        hooks: the harness's guard.py before each tool call, by its absolute path, with the matcher
+        .claude/settings.json gives it. Another agent, such as codex, has nowhere to put it."""
+        matcher = ""  # matches every tool, should settings.json not say
+        try:
+            for entry in json.loads((self.root / ".claude" / "settings.json").read_text())["hooks"]["PreToolUse"]:
+                if any("guard.py" in hook.get("command", "") for hook in entry.get("hooks", [])):
+                    matcher = entry.get("matcher", "")
+                    break
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+        guard = self.root.absolute() / ".claude" / "hooks" / "guard.py"
+        hook = {"type": "command", "command": "python3 " + shlex.quote(str(guard)), "timeout": 10}
+        return json.dumps({"hooks": {"PreToolUse": [{"matcher": matcher, "hooks": [hook]}]}})
 
     def stream(self, cmd, cwd, prompt, path, which, stderr=True):
         """sh() for an agent, with each line it says appended to path as it arrives, for its window to show."""
@@ -974,9 +1068,12 @@ class Loop:
         return verdict
 
     def worktrees(self):
+        """Where the checkouts go, a project's in a folder of its own name below."""
         if self.cfg["worktree_dir"]:
-            return Path(self.cfg["worktree_dir"]).expanduser()
-        return Path.home() / ".harness-loop" / self.root.name
+            where = Path(self.cfg["worktree_dir"]).expanduser()
+        else:
+            where = Path.home() / ".harness-loop" / self.root.name
+        return where / self.project.name if self.project else where
 
     def worktree(self, number):
         path = self.worktrees() / "issue-{}".format(number)
@@ -1046,7 +1143,7 @@ class Loop:
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
-        code, plan = self.agent("reader_agent", shape_prompt(issue), tree, confine=True, number=number)
+        code, plan = self.agent("reader_agent", shape_prompt(issue, self.rules), tree, confine=True, number=number)
         self.discard_edits(tree, "SHAPE", "planner", number)
         if code != 0 or not plan.strip():
             return self.block(number, "shape failed (agent exit {})".format(code))
@@ -1062,8 +1159,8 @@ class Loop:
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
-            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests), tree,
-                                    number=number)
+            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules),
+                                    tree, number=number)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
             self.git("add", "-A", cwd=tree)
@@ -1090,7 +1187,8 @@ class Loop:
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
-            rcode, review = self.agent(self.reviewer(), review_prompt(plan, diff, tout or "(no output)", tcode),
+            rcode, review = self.agent(self.reviewer(),
+                                       review_prompt(plan, diff, tout or "(no output)", tcode, self.rules),
                                        tree, confine=True, number=number)
             self.discard_edits(tree, "REVIEW", "reviewer", number)
             (folder / "review.md").write_text(review)
@@ -1217,7 +1315,7 @@ class Loop:
         until is --for's (text, seconds): work() starts nothing new once that long has passed.
         """
         if not self.take_lock():
-            print("The loop is already running here (see .loop/lock).", file=sys.stderr)
+            print("The loop is already running here (see {}).".format(self.dir / "lock"), file=sys.stderr)
             return 1
         code = None
         try:
@@ -1533,7 +1631,7 @@ class Loop:
                 return False, sha, "could not diff against {}".format(base), True
             skill_file = self.root / "skills" / "review-pr" / "SKILL.md"
             skill = skill_file.read_text() if skill_file.exists() else ""
-            prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill)
+            prompt = pr_review_prompt(number, pr["title"], base, diff, commits, skill, self.rules)
             # stdout only: stderr is the agent's warnings and paths, and the report is posted publicly.
             who = self.reviewer()
             code, report = self.agent(who, prompt, tree, untrusted=True, stderr=False)
@@ -1596,10 +1694,19 @@ def main(argv=None):
                         help="start no new review after this long (90m, 8h, 2d); a running one finishes, then exit")
     review.add_argument("--hours", metavar="HOURS",
                         help='review only in these local hours, such as "Mon-Fri 09:00-17:00"; overrides loop.json')
-    sub.add_parser("stop", help="ask a running loop to stop after its current step")
+    stop = sub.add_parser("stop", help="ask a running loop to stop after its current step")
+    for each in (run, review, stop):
+        each.add_argument("--project", metavar="PATH",
+                          help="a clone under projects/ to work instead of the harness; its loop.json sets test_command")
     args = parser.parse_args(argv)
 
-    loop = Loop()
+    project = None
+    if args.project is not None:
+        # Checked before a Loop is built, so a refused project takes no lock and makes no folder.
+        project = project_root(args.project)
+        if project is None:
+            return 1
+    loop = Loop() if project is None else Loop(ROOT, project=project)
     if getattr(args, "hours", None) is not None:
         # Checked by locked(), as loop.json's is, so a bad value is refused in the log, not by argparse.
         loop.cfg["hours"], loop.hours_from = args.hours, "--hours"

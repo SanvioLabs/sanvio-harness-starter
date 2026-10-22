@@ -27,6 +27,26 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop works a project
+
+`loop.py run`, `review` and `stop` take `--project projects/<name>` to work a
+clone under [`projects/`](projects/) rather than the harness: that repo's issues and pull
+requests, and its own `loop.json`, which has to set `test_command` (for
+TypeScript, `"npm test"` or `"node --test"`). Its state stays in the harness, in
+`.loop/projects/<name>/`, with a lock of its own. Its checkouts go in
+`~/.harness-loop/<harness>/<name>/`. Every prompt opens with the harness's
+[`AGENTS.md`](AGENTS.md) and the steering files it loads, and a `claude` build agent runs the
+harness's `guard.py`. A codex build agent builds without that guard. A folder
+outside [`projects/`](projects/), one that isn't its own clone, a clone off GitHub, or a
+`loop.json` without `test_command` gets one `ERROR` line, and the loop exits 1
+before it takes anything.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md),
+[`projects/README.md`](projects/README.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** nothing. Without `--project` the loop works the harness, as before. To
+use it on a project, give the project a `loop.json` with `test_command`.
+
 ## 2026-10-22: /github reads your projects
 
 `/github acme` reads the repo cloned in `projects/acme`, and `/github all`

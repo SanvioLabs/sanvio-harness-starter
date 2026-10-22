@@ -44,6 +44,33 @@ that file in place.
 - **Its own history.** Commit and push inside the project folder. The harness
   repo never sees the project's files.
 
+## The loop on a project
+
+[`scripts/loop.py`](../scripts/loop.py) works a project's issues when you give it `--project`,
+started from the harness root:
+
+```bash
+python3 scripts/loop.py run --project projects/billing
+python3 scripts/loop.py stop --project projects/billing
+```
+
+The project needs a `loop.json` of its own that sets `test_command`, since the
+default tests the harness. For a TypeScript project:
+
+```json
+{"test_command": "npm test"}
+```
+
+or `node --test` with no `package.json` script. Its `base`, `main` unless it
+says otherwise, is where branches start and pull requests go. The clone has to
+sit directly in this folder and have its `origin` on GitHub, or the loop
+refuses it before it starts. Its state goes in the harness, in
+`.loop/projects/billing/`, never in the project's folder. Its checkouts go in
+`~/.harness-loop/<harness>/billing/`. Its agents get the harness's rules in
+their prompts, and a `claude` build agent runs the harness's credential guard.
+A `codex` build agent builds without that guard.
+[`HOW-IT-WORKS.md`](../HOW-IT-WORKS.md) has the rest.
+
 ## One harness, many developers
 
 One person owns the harness and merges changes to it: new rules, skills,

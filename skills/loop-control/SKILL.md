@@ -87,6 +87,35 @@ number before the person raises it. Each issue's agents write to
 named `issue-<N>` that follows it (`Ctrl-b w` lists them) and closes when the
 issue ends. A stop lets every running issue finish its step.
 
+## A project under projects/
+
+To work a code repo cloned into [`projects/`](../../projects/) rather than the harness, add
+`--project projects/<name>` to `run`, `review` and `stop`, and run them from
+the harness root as above. Name the tmux session after the project,
+`loop-<name>`, so it sits beside the harness's own.
+
+1. The project needs its own `loop.json` with a `test_command`, since the
+   default tests the harness, not the project. For TypeScript that's
+   `{"test_command": "npm test"}`, or `node --test` with no `package.json`
+   script. Its `base` (default `main`) is where branches start and pull
+   requests go. If it has no `loop.json`, say so and ask the person for the
+   command. Don't write one up.
+2. The loop refuses, with one `ERROR` line and before it takes anything, a
+   folder that isn't directly under [`projects/`](../../projects/), one that isn't a git clone of
+   its own, a clone whose `origin` isn't on github.com, or a `loop.json` with
+   no `test_command`.
+3. Issues, labels and pull requests are the project's GitHub repo's. Label
+   with `gh issue edit <N> --repo <owner>/<repo> --add-label loop-ready`; with
+   no `--repo`, `gh` from the harness root reaches the harness's repo.
+4. Its state is in the harness, in `.loop/projects/<name>/`: `status.json`,
+   `loop.log` and `issue-<N>/`, with a lock of its own, so it runs beside the
+   harness's loop. Read those in place of `.loop/` under *Say what it did*.
+   Its checkouts are in `~/.harness-loop/<harness>/<name>/`.
+5. The agents get the harness's [`AGENTS.md`](../../AGENTS.md) and its three steering files at
+   the top of each prompt. A `claude` build agent also runs the harness's
+   `guard.py` before each tool call. Another build agent, such as `codex`, has
+   no hook to put it in, so say it builds without the guard.
+
 ## Say what it did
 
 1. Read `.loop/status.json` for where each issue ended, then that issue's
@@ -136,9 +165,10 @@ request.
 
 The order matters. Stopping alone lets the loop take the issue straight back.
 
-1. Take the label off first: `gh issue edit <N> --remove-label loop-ready`.
-2. Then `python3 scripts/loop.py stop`. The loop ends at its next step, not
-   mid-step.
+1. Take the label off first: `gh issue edit <N> --remove-label loop-ready`,
+   with `--repo <owner>/<repo>` for a project's issue.
+2. Then `python3 scripts/loop.py stop`, with `--project projects/<name>` for
+   a project's loop. The loop ends at its next step, not mid-step.
 3. Say what it was doing when it stopped, from `.loop/status.json`. In tmux,
    its session waits for Enter once the loop exits, so the last lines stay
    readable; `tmux kill-session -t <name>` closes it.

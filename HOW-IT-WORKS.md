@@ -210,6 +210,32 @@ the project's to choose, and a round below it fails like any other test
 failure. A coverage pass shows which lines ran, not that a test would catch
 a change to them; [`skills/review-tests/`](skills/review-tests/) checks that.
 
+**On a project under [`projects/`](projects/).** Run it from the harness root with
+`--project`, on `run`, `review` and `stop`:
+
+    python3 scripts/loop.py run --project projects/app
+    python3 scripts/loop.py stop --project projects/app
+
+It then works that clone's GitHub repo: its issues, its pull requests and the
+`base` in its own `loop.json`. That `loop.json` has to set `test_command`,
+because the default tests the harness. For a TypeScript project,
+`{"test_command": "npm test"}`, or `node --test` with no `package.json`
+script; [`examples/typescript/`](examples/typescript/) has a fuller one. The loop refuses, with one
+`ERROR` line and before it takes anything, a folder that isn't directly under
+[`projects/`](projects/), one that isn't a git clone of its own, a clone whose `origin`
+isn't on github.com, or a `loop.json` without `test_command`. Its state stays in
+the harness, in `.loop/projects/<name>/` (`status.json`, `loop.log`,
+`issue-N/` and a lock of its own, so it runs beside the harness's loop). None of
+it goes in the project's folder, which gets only the `loop/issue-N` branches
+and their checkouts, as any clone the loop works does. Its checkouts go in
+`~/.harness-loop/<harness>/<name>/`. A checkout of the project holds none of
+the harness's rules, so every prompt starts with [`AGENTS.md`](AGENTS.md) and the three
+steering files it loads every session, and says
+the project's own `AGENTS.md` or `CLAUDE.md` adds to them and never loosens them. A `claude` build agent also
+gets the harness's [`.claude/hooks/guard.py`](.claude/hooks/guard.py) through `--settings`. Another
+build agent, such as `codex`, has no hook to put it in, so it builds without
+the guard. The loop pane shows the harness's own loop only.
+
 **From a conversation,** the [`skills/loop-control/`](skills/loop-control/) skill does the same jobs:
 it checks an issue is ready before labelling it, starts the loop, says what
 it did, and stops it with the label off first.
@@ -293,7 +319,7 @@ pull request can't page your team through your account. It still posts as you:
 to post as a bot, sign `gh` in as one on the machine that runs the review.
 `loop.py stop` ends it at its next step, as it does `run`.
 
-**Not in it, on purpose:** many projects at once, voice dispatch, merge passes,
+**Not in it, on purpose:** many projects in one run, voice dispatch, merge passes,
 a dashboard, model-tier routing. Each can be added by whoever needs it, reading
 the log.
 
