@@ -39,6 +39,61 @@ question for the starter check, not this skill.
 Files: [`skills/whats-new/`](skills/whats-new/), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md)
 
 **Do:** nothing
+## 2026-10-22: Loop runs for a set time
+
+`loop.py run --for 8h` and `loop.py review --for 8h` (or `90m`, `2d`) start
+nothing new once that time has passed, let what's running finish, and exit. An
+`UNTIL` line in `.loop/loop.log` says when it ends, and an `END` line says it
+did. A running issue still gets every round, unlike a stop.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** nothing. Add `--for` when you start the loop to give it an end time.
+## 2026-10-22: The loop says when its own code changed
+
+A running loop, or `loop.py review`, now logs one `STALE` line on an idle poll
+when [`scripts/loop.py`](scripts/loop.py) has changed on disk since it started, so a pull or merge
+doesn't leave it quietly running the old code. It only logs: it doesn't stop or
+reload itself.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** stop the loop and start it again after pulling a change to [`scripts/loop.py`](scripts/loop.py).
+## 2026-10-22: Orientation starts the company record from your pages
+
+Orientation can now draft four sections of a local company record from up to
+three public pages you name, each confirmed by you before it's written, and it
+still asks you what you won't do and who decides.
+
+Files: [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing
+## 2026-10-22: Token report
+
+[`scripts/token_report.py`](scripts/token_report.py) counts the Claude Code tokens spent under this
+harness from Claude Code's own transcripts, subagents included: conversations
+at the root, each repo under [`projects/`](projects/), and each issue the loop built, with
+tokens by model, the subagent share and the top sessions and issues. It prints
+counts only, never a prompt, a reply, a path or code. Tokens, not dollars, and
+Claude Code only. The harness report now runs it and adds a `## Tokens`
+section.
+
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py), [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing. Run `python3 scripts/token_report.py` to see the last 14 days.
+## 2026-10-22: Loop pull requests describe themselves
+
+A pull request the loop opens now carries what a reviewer on GitHub needs: the
+files changed with their line counts, the test command and the last lines of
+its output, the review in full, and the plan, collapsed. Mentions in the
+agents' text can't ping anyone. A description that would pass GitHub's limit
+cuts the plan first, then the review, and says where the full file is. Before
+this, it said `Closes #N` and pointed at `.loop/` on the machine that ran it.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
 
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 

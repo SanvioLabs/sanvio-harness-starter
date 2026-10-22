@@ -93,7 +93,8 @@ def since_date(text):
 def main(argv=None):
     today = datetime.date.today()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat())
+    parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat(),
+                        help="the first day to count, as YYYY-MM-DD (default: 14 days ago)")
     parser.add_argument("--log", help="a log file other than your own")
     args = parser.parse_args(argv)
     path = Path(args.log) if args.log else log_path(ROOT)
