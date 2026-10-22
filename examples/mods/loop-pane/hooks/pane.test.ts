@@ -244,14 +244,45 @@ group('a job in the pane', () => {
     const ui = await $.ui.mount(PANE)
     type Node = { props?: Record<string, unknown>; children?: (Node | string)[] }
     const first = (n: Node | string | undefined): Node => (n as Node).children![0] as Node
-    // The header's state is its third child: the dot, then the words. A job's dot leads its first row.
-    const state = (await ui.find({ key: 'header' }) as unknown as Node).children![2] as Node
+    // The header's state is its second child: the dot, then the words. A job's dot leads its first row.
+    const state = (await ui.find({ key: 'header' }) as unknown as Node).children![1] as Node
     const headerDot = first(state)
     const jobDot = first(first(await ui.find({ key: 'issue-12' }) as unknown as Node))
     expect(headerDot.children).toEqual(['●'])
     expect(JSON.stringify(state.children![1])).toContain(' Running')
     // Drawn from the same beat, so the two dots brighten and dim together.
     expect(headerDot.props).toEqual(jobDot.props)
+    await ui.unmount()
+  })
+})
+
+group('on Claude Desktop', () => {
+  const DESKTOP = { ...PANE, surface: 'desktop' } as const
+  const working: Seen = {
+    ...SEEN(true),
+    status: {
+      running: true, updated: null, tmux: 'loop-starter', queue: [],
+      issues: [{ number: 12, title: 'Gate', step: 'BUILD', state: 'working', round: 1, tests: null, review: null,
+        pr: null, note: '', window: 'issue-12' }],
+    },
+  }
+  test('draws the header, the buttons and a job with its Watch button', async ($, on) => {
+    seed(on, working)
+    const ui = await $.ui.mount(DESKTOP)
+    const drawn = JSON.stringify(await ui.drawn())
+    expect(drawn).toContain('starter')
+    expect(drawn).toContain(' Running')
+    expect(drawn).toContain('#12 Gate')
+    expect(await ui.find({ key: 'watch' })).toBeDefined()
+    expect(await ui.find({ key: 'watch-12' })).toBeDefined()
+    await ui.unmount()
+  })
+  test('the header pushes the state right by layout, not by padding', async ($, on) => {
+    seed(on, working)
+    const ui = await $.ui.mount(DESKTOP)
+    const header = await ui.find({ key: 'header' })
+    expect(header?.props.justifyContent).toBe('space-between')
+    expect(JSON.stringify(header?.children)).not.toMatch(/"\s{3,}"/)
     await ui.unmount()
   })
 })
