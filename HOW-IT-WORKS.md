@@ -172,8 +172,16 @@ first real run opens a public pull request. Label one small issue
     python3 scripts/loop.py run --once       # one issue, then stop
     python3 scripts/loop.py run --issue 12   # only issue #12
     python3 scripts/loop.py run              # every ready issue, until none are left
+    python3 scripts/loop.py run --for 8h     # every ready issue, taking no new one after 8 hours
 
 Then read `.loop/issue-N/` and the pull request it opened.
+
+**For a set time.** `--for` takes a whole number then `m`, `h` or `d` (`90m`,
+`8h`, `2d`), and works on `review` too. The loop logs an `UNTIL` line with the
+local time it ends. After that it starts no new issue or review, lets each
+running one finish (an issue still gets every round, to a pull request or a
+block), logs `END --for 8h reached` and exits. Any other value for `--for` is
+refused before the loop starts. `loop.py stop` still ends it sooner.
 
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
