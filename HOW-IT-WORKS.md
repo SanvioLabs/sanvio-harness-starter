@@ -111,6 +111,10 @@ In Claude Code, `/loop-pane` draws it in a pane beside the conversation
 `.loop/watch.command`, and the pane's **Watch it** button opens it: a new
 Terminal window attached to the session, read-only.
 
+A running loop keeps the code it started with: when [`scripts/loop.py`](scripts/loop.py) changes
+on disk under it, it logs one `STALE` line on an idle poll and carries on, and
+`python3 scripts/loop.py stop` then starting it again picks up the new code.
+
 **More than one at once.** Set `max_workers` in `loop.json` and it works up to
 that many ready issues side by side, each in its own worktree. One that depends
 on an issue still being worked waits for it. Each issue's agents write what
