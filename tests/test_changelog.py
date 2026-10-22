@@ -147,5 +147,76 @@ class WhatsNewAgainstItsRemote(unittest.TestCase):
         self.assertEqual(self.run_in(self.copy, cmd, env=self.env), ["1\t2"])
 
 
+class CheckStarterCommands(unittest.TestCase):
+    """The commands in skills/check-starter/SKILL.md, run as written against a scratch clone of a
+    starter and a copy that shares none of its history."""
+
+    run_in = WhatsNewCommands.run_in
+    git = WhatsNewAgainstItsRemote.git
+    commit = WhatsNewAgainstItsRemote.commit
+    add_heading = WhatsNewAgainstItsRemote.add_heading
+    LOG = "# What's new\n\nIntro.\n\n## 2026-10-01: A\n\nx\n"
+
+    def command(self, starts):
+        skill = (ROOT / "skills" / "check-starter" / "SKILL.md").read_text()
+        found = [line.strip() for line in skill.splitlines() if line.strip().startswith(starts)]
+        self.assertEqual(len(found), 1, "one command starting " + starts)
+        return found[0]
+
+    def setUp(self):
+        import os
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        tmp = Path(self.tmp.name)
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", TMPDIR=str(tmp))
+        starter, self.copy = tmp / "starter", tmp / "copy"
+        self.env["clone"] = str(tmp / "check-starter" / "starter")
+        self.git(tmp, "init", "-q", "-b", "main", str(starter))
+        (starter / "one.md").write_text("one\n")
+        (starter / "two.md").write_text("two\n")
+        self.git(starter, "add", "one.md", "two.md")
+        self.commit(starter, self.LOG)
+        self.sha = {"A": self.head(starter)}
+        for name in ("B", "C"):
+            self.add_heading(starter, "## 2026-10-0{}: {}".format(" ABC".index(name), name))
+            self.sha[name] = self.head(starter)
+        self.git(tmp, "clone", "-q", str(starter), self.env["clone"])
+        self.git(tmp, "init", "-q", "-b", "main", str(self.copy))
+        (self.copy / "one.md").write_text("one, adapted\n")
+        (self.copy / "two.md").write_text("two\n")
+        self.git(self.copy, "add", "one.md", "two.md")
+        self.commit(self.copy, self.LOG.replace("Intro.\n\n", "Intro.\n\n## 2026-10-04: Copy-only\n\nx\n\n"
+                                                "## 2026-10-02: B\n\nx\n\n"))
+
+    def head(self, folder):
+        return self.run_in(folder, "git rev-parse HEAD", env=self.env)[0]
+
+    def run_with(self, cmd, **values):
+        env = dict(self.env, **values)
+        return self.run_in(self.copy, cmd, env=env)
+
+    def test_the_baseline_comes_from_a_starter_line(self):
+        log = (self.copy / "CHANGELOG.md").read_text()
+        (self.copy / "CHANGELOG.md").write_text(log.replace("Intro.\n\n", "Intro.\n\nstarter: {}\n\n".format(self.sha["B"])))
+        self.assertEqual(self.run_with(self.command("awk '/^## /{exit}")), [self.sha["B"]])
+
+    def test_the_baseline_comes_from_the_newest_shared_heading(self):
+        heading = self.run_with(self.command("grep '^## ' CHANGELOG.md | grep -xF"))
+        self.assertEqual(heading, ["## 2026-10-02: B"])
+        found = self.run_with(self.command('git -C "$clone" log --reverse --format=%H -S'), heading=heading[0])
+        self.assertEqual(found, [self.sha["B"]])
+
+    def test_the_commits_after_the_baseline_are_listed_oldest_first(self):
+        found = self.run_with(self.command("git -C \"$clone\" log --reverse --format='%H %s'"), base=self.sha["A"])
+        self.assertEqual(found, [self.sha["B"] + " log", self.sha["C"] + " log"])
+
+    def test_an_edited_file_is_adapted_and_an_untouched_one_isnt(self):
+        cmd = self.command('git -C "$clone" show "$base:$path" |') + " && echo same || echo adapted"
+        self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="one.md"), ["adapted"])
+        self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="two.md"), ["same"])
+
+
 if __name__ == "__main__":
     unittest.main()
