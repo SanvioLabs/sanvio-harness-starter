@@ -36,6 +36,31 @@ still asks you what you won't do and who decides.
 Files: [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`tests/test_steering.py`](tests/test_steering.py)
 
 **Do:** nothing
+## 2026-10-22: Token report
+
+[`scripts/token_report.py`](scripts/token_report.py) counts the Claude Code tokens spent under this
+harness from Claude Code's own transcripts, subagents included: conversations
+at the root, each repo under [`projects/`](projects/), and each issue the loop built, with
+tokens by model, the subagent share and the top sessions and issues. It prints
+counts only, never a prompt, a reply, a path or code. Tokens, not dollars, and
+Claude Code only. The harness report now runs it and adds a `## Tokens`
+section.
+
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py), [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing. Run `python3 scripts/token_report.py` to see the last 14 days.
+## 2026-10-22: Loop pull requests describe themselves
+
+A pull request the loop opens now carries what a reviewer on GitHub needs: the
+files changed with their line counts, the test command and the last lines of
+its output, the review in full, and the plan, collapsed. Mentions in the
+agents' text can't ping anyone. A description that would pass GitHub's limit
+cuts the plan first, then the review, and says where the full file is. Before
+this, it said `Closes #N` and pointed at `.loop/` on the machine that ran it.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing.
 
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
