@@ -197,6 +197,25 @@ the queue on weeknights only. A value it can't read logs an `ERROR` and the
 loop exits before it takes anything. With `--for` as well, the run still ends
 on time, waiting or not.
 
+**The build agent doesn't install packages.** Decided 2026-10-22. It can edit
+files, but `npm install`, `pip install` and anything else that fetches a
+package need an approval nobody is there to give, so the agent can't add a
+dependency. A ticket that needs one blocks after `max_rounds`, as #167 did.
+Add the dependency and its lockfile yourself first, in a change of its own,
+and give the ticket a `Depends on #N` line for it. A `test_command` that
+installs from the committed lockfile, such as `npm ci`, is run by the script
+and is fine.
+
+A team that wants its loop to install can allow it in its own `loop.json`, by
+naming the commands the build agent may run:
+
+    "agent": "claude -p --permission-mode acceptEdits --allowedTools \"Bash(npm install *)\""
+
+That's the team's decision, not the harness's default. It lets an agent nobody
+is watching pull any package the registry has, and run that package's install
+scripts on the machine with your access. Allow the narrowest command that does
+the job.
+
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put

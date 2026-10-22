@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop installs nothing by default
+
+The loop's build agent doesn't install packages, and a ticket that needs a new
+dependency isn't ready for the loop until someone adds it. A team can allow
+installs for its own loop in `loop.json`.
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) (*The build agent doesn't install packages*) has how, and what
+allowing it means.
+
+Files: [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`steering/tickets.md`](steering/tickets.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing. To let your loop install, see the section above.
+
 ## 2026-10-22: Loop works a project
 
 `loop.py run`, `review` and `stop` take `--project projects/<name>` to work a
