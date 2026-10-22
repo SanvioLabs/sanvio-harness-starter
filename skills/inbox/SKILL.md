@@ -28,7 +28,10 @@ the same way. [`skills/standup/`](../standup/SKILL.md) reads mail through these 
    If the file is missing, say `/orientation` writes it, and stop the mail
    read.
 3. **Window:** the last 24 hours, plus anything still unread. If the person
-   gives a window, such as `/inbox 3d`, use that instead.
+   gives a window, such as `/inbox 3d`, use that instead. For **Waiting on
+   someone** only, also look back 7 days, or the person's window if it's
+   longer, for threads where they sent the last message: one waiting 2 working
+   days is older than a day's window by definition.
 4. **Report:** one line per thread, with its sender, subject, time and link.
    Three groups, each left out if it's empty:
    - **Needs a reply from you:** someone asked them something, or the thread
