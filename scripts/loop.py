@@ -288,7 +288,8 @@ def project_root(path, root=None):
 def rules_preamble(root):
     """The harness's rules, for an agent in a project's checkout, which holds none of them: AGENTS.md
     and the steering files it loads every session, then how the project's own rules rank."""
-    agents = (Path(root) / "AGENTS.md").read_text()
+    agents_file = Path(root) / "AGENTS.md"
+    agents = agents_file.read_text() if agents_file.exists() else ""
     parts = ["AGENTS.md:\n" + agents.strip()]
     for name in STEERING.findall(agents):
         path = Path(root) / name
@@ -1705,7 +1706,7 @@ def main(argv=None):
         project = project_root(args.project)
         if project is None:
             return 1
-    loop = Loop(ROOT, project=project)
+    loop = Loop() if project is None else Loop(ROOT, project=project)
     if getattr(args, "hours", None) is not None:
         # Checked by locked(), as loop.json's is, so a bad value is refused in the log, not by argparse.
         loop.cfg["hours"], loop.hours_from = args.hours, "--hours"
