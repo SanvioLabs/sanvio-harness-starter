@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Inbox reads your mail
+
+`inbox` is now a read of your mail, not an idea list. Say "inbox" or "check
+my email" and it reads the last day's mail, plus anything unread, from Gmail
+by default or the provider you name (`/inbox outlook`), where
+`company/DATA.md` clears it. It reports what needs a reply from you, what's
+waiting on someone and what's worth knowing, one line per thread, and counts
+the bulk mail. It only searches and reads. [`skills/standup/`](skills/standup/) now reads email
+the same way.
+
+Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/standup/SKILL.md`](skills/standup/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md). Removes `inbox.py` and `test_inbox.py`.
+
+**Do:** nothing. The idea list and `inbox.py` are gone. Anything already in
+`.inbox/` stays on your machine untouched, and is never committed.
+
 ## 2026-10-22: Loop counts a dependency a merged pull request closed
 
 The loop now takes an issue whose `Depends on` issue was closed by a merged
