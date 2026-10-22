@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Orientation starts the company record from your pages
+
+Orientation can now draft four sections of a local company record from up to
+three public pages you name, each confirmed by you before it's written, and it
+still asks you what you won't do and who decides.
+
+Files: [`skills/orientation/SKILL.md`](skills/orientation/SKILL.md), [`tests/test_steering.py`](tests/test_steering.py)
+
+**Do:** nothing
 ## 2026-10-22: Token report
 
 [`scripts/token_report.py`](scripts/token_report.py) counts the Claude Code tokens spent under this
