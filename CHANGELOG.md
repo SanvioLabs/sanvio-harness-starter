@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: The loop says when its own code changed
+
+A running loop, or `loop.py review`, now logs one `STALE` line on an idle poll
+when [`scripts/loop.py`](scripts/loop.py) has changed on disk since it started, so a pull or merge
+doesn't leave it quietly running the old code. It only logs: it doesn't stop or
+reload itself.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** stop the loop and start it again after pulling a change to [`scripts/loop.py`](scripts/loop.py).
+
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
 The [loop pane](examples/mods/loop-pane/)'s header now pushes the loop's state

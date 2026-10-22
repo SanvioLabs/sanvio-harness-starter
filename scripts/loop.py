@@ -36,6 +36,7 @@ issue-N, that follows its agent.log and closes when the issue ends.
 Standard library only; needs git and the gh CLI, signed in.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -51,6 +52,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+SELF = Path(__file__).resolve()  # this file, whose change on disk a running loop logs
 
 DEFAULTS = {
     # The command that starts an agent session. The prompt arrives on stdin. A name, claude or codex,
@@ -122,6 +124,14 @@ class Interrupted(BaseException):
 def interrupt(signum, frame):
     """A SIGTERM or SIGHUP, taken as a Ctrl-C."""
     raise KeyboardInterrupt()
+
+
+def fingerprint():
+    """The SHA-256 of this file as it is on disk now, or None if it can't be read."""
+    try:
+        return hashlib.sha256(SELF.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def workers(cfg):
@@ -402,8 +412,17 @@ class Loop:
         self.windows = {}  # issue number -> the tmux window following its agent.log
         self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
         self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
+        self.started_with = None  # fingerprint() when work() or watch() began, so stale() can compare
 
     # -- plumbing ---------------------------------------------------------
+
+    def stale(self):
+        """Log once if scripts/loop.py changed on disk since this run began. It keeps running the old code."""
+        now = fingerprint()
+        if self.started_with is None or now is None or now == self.started_with:
+            return
+        self.log_once("STALE", "scripts/loop.py changed since this run started; "
+                               "run python3 scripts/loop.py stop, then start it again to use it")
 
     def log_once(self, step, text, number=None):
         """Log a line once per run, for checks repeated on every idle poll."""
@@ -1053,6 +1072,7 @@ class Loop:
     def work(self, once, only, dry_run):
         """Start a worker per ready issue, up to max_workers at once. A stop starts nothing new and
         waits for each worker, which stops itself before its next round."""
+        self.started_with = fingerprint()
         # An agent that can't do its job is found before any issue is taken, not one blocked issue later.
         for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
             why = command(self.cfg, which)[1]
@@ -1090,6 +1110,7 @@ class Loop:
                         idle = True
                     if not dry_run:
                         self.tidy()
+                    self.stale()
                     if once or dry_run or only is not None:
                         break
                     time.sleep(self.cfg["poll_seconds"])
@@ -1192,6 +1213,7 @@ class Loop:
         return self.locked(lambda: self.watch(once))
 
     def watch(self, once):
+        self.started_with = fingerprint()
         if not self.whoami():
             self.log("ERROR", "could not tell who you are (gh api user), so it can't find its own comments")
             return 1
@@ -1208,6 +1230,8 @@ class Loop:
             elif prs is not None and not idle:
                 self.log("IDLE", "no pull request waiting for a review")
                 idle = True
+            if not worked and prs is not None:
+                self.stale()
             if once or self.stopped():
                 break
             time.sleep(self.cfg["poll_seconds"])
