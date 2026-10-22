@@ -3,7 +3,7 @@
 export function slug(title: string): string {
   return title
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");

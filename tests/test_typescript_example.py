@@ -28,6 +28,21 @@ def why_node_cannot_run_it():
     return None
 
 
+class Dependencies(unittest.TestCase):
+    """npm ci needs a lockfile, and npm run typecheck needs typescript pinned in it."""
+
+    def test_typescript_is_pinned_and_locked(self):
+        package = json.loads((EXAMPLE / "package.json").read_text())
+        pinned = package.get("devDependencies", {}).get("typescript")
+        self.assertIsNotNone(pinned, "package.json has no devDependencies.typescript, so there's no tsc")
+        self.assertIsNotNone(version(pinned), "typescript isn't at a version: {}".format(pinned))
+        self.assertRegex(pinned, r"^\d+\.\d+\.\d+$", "typescript isn't pinned to an exact version")
+        lockfile = EXAMPLE / "package-lock.json"
+        self.assertTrue(lockfile.is_file(), "no package-lock.json, so npm ci fails")
+        locked = json.loads(lockfile.read_text())["packages"].get("node_modules/typescript", {})
+        self.assertEqual(locked.get("version"), pinned, "package-lock.json doesn't lock the typescript package.json pins")
+
+
 class TypeScriptExample(unittest.TestCase):
     """npm test in a copy of examples/typescript passes, and fails once the code is wrong."""
 
