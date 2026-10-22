@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop runs for a set time
+
+`loop.py run --for 8h` and `loop.py review --for 8h` (or `90m`, `2d`) start
+nothing new once that time has passed, let what's running finish, and exit. An
+`UNTIL` line in `.loop/loop.log` says when it ends, and an `END` line says it
+did. A running issue still gets every round, unlike a stop.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** nothing. Add `--for` when you start the loop to give it an end time.
+
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
 The [loop pane](examples/mods/loop-pane/)'s header now pushes the loop's state

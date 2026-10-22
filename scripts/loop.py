@@ -2,8 +2,8 @@
 """The loop: take a ready issue, plan it, build it, check it, open a pull request.
 
 Usage:
-    python3 scripts/loop.py run [--once] [--issue N] [--dry-run]
-    python3 scripts/loop.py review [--once]
+    python3 scripts/loop.py run [--once] [--issue N] [--dry-run] [--for DURATION]
+    python3 scripts/loop.py review [--once] [--for DURATION]
     python3 scripts/loop.py stop
 
 One pass is one turn of the flywheel:
@@ -20,6 +20,9 @@ loop:blocked and the loop moves on without it.
 `review` is the other half of the queue: it reviews each open pull request that asks for you,
 once per head commit, with skills/review-pr, and posts the report as one comment per pull
 request, edited in place on later commits. It never approves, merges or pushes.
+
+--for 8h (or 90m, 2d) on either one starts nothing new once that long has passed, lets what's
+running finish, and then exits, logging an END line. An UNTIL line at the start says when.
 
 Watch it with:  tail -f .loop/loop.log
 The same state, for a tool to read, is in .loop/status.json: what's waiting, what each
@@ -110,6 +113,8 @@ ISSUE_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
 # wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
 SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
 DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
+DURATION = re.compile(r"[1-9][0-9]*[mhd]")  # --for's value, whole
+UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
 
 
 class Interrupted(BaseException):
@@ -133,6 +138,14 @@ def workers(cfg):
         return max(1, int(value))
     except (ValueError, OverflowError):
         return None
+
+
+def duration(text):
+    """--for's value as (what was typed, seconds). Anything else is refused before the loop starts."""
+    if not DURATION.fullmatch(text):
+        raise argparse.ArgumentTypeError(
+            "{!r} isn't a length of time: use a whole number then m, h or d: 90m, 8h, 2d".format(text))
+    return text, int(text[:-1]) * UNIT_SECONDS[text[-1]]
 
 
 def load_config(root):
@@ -402,6 +415,8 @@ class Loop:
         self.windows = {}  # issue number -> the tmux window following its agent.log
         self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
         self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
+        self.deadline = None  # with --for, the time.time() after which nothing new starts
+        self.for_text = None  # and --for as it was typed, for the log
 
     # -- plumbing ---------------------------------------------------------
 
@@ -488,6 +503,10 @@ class Loop:
 
     def stopped(self):
         return (self.dir / "STOP").exists()
+
+    def expired(self):
+        """--for's time is up: start nothing new. Not part of stopped(), so a running issue keeps its rounds."""
+        return self.deadline is not None and time.time() >= self.deadline
 
     def halt_if_interrupted(self):
         """Raise Interrupted after a Ctrl-C, so a worker whose agent it killed doesn't take that for a failure."""
@@ -1021,8 +1040,11 @@ class Loop:
         lock.write_text(str(os.getpid()))
         return True
 
-    def locked(self, work):
-        """Hold the lock and run work(), which returns an exit code or None. run and review share this."""
+    def locked(self, work, until=None):
+        """Hold the lock and run work(), which returns an exit code or None. run and review share this.
+
+        until is --for's (text, seconds): work() starts nothing new once that long has passed.
+        """
         if not self.take_lock():
             print("The loop is already running here (see .loop/lock).", file=sys.stderr)
             return 1
@@ -1037,22 +1059,31 @@ class Loop:
             if tmux:
                 self.log("START", "in tmux session {}: tmux attach -t {}".format(tmux, shlex.quote(tmux)))
                 self.write_watch(tmux)
+            if until:
+                # A line of its own: START is logged only inside tmux.
+                self.for_text, seconds = until
+                self.deadline = time.time() + seconds
+                self.log("UNTIL", "{} (--for {})".format(
+                    datetime.fromtimestamp(self.deadline).strftime("%Y-%m-%d %H:%M"), self.for_text))
             code = work()
             if self.stopped():
                 self.log("STOPPED", "stop file found")
                 (self.dir / "STOP").unlink()
+            elif self.expired():
+                self.log("END", "--for {} reached".format(self.for_text))
         finally:
             self.save_status(running=False, pid=None, tmux=None, started=None, reviewing=None)
             (self.dir / "watch.command").unlink(missing_ok=True)
             (self.dir / "lock").unlink(missing_ok=True)
         return code or 0
 
-    def run(self, once=False, only=None, dry_run=False):
-        return self.locked(lambda: self.work(once, only, dry_run))
+    def run(self, once=False, only=None, dry_run=False, until=None):
+        return self.locked(lambda: self.work(once, only, dry_run), until)
 
     def work(self, once, only, dry_run):
         """Start a worker per ready issue, up to max_workers at once. A stop starts nothing new and
-        waits for each worker, which stops itself before its next round."""
+        waits for each worker, which stops itself before its next round. The end of --for starts
+        nothing new either, and waits for each worker to finish its issue."""
         # An agent that can't do its job is found before any issue is taken, not one blocked issue later.
         for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
             why = command(self.cfg, which)[1]
@@ -1074,11 +1105,13 @@ class Loop:
             for sig in (signal.SIGTERM, signal.SIGHUP):
                 caught[sig] = signal.signal(sig, interrupt)
         try:
-            while not self.stopped():
+            while not self.stopped() and not self.expired():
                 self.reap(running)
                 if len(running) >= most:
                     self.reap(running, None)
                     continue
+                if self.expired():
+                    break
                 issue = self.discover(only, dry_run, busy=running)
                 if issue is None:
                     if running:
@@ -1187,20 +1220,20 @@ class Loop:
 
     # -- reviewing pull requests ------------------------------------------
 
-    def review(self, once=False):
+    def review(self, once=False, until=None):
         """Review each pull request that asks for you, once per head commit. Never approves or pushes."""
-        return self.locked(lambda: self.watch(once))
+        return self.locked(lambda: self.watch(once), until)
 
     def watch(self, once):
         if not self.whoami():
             self.log("ERROR", "could not tell who you are (gh api user), so it can't find its own comments")
             return 1
         idle = False
-        while not self.stopped():
+        while not self.stopped() and not self.expired():
             prs = self.pulls()
             worked = False
             for pr in prs or []:
-                if self.stopped():
+                if self.stopped() or self.expired():
                     break
                 worked = self.review_one(pr) or worked
             if worked:
@@ -1208,7 +1241,7 @@ class Loop:
             elif prs is not None and not idle:
                 self.log("IDLE", "no pull request waiting for a review")
                 idle = True
-            if once or self.stopped():
+            if once or self.stopped() or self.expired():
                 break
             time.sleep(self.cfg["poll_seconds"])
 
@@ -1357,8 +1390,12 @@ def main(argv=None):
     run.add_argument("--once", action="store_true", help="one issue, then exit")
     run.add_argument("--issue", type=int, help="only this issue number")
     run.add_argument("--dry-run", action="store_true", help="say which issue it would take, then exit")
+    run.add_argument("--for", dest="until", type=duration, metavar="DURATION",
+                     help="take no new issue after this long (90m, 8h, 2d); running issues finish, then exit")
     review = sub.add_parser("review", help="review each pull request that asks for you, once per commit")
     review.add_argument("--once", action="store_true", help="review what is waiting, then exit")
+    review.add_argument("--for", dest="until", type=duration, metavar="DURATION",
+                        help="start no new review after this long (90m, 8h, 2d); a running one finishes, then exit")
     sub.add_parser("stop", help="ask a running loop to stop after its current step")
     args = parser.parse_args(argv)
 
@@ -1368,8 +1405,8 @@ def main(argv=None):
         print("Stop requested. The loop ends at its next step.")
         return 0
     if args.command == "review":
-        return loop.review(once=args.once)
-    return loop.run(once=args.once, only=args.issue, dry_run=args.dry_run)
+        return loop.review(once=args.once, until=args.until)
+    return loop.run(once=args.once, only=args.issue, dry_run=args.dry_run, until=args.until)
 
 
 if __name__ == "__main__":

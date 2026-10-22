@@ -46,7 +46,10 @@ it gets read before it's labelled.
 2. Run `python3 scripts/loop.py run --dry-run` and say which issue it would
    take. Nothing ready means say so and stop.
 3. Ask: one issue (`--once`, or `--issue <N>` for a particular one) or every
-   ready issue (`run` alone, which keeps going until the queue is empty).
+   ready issue (`run` alone, which keeps going until the queue is empty). For
+   every ready issue over a set time, such as overnight, add `--for 8h` (a whole
+   number then `m`, `h` or `d`). After that time it takes no new issue, lets
+   each running one finish, logs `END --for 8h reached` and exits.
 4. Start it in tmux when `command -v tmux` finds it, so it outlives this
    conversation and the person can open it and watch. One session per clone,
    named after the folder (tmux won't take a dot or a colon in a name), with the
@@ -64,7 +67,8 @@ it gets read before it's labelled.
    Without tmux, start it in the background instead, and say that it stops
    when this session ends.
 5. Check it started: `tail -3 .loop/loop.log` shows a `START` line naming
-   the tmux session (none without tmux), then `DISCOVER` or `IDLE`. Then say
+   the tmux session (none without tmux), an `UNTIL` line with `--for`'s end
+   time, then `DISCOVER` or `IDLE`. Then say
    how to watch it: `tmux attach -t <name>` (`Ctrl-b d` leaves it
    running), `/loop-pane` in Claude Code, or `tail -f .loop/loop.log`.
 

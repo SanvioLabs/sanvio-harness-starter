@@ -35,12 +35,60 @@ def no_loop_sleep(msg):
     return mock.patch.object(loop, "time", mock.Mock(wraps=time, sleep=mock.Mock(side_effect=AssertionError(msg))))
 
 
+class Clock:
+    """Stands in for loop's `time`, so a test says what time it is. A sleep moves the clock on, then
+    calls then(), if set, which can end a run that would otherwise poll on."""
+
+    def __init__(self, then=None):
+        self.now = 1_800_000_000.0
+        self.then = then
+
+    def sleep(self, seconds):
+        self.now += seconds
+        if self.then:
+            self.then()
+
+    def patch(self):
+        return mock.patch.object(loop, "time", mock.Mock(wraps=time, time=lambda: self.now, sleep=self.sleep))
+
+
+def until_line(start, seconds, text):
+    """The UNTIL line's text, after its timestamp, for a --for of seconds from start."""
+    return "- UNTIL {} (--for {})".format(datetime.fromtimestamp(start + seconds).strftime("%Y-%m-%d %H:%M"), text)
+
+
 class TestPureParts(unittest.TestCase):
     def test_verdict_is_the_last_line_and_defaults_to_fix(self):
         self.assertEqual(loop.parse_verdict("ok\nVERDICT: PASS"), "PASS")
         self.assertEqual(loop.parse_verdict("VERDICT: PASS\nbut wait\nVERDICT: FIX"), "FIX")
         self.assertEqual(loop.parse_verdict("looks fine to me"), "FIX")
         self.assertEqual(loop.parse_verdict(""), "FIX")
+
+    def test_for_takes_a_whole_number_of_minutes_hours_or_days(self):
+        self.assertEqual(loop.duration("90m"), ("90m", 90 * 60))
+        self.assertEqual(loop.duration("8h"), ("8h", 8 * 3600))
+        self.assertEqual(loop.duration("2d"), ("2d", 2 * 86400))
+
+    def test_a_bad_for_is_refused_before_the_loop_is_built(self):
+        for command in ("run", "review"):
+            for bad in ("24", "1.5h", "2w", "0h"):
+                with self.subTest(command=command, value=bad), mock.patch.object(loop, "Loop") as built:
+                    err = io.StringIO()
+                    with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as exited:
+                        loop.main([command, "--for", bad])
+                    self.assertEqual(exited.exception.code, 2)
+                    self.assertIn("use a whole number then m, h or d: 90m, 8h, 2d", err.getvalue())
+                    built.assert_not_called()
+
+    def test_for_reaches_run_and_review_as_typed_and_in_seconds(self):
+        with mock.patch.object(loop, "Loop") as built:
+            loop.main(["run", "--for", "8h"])
+            loop.main(["review", "--for", "90m"])
+            loop.main(["run"])
+        runner = built.return_value
+        runner.run.assert_any_call(once=False, only=None, dry_run=False, until=("8h", 8 * 3600))
+        runner.review.assert_called_once_with(once=False, until=("90m", 90 * 60))
+        runner.run.assert_called_with(once=False, only=None, dry_run=False, until=None)
 
     def test_findings_skip_the_verdict(self):
         text = "Missing a test.\n\nHeader is wrong.\nVERDICT: FIX"
@@ -1356,6 +1404,92 @@ class TestAPass(unittest.TestCase):
         self.assertNotIn("boom", "\n".join(self.comments()))
         self.assertEqual(self.prs_opened(), ["loop/issue-13"])
 
+    # -- --for ------------------------------------------------------------
+
+    def go_for(self, text, seconds, clock, **kwargs):
+        """A run with --for on clock. A run that misses the deadline stops at its first idle poll, so it ends."""
+        (self.state / "labels-follow").write_text("")
+        clock.then = lambda: (self.work / ".loop" / "STOP").write_text("")
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return loop.Loop(self.work, self.cfg).run(until=(text, seconds), **kwargs)
+
+    def test_for_says_when_the_run_ends_on_a_line_of_its_own(self):
+        clock = Clock()
+        start = clock.now
+        self.assertEqual(self.go_for("24h", 86400, clock, once=True), 0)
+        lines = self.lines()
+        self.assertEqual(lines[0].split(" ", 1)[1], until_line(start, 86400, "24h"))  # outside tmux: no START
+        self.assertEqual(lines[1].split()[2], "DISCOVER")
+
+    def test_past_the_for_deadline_the_run_takes_no_new_issue(self):
+        (self.state / "issues.json").write_text(json.dumps([issue(12), issue(13)]))
+        clock = Clock()
+        looked = []
+        original = loop.Loop.discover
+
+        def discover(this, *args, **kwargs):
+            found = original(this, *args, **kwargs)
+            if not looked:
+                clock.now += 8 * 3600  # the deadline passes as the first issue is taken
+            looked.append(found and found["number"])
+            return found
+
+        with mock.patch.object(loop.Loop, "discover", discover):
+            self.assertEqual(self.go_for("8h", 8 * 3600, clock), 0)
+        self.assertEqual(looked, [12])
+        self.assertEqual(self.prs_opened(), ["loop/issue-12"])
+        self.assertFalse((self.work / ".loop" / "issue-13").exists())
+
+    def test_an_issue_running_at_the_for_deadline_still_gets_every_round_unlike_a_stop(self):
+        (self.state / "verdict").write_text("FIX")  # two rounds, then blocked
+        clock = Clock()
+        original = loop.Loop.agent
+
+        def agent(this, which, prompt, cwd, **kwargs):
+            result = original(this, which, prompt, cwd, **kwargs)
+            if "You are planning" in prompt:
+                clock.now += 8 * 3600  # where test_a_stop_file_ends_the_loop_between_steps stops
+            return result
+
+        with mock.patch.object(loop.Loop, "agent", agent):
+            self.assertEqual(self.go_for("8h", 8 * 3600, clock), 0)
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["UNTIL", "DISCOVER", "SHAPE", "BUILD", "VALIDATE", "BUILD", "VALIDATE",
+                                 "BLOCKED", "END"])
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["round"]), ("blocked", 2))
+
+    def test_the_end_of_for_is_logged_once_the_running_workers_finish(self):
+        self.timed(issue(12), issue(13))
+        self.cfg["max_workers"] = 2
+        clock = Clock()
+        original = loop.Loop.start
+
+        def start(this, issue):
+            thread = original(this, issue)
+            if issue["number"] == 13:
+                clock.now += 8 * 3600  # both workers are running when the deadline passes
+            return thread
+
+        with mock.patch.object(loop.Loop, "start", start):
+            self.assertEqual(self.go_for("8h", 8 * 3600, clock), 0)
+        lines = self.lines()
+        self.assertTrue(lines[-1].endswith(" - END --for 8h reached"), lines[-1])
+        steps = [l.split()[2] for l in lines]
+        self.assertEqual(steps.count("SCALE"), 2)
+        self.assertEqual(steps.count("END"), 1)
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13"])
+
+    def test_without_for_there_is_no_deadline_and_no_until_or_end_line(self):
+        runner = loop.Loop(self.work, self.cfg)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.run(once=True), 0)
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertNotIn("UNTIL", steps)
+        self.assertNotIn("END", steps)
+        self.assertIsNone(runner.deadline)
+        self.assertFalse(runner.expired())
+
 
 # Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
 # folder, and an agent that records what it was asked, where, and leaves a file behind.
@@ -1886,6 +2020,34 @@ class TestReview(unittest.TestCase):
         calls = (self.state / "gh-calls").read_text()
         self.assertIn("pr comment 7 --body-file -", calls)
         self.assertNotIn("Review number", calls)
+
+    def test_for_says_when_the_review_ends_on_a_line_of_its_own(self):
+        self.list_prs()
+        clock = Clock()
+        start = clock.now
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(loop.Loop(self.work, self.cfg).review(once=True, until=("24h", 86400)), 0)
+        self.assertEqual(self.lines()[0].split(" ", 1)[1], until_line(start, 86400, "24h"))
+
+    def test_past_the_for_deadline_the_review_starts_no_other(self):
+        one, two = self.push(7, "a.txt"), self.push(8, "b.txt")
+        self.list_prs(self.pr(7, one), self.pr(8, two))
+        clock = Clock(then=lambda: self.fail("polled again past the deadline"))
+        runner = loop.Loop(self.work, self.cfg)
+        original = runner.review_run
+
+        def run_then_late(pr):
+            result = original(pr)
+            clock.now += 8 * 3600  # the deadline passes during the first review
+            return result
+
+        runner.review_run = run_then_late
+        with clock.patch(), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.review(until=("8h", 8 * 3600)), 0)
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual(len(self.comments()), 1)
+        self.assertIn("REVIEW #7 {} posted".format(one[:7]), self.reviews()[0])
+        self.assertTrue(self.lines()[-1].endswith(" - END --for 8h reached"), self.lines()[-1])
 
 
 if __name__ == "__main__":
