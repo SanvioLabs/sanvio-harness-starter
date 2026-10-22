@@ -32,3 +32,25 @@ jobs:
         run: |
           git config core.hooksPath .githooks
           python3 scripts/check_setup.py
+
+  # The TypeScript example on the lowest Node it supports. The last step runs its
+  # Python test here, where Node is new enough that the test can't skip.
+  typescript:
+    name: typescript example (node 22.18.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.18.0
+      - name: Install
+        working-directory: examples/typescript
+        run: npm ci
+      - name: Typecheck
+        working-directory: examples/typescript
+        run: npm run typecheck
+      - name: Tests
+        working-directory: examples/typescript
+        run: npm test
+      - name: The harness test runs the example and sees it fail when broken
+        run: python3 -m unittest tests.test_typescript_example -v
