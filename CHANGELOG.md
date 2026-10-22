@@ -42,6 +42,19 @@ Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/standup/SKILL.
 **Do:** nothing. The idea list and `inbox.py` are gone. Anything already in
 `.inbox/` stays on your machine untouched, and is never committed.
 
+## 2026-10-22: Loop counts a dependency a merged pull request closed
+
+The loop now takes an issue whose `Depends on` issue was closed by a merged
+pull request that names it, such as one with `Closes #3`, even when GitHub put
+no commit on the close. Before, it blocked the issue as "closed without a
+merged change". An issue closed by hand with no merged pull request is still
+blocked, with the same message.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing. An issue already blocked this way needs its `loop:blocked`
+label taken off and `loop-ready` put back to be tried again.
+
 ## 2026-10-22: GitHub status mod on by default
 
 The [GitHub status mod](examples/mods/github-status/) now loads by itself, like

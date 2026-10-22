@@ -113,6 +113,14 @@ ISSUE_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
     }
   }
 }"""
+# The pull requests GitHub links to an issue as ones that close it, merged or not.
+CLOSED_BY_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $n) {
+      closedByPullRequestsReferences(first: 10, includeClosedPrs: true) { nodes { merged } }
+    }
+  }
+}"""
 # Left out of the environment the test command runs in. It runs code the agent wrote, and the agent
 # wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
 SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
@@ -803,8 +811,10 @@ class Loop:
             return sorted(set(depends_on(text)) | {int(w) for w in out.split() if w.isdigit()})
 
         def merged(n):
-            """Whether a commit closed n the last time it was closed: a merged change, not a hand.
+            """Whether a merged change closed n the last time it was closed, not a hand.
 
+            A commit on the last closed event says so. Without one, a merged pull request GitHub lists as
+            closing n says so: a pull request merged with "Closes #n" can close it with no commit on the event.
             The jq runs once per page with --paginate, so the last closed event is the last line out.
             """
             code, out = self.gh("api", "--paginate", "repos/{owner}/{repo}/issues/" + str(n) + "/timeline",
@@ -812,7 +822,17 @@ class Loop:
             if code != 0:
                 raise LookupError(out)
             lines = out.splitlines()
-            return bool(lines) and bool(lines[-1].strip())
+            if lines and lines[-1].strip():
+                return True
+            code, out = self.gh("api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+                                "-F", "n={}".format(n), "-f", "query=" + CLOSED_BY_QUERY)
+            if code != 0:
+                raise LookupError(out)
+            try:
+                prs = json.loads(out)["data"]["repository"]["issue"]["closedByPullRequestsReferences"]["nodes"]
+            except (KeyError, TypeError):
+                raise LookupError(out)
+            return any(pr.get("merged") for pr in prs)
 
         def is_open(got):
             return bool(got) and not got.get("pull_request") and got.get("state") == "open"
