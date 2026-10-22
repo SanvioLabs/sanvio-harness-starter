@@ -13,7 +13,9 @@ Claude Code 2.1.301. Codex and Kiro don't have mods.
 
 ## Turn it on
 
-It's off unless you install it. From inside a session, at the root:
+It loads by itself, the same way as the [harness lens](../harness-lens/): the harness's
+[`.claude/settings.json`](../../../.claude/settings.json) turns it on. Don't see the line? Install it from
+inside a session, at the root:
 
 ```
 /plugin marketplace add ./

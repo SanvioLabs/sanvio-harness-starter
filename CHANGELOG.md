@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: GitHub status mod on by default
+
+The [GitHub status mod](examples/mods/github-status/) now loads by itself, like
+the harness lens and the loop pane: [`.claude/settings.json`](.claude/settings.json) turns it on.
+It draws one line above the prompt with the repo's running actions, open pull
+requests and open issues, read through `gh` at most every two minutes. It only
+reads. Without `gh` signed in, the line says GitHub is unavailable.
+
+Files: [`.claude/settings.json`](.claude/settings.json), [`examples/mods/github-status/README.md`](examples/mods/github-status/README.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing. To keep it off just for you:
+`claude plugin disable github-status@sanvio-harness-starter --scope local`.
+
 ## 2026-10-22: Loop pane ready for Claude Desktop's Code tab
 
 The [loop pane](examples/mods/loop-pane/)'s header now pushes the loop's state
