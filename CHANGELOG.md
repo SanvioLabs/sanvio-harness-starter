@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Token report
+
+[`scripts/token_report.py`](scripts/token_report.py) counts the Claude Code tokens spent under this
+harness from Claude Code's own transcripts, subagents included: conversations
+at the root, each repo under [`projects/`](projects/), and each issue the loop built, with
+tokens by model, the subagent share and the top sessions and issues. It prints
+counts only, never a prompt, a reply, a path or code. Tokens, not dollars, and
+Claude Code only. The harness report now runs it and adds a `## Tokens`
+section.
+
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py), [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing. Run `python3 scripts/token_report.py` to see the last 14 days.
 ## 2026-10-22: Loop pull requests describe themselves
 
 A pull request the loop opens now carries what a reviewer on GitHub needs: the
