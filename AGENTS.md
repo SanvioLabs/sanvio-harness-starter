@@ -78,7 +78,7 @@ steps in order.
 | [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, or whether this copy is up to date with its remote |
 | [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md) | Asked to "check the starter", "what's new in the starter", "what has the starter added", or "should we take the starter's changes" |
 | [`skills/standup/SKILL.md`](skills/standup/SKILL.md) | Asked for a standup or a morning check, or what's on them today: reviews waiting, issues assigned, what the loop finished or blocked, today's meetings |
-| [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md) | Asked to go over their ideas: "inbox", "review my ideas", "sweep my ideas", or "idea: ..." to capture one |
+| [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md) | Asked to check their email or inbox: what needs a reply, what's waiting on someone, what matters today |
 
 These come from the Stelliad plugin, which [`.claude/settings.json`](.claude/settings.json) switches on.
 Installing it is the one install that doesn't go through `review-skill`; the
