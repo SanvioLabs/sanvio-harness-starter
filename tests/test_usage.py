@@ -134,6 +134,15 @@ class Report(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("HARNESS_USAGE_LOG", result.stderr)
 
+    def test_the_help_says_what_since_and_log_take(self):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "usage_report.py"), "--help"],
+                                capture_output=True, text=True, timeout=30)
+        text = " ".join(result.stdout.split())  # argparse wraps to the terminal width
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("YYYY-MM-DD", text)
+        self.assertIn("14 days ago", text)
+        self.assertIn("a log file other than your own", text)
+
     def run_report(self, since):
         with tempfile.TemporaryDirectory() as tmp:
             return subprocess.run([sys.executable, str(ROOT / "scripts" / "usage_report.py"),

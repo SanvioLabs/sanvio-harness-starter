@@ -176,6 +176,74 @@ class TestPureParts(unittest.TestCase):
         self.assertLess(len(cut), 1100)
         self.assertEqual(loop.tail("short"), "short")
 
+    UNITTEST_OUTPUT = ("FAR-UP-LINE\n" + "x\n" * 10 + "test_a ... ok\ntest_b ... ok\ntest_c ... ok\n\n"
+                       + "-" * 70 + "\nRan 3 tests in 0.004s\n\nOK\n")
+
+    def body(self, **kwargs):
+        parts = dict(number=12, rounds=2, numstat="3\t1\tscripts/x.py\n-\t-\tlogo.png\n",
+                     test_command="python3 -m unittest", plan="Plan: add x.", review="Looks right.\nVERDICT: PASS",
+                     tests=self.UNITTEST_OUTPUT)
+        parts.update(kwargs)
+        return loop.pr_body(**parts)
+
+    def test_a_pull_request_opens_with_what_it_closes_and_who_merges(self):
+        body = self.body()
+        self.assertTrue(body.startswith("Closes #12.\n"))
+        self.assertIn("after 2 rounds", body)
+        self.assertIn("doesn't merge", body)
+        self.assertIn("after 1 round.", self.body(rounds=1))
+        self.assertNotIn(EM_DASH, body)
+
+    def test_a_pull_request_lists_its_files_with_their_line_counts(self):
+        body = self.body()
+        self.assertIn("`scripts/x.py` +3 −1", body)
+        self.assertIn("`logo.png` binary", body)
+        self.assertIn("couldn't be read", self.body(numstat=None))
+
+    def test_a_pull_request_shows_the_test_command_and_the_last_test_lines(self):
+        body = self.body()
+        self.assertIn("`python3 -m unittest`", body)
+        self.assertIn("Ran 3 tests", body)
+        self.assertIn("\nOK\n", body)
+        self.assertNotIn("FAR-UP-LINE", body)
+        self.assertNotIn("test_a ... ok", body)
+        # A stray fence in the output can't close the block the lines sit in.
+        self.assertIn("~~~~\n```\nRan", self.body(tests="```\nRan 1 test\n"))
+
+    def test_a_pull_request_carries_the_review_in_full_and_the_plan_folded(self):
+        review = "Line one.\n\nLine two.\nVERDICT: PASS"
+        body = self.body(review=review, plan="Plan: add x.\nThen y.")
+        self.assertIn(review, body)
+        folded = body[body.index("<details><summary>Plan</summary>"):]
+        self.assertIn("Plan: add x.\nThen y.", folded)
+        self.assertTrue(folded.rstrip().endswith("</details>"))
+
+    def test_a_pull_request_pings_nobody(self):
+        body = self.body(plan="Ask @someone.", review="cc @someone\nVERDICT: PASS", tests="@someone broke it\n")
+        self.assertNotIn("@someone", body)
+        self.assertEqual(body.count("@​someone"), 3)
+
+    def test_a_long_plan_is_cut_first_and_says_where_the_rest_is(self):
+        review = "R" * 5000 + "\nVERDICT: PASS"
+        body = self.body(plan="P" * 70_000, review=review)
+        self.assertLessEqual(len(body), loop.PR_BODY_CAP)
+        self.assertIn(review, body)
+        self.assertIn("Cut at", body)
+        self.assertIn("`.loop/issue-12/plan.md`", body)
+        self.assertTrue(body.rstrip().endswith("</details>"))
+
+    def test_a_long_plan_and_review_are_both_cut(self):
+        body = self.body(plan="P" * 70_000, review="R" * 70_000)
+        self.assertLessEqual(len(body), loop.PR_BODY_CAP)
+        self.assertIn("`.loop/issue-12/plan.md`", body)
+        self.assertIn("`.loop/issue-12/review.md`", body)
+        self.assertIn("Ran 3 tests", body)
+
+    def test_a_missing_file_says_so(self):
+        body = self.body(plan=None, review=None, tests=None)
+        for name in ("plan.md", "review.md", "test-output.txt"):
+            self.assertIn("`{}` wasn't there.".format(name), body)
+
 
 # A stand-in agent and a stand-in gh, so a whole pass runs with no network and no model.
 AGENT = """#!/usr/bin/env python3
@@ -475,6 +543,29 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(comments), 1)
         self.assertIn("The loop opened https://example.test/pull/1 after 1 round:", comments[0])
         self.assertIn("doesn't merge", comments[0])
+
+    def pr_create_body(self):
+        text = (self.state / "gh-calls").read_text()
+        return text.split("pr create ", 1)[1].split("--body ", 1)[1].split("\nissue edit ", 1)[0]
+
+    def test_the_pull_request_says_what_changed_how_it_was_tested_and_what_the_review_said(self):
+        self.go()
+        body = self.pr_create_body()
+        self.assertIn("`feature.txt` +1", body)
+        self.assertIn("VERDICT: PASS", body)
+        self.assertIn("test -f feature.txt", body)
+        self.assertIn("Plan: add feature.txt.", body)
+
+    def test_a_missing_plan_still_opens_the_pull_request(self):
+        real = loop.Loop.scale
+
+        def scale(runner, issue, *args):
+            (runner.dir / "issue-{}".format(issue["number"]) / "plan.md").unlink()
+            return real(runner, issue, *args)
+        with mock.patch.object(loop.Loop, "scale", scale):
+            self.go()
+        self.assertIn("`plan.md` wasn't there.", self.pr_create_body())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
 
     def test_a_blocked_issue_says_why_and_how_to_retry(self):
         (self.state / "verdict").write_text("FIX")

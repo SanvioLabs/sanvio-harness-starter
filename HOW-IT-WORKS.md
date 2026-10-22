@@ -83,7 +83,7 @@ the next. Nothing runs until you start it, and it never merges.
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
 | Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`). Once the pull request is merged or closed, the loop removes the worktree and its branch while it's idle, unless the worktree has changes or the branch has commits the pull request doesn't | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
-| Scale | On PASS, and if the issue is still open, it opens a pull request that says `Closes #N` and comments the link on the issue. A blocked issue gets a comment saying why. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
+| Scale | On PASS, and if the issue is still open, it opens a pull request that says `Closes #N`, the files changed, the last test lines, the review in full and the plan (collapsed), and comments the link on the issue. A blocked issue gets a comment saying why. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
 
 Build and Validate repeat up to five rounds. After that the issue is labelled
 `loop:blocked` and the loop moves on without it. A pass needs the tests to exit 0

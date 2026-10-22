@@ -1,6 +1,6 @@
 ---
 name: harness-report
-description: Turn your harness usage for a sprint into a short report you share with the harness owner, with what you'd add, change or drop. Reads only your own local usage log, and you read the report before it goes anywhere. Use at the end of a sprint, or when someone asks for "my harness report", "what did I use this sprint", "sprint follow-up", or "what should we add to the harness".
+description: Turn your harness usage for a sprint into a short report you share with the harness owner, with what you'd add, change or drop. Reads only your own local usage log and Claude Code's token counts, and you read the report before it goes anywhere. Use at the end of a sprint, or when someone asks for "my harness report", "what did I use this sprint", "sprint follow-up", "what should we add to the harness", "token burn", "how many tokens", or "what did the loop cost".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
@@ -12,7 +12,9 @@ as a pull request on the harness. The owner reads the sprint's reports together
 and decides what goes into the harness.
 
 The log is written by [`.claude/hooks/usage_log.py`](../../.claude/hooks/usage_log.py). It holds names and counts,
-never prompts, paths or code.
+never prompts, paths or code. The token counts come from Claude Code's own
+transcripts on your machine, read by [`scripts/token_report.py`](../../scripts/token_report.py), which prints
+only numbers, model names and session ids.
 
 ## Steps
 
@@ -27,6 +29,16 @@ never prompts, paths or code.
 
    If it says there's no log, tell them why it might be missing (the hook isn't
    wired, or `HARNESS_USAGE_LOG` is off) and stop. Don't guess at their usage.
+
+   Then the tokens, from the same date:
+
+   ```bash
+   python3 scripts/token_report.py --since <YYYY-MM-DD>
+   ```
+
+   It reads Claude Code's own transcripts and prints counts only: tokens for
+   conversations here, for each repo under [`projects/`](../../projects/) and for each issue the
+   loop built. Tokens, not dollars, and Claude Code only.
 3. **Show them the summary,** then ask, one at a time:
    - What worked well enough that the team should use it?
    - Where did you work around the harness: a skill you skipped, a guard you
@@ -36,8 +48,8 @@ never prompts, paths or code.
    12 times, said yes 12 times" argues for loosening that ask). Don't invent a
    proposal they didn't make.
 4. **Write the report** to `reports/usage/<YYYY-MM-DD>-<user>.md`: the summary
-   as printed, then a `## Proposals` section with their answers. Leave nothing
-   unfilled.
+   as printed, then a `## Tokens` section with the token summary as printed,
+   then a `## Proposals` section with their answers. Leave nothing unfilled.
 5. **Have them read it.** It's going to the team. They can cut anything.
 6. **Name the commands to share it,** and let them run them:
 
