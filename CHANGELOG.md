@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop keeps to working hours
+
+`"hours": "Mon-Fri 09:00-17:00"` in `loop.json`, or `--hours` on `loop.py run`
+or `loop.py review` for one run, keeps the loop to those local hours. Outside
+them it starts nothing new, lets what's running finish, logs one `HOURS` line
+with the next start, and waits. A window that crosses midnight, such as
+`Fri 22:00-06:00`, belongs to the day it starts. A value it can't read logs an
+`ERROR` and the loop exits before taking anything.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** nothing. Without `hours` the loop runs at any time, as before.
+
 ## 2026-10-22: Check the starter
 
 "Check the starter" lists what the public starter has shipped since your copy
