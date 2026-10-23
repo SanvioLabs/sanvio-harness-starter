@@ -336,7 +336,9 @@ def project_root(path, root=None):
         harness = {}
     except ValueError as err:
         return refuse("the harness's loop.json isn't JSON: {}".format(err))
-    entries = harness.get("projects", {}) if isinstance(harness, dict) else {}
+    if not isinstance(harness, dict):
+        return refuse("the harness's loop.json isn't a JSON object")
+    entries = harness.get("projects", {})
     if not isinstance(entries, dict) or not all(isinstance(e, dict) for e in entries.values()):
         return refuse('"projects" in the harness\'s loop.json isn\'t an object of objects, one per project folder')
     for name, entry in entries.items():
