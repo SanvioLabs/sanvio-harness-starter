@@ -251,7 +251,7 @@ export function duration(ms: number): string {
 // prices and shows only beside tokens. Null when the row has none, as from an older loop.py.
 export function usage(row: Row): string | null {
   const t = row.tokens
-  if (!(t! > 0)) return null
+  if (t === undefined || !(t > 0)) return null
   const whole = Math.round(t)
   const thousands = Math.round(whole / 1000)
   const tokens = whole < 1000 ? String(whole) : thousands < 1000 ? `${thousands}k` : `${(whole / 1_000_000).toFixed(1)}M`
