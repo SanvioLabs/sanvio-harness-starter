@@ -86,7 +86,9 @@ the next. Nothing runs until you start it, and it never merges.
 | Scale | On PASS, and if the issue is still open, it opens a pull request that says `Closes #N`, the files changed, the last test lines, the review in full and the plan (collapsed), and comments the link on the issue. A blocked issue gets a comment saying why. It writes what went wrong into `.loop/lessons.md`, in the shape [`skills/learn/`](skills/learn/) reads, then takes the next issue | the pull request |
 
 Build and Validate repeat up to five rounds. After that the issue is labelled
-`loop:blocked` and the loop moves on without it. A pass needs the tests to exit 0
+`loop:blocked` and the loop moves on without it. A round after the first that
+adds nothing new ends the run there, blocked, with the agent's reply quoted on
+the issue: the tests and the review would only repeat. A pass needs the tests to exit 0
 **and** the review to say PASS: the script runs the tests, so the agent never
 grades its own work.
 
@@ -216,7 +218,8 @@ stays the default. The agent can edit files, but `npm install`, `pip install`
 and anything else that fetches a package need an approval nobody is there to
 give, unless your own `~/.claude/settings.json` or the checkout's
 [`.claude/settings.json`](.claude/settings.json) already allows it, so check both. A ticket whose work
-needs a package the agent has to install blocks after `max_rounds`.
+needs a package the agent has to install blocks in the first round after the
+first that adds nothing.
 
 What the agent can still do is edit `package.json`, `pyproject.toml` or a
 lockfile, and the script runs `test_command` with no approval at all. So use a
