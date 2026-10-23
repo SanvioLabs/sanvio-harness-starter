@@ -98,6 +98,16 @@ def section(text, start, end):
     return match.group(0) if match else ""
 
 
+class WhereToRunIt(unittest.TestCase):
+    def test_readme_says_what_works_in_each_app(self):
+        text = section((ROOT / "README.md").read_text(), "### Where to run it", "## ")
+        self.assertTrue(text, "README.md's Set up has no ### Where to run it part")
+        rows = [line for line in text.splitlines() if line.startswith("|")]
+        body = [line for line in rows[1:] if not re.match(r"^\|[\s|:-]+\|$", line)]
+        firsts = [row.split("|")[1].strip() for row in body]
+        self.assertEqual(firsts, ["Terminal", "VS Code extension", "Claude Desktop, Code tab", "Claude Desktop, chat"])
+
+
 class WhereThingsLive(unittest.TestCase):
     def test_readme_names_the_three_places(self):
         text = section((ROOT / "README.md").read_text(), "## Where things live", "## ")

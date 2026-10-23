@@ -8,7 +8,9 @@ prompt with the repo's running actions, open pull requests and open issues:
 ◆ github  SanvioLabs/sanvio-harness-starter · 1 action running (2 queued) · 3 open pull requests · 5 open issues
 ```
 
-It's a Claude Code mod, so it works in Claude Code only, and it was built on
+It's a Claude Code mod, so it works in Claude Code only: it was seen working in
+the terminal, the VS Code extension and Claude Desktop's Code tab on
+2026-10-23, with Claude Code 2.1.309. It was built on
 Claude Code 2.1.301. Codex and Kiro don't have mods.
 
 ## Turn it on

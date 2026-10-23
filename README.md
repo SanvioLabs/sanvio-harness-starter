@@ -81,6 +81,23 @@ On Windows, clone with `git clone -c core.symlinks=true` from a terminal with
 Developer Mode on, or the two links below arrive as plain text files. If they
 do, [`AGENTS.md`](AGENTS.md) still works for every tool.
 
+### Where to run it
+
+Tried on 2026-10-23 on a fresh clone, with Claude Code 2.1.309, its VS Code
+extension in VS Code 1.143.0, and Claude Desktop 3.6556.2 on macOS:
+
+| Where | What works |
+|---|---|
+| Terminal | Everything: the setup message, the guard, the skills, Stelliad and the mods. It's where the harness was built |
+| VS Code extension | The setup message, the guard, the skills and the three mods: the lens and GitHub status lines above the prompt, and `/loop-pane`'s pane. Open the repo's root as the folder, as in the terminal |
+| Claude Desktop, Code tab | The same: the trust prompt, the setup message, the guard, `/whats-new`, the plugins in `/plugin`, both lines above the prompt and `/loop-pane`. Pick the repo's root under **Local**, then **Open folder…** |
+| Claude Desktop, chat | None of it. Chat opens no folder, so no hooks, guard, skills, mods or `company/` load. Asked, it can read this repo's [`AGENTS.md`](AGENTS.md) as text, but nothing enforces it. Use the Code tab |
+
+Two clones of the starter on one machine share one set of mods: the
+marketplace is registered under one name for the whole machine, so the mods
+load from whichever clone registered it first. `claude plugin list` says which
+folder they're read from.
+
 ## Where things live
 
 The harness holds the method. Everything else is reached where it lives.
