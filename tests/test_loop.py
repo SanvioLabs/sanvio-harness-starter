@@ -380,6 +380,19 @@ elif "You are the reviewer" in prompt:
 elif os.path.exists(os.path.join(state, "build-noop")):
     # Writes nothing, and says so at length: the start of the reply runs past what a comment keeps.
     print("REPLY-START " + "x" * 3000 + " ping @someone. NOTHING-TO-DO-MARKER")
+elif os.path.exists(os.path.join(state, "build-writes")):
+    # Writes feature.txt, then each path in build-writes: one per line, a leading - deletes it,
+    # and "old>new" renames it.
+    open("feature.txt", "a").write("done")
+    for line in open(os.path.join(state, "build-writes")).read().splitlines():
+        if line.startswith("-"):
+            os.remove(line[1:])
+        elif ">" in line:
+            os.rename(*line.split(">"))
+        else:
+            os.makedirs(os.path.dirname(line) or ".", exist_ok=True)
+            open(line, "a").write("x")
+    print("Added feature.txt.")
 elif os.path.exists(os.path.join(state, "build-once")):
     # Writes feature.txt the first round only; a later round writes nothing and says so at length.
     if not os.path.exists("feature.txt"):
@@ -778,6 +791,94 @@ class TestAPass(unittest.TestCase):
         self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
         self.assertFalse(any("SIGNER-SAID-NO" in c for c in self.comments()))
         self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+
+    def build_writes(self, *paths):
+        (self.state / "build-writes").write_text("\n".join(paths))
+
+    def test_a_round_that_changes_a_lockfile_is_blocked_before_the_tests_run(self):
+        for path in ("package-lock.json", "web/package-lock.json", "reqs/requirements-dev.txt", "requirements.txt",
+                     "svc/Cargo.lock", "dir with space/uv.lock"):
+            with self.subTest(path=path):
+                self.tearDown()  # a fresh clone and state for each path; the last is torn down by the runner
+                self.setUp()
+                self.build_writes(path)
+                self.go()
+                steps = [l.split()[2] for l in self.lines()]
+                self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "BLOCKED"])
+                calls = self.calls()
+                self.assertFalse(any(c.startswith("pr create") for c in calls))
+                self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
+                self.assertIn("issue edit 12 --add-label loop:blocked", calls)
+                comment = self.comments()[0]
+                self.assertIn(path, comment)
+                self.assertIn("allow_lockfile_changes", comment)
+
+    def commit_lockfile(self):
+        (self.work / "package-lock.json").write_text("{}" * 50)
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-q", "-m", "lock")
+        git(self.work, "push", "-q", "origin", "main")
+
+    def test_a_round_that_edits_deletes_or_renames_a_lockfile_is_blocked(self):
+        for writes in (("package-lock.json",), ("-package-lock.json",), ("package-lock.json>old-lock.txt",)):
+            with self.subTest(writes=writes):
+                self.tearDown()
+                self.setUp()
+                self.commit_lockfile()
+                self.build_writes(*writes)
+                self.go()
+                self.assertIn("package-lock.json", self.comments()[0])
+                self.assertFalse((self.work / ".loop" / "issue-12" / "test-output.txt").exists())
+                self.assertFalse(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_a_blocked_rounds_lockfile_still_blocks_the_issue_when_it_is_run_again(self):
+        self.build_writes("package-lock.json")
+        self.go()
+        self.build_writes("notes.txt")  # the next round writes no lockfile, but the branch still has one
+        self.go()
+        self.assertEqual(len(self.comments()), 2)
+        self.assertIn("package-lock.json", self.comments()[1])
+        self.assertIn("drop the agent's commit", self.comments()[1])
+        self.assertFalse(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_a_git_that_cannot_list_the_loops_commits_blocks_before_the_tests_run(self):
+        real = loop.Loop.git
+
+        def failing_log(this, *args, **kw):
+            if args and args[0] == "log":
+                return 128, ""
+            return real(this, *args, **kw)
+
+        self.build_writes("package-lock.json")
+        with mock.patch.object(loop.Loop, "git", failing_log):
+            self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "BLOCKED"])
+        self.assertIn("could not list the loop's commits", self.comments()[0])
+        self.assertFalse(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_allowing_lockfile_changes_lets_the_round_through(self):
+        self.cfg["allow_lockfile_changes"] = True
+        self.build_writes("web/package-lock.json")
+        self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-12") for c in self.calls()))
+
+    def test_allow_lockfile_changes_that_isnt_a_bool_is_an_error_with_no_agent_run(self):
+        self.cfg["allow_lockfile_changes"] = "yes"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = loop.Loop(self.work, self.cfg).run(once=True)
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR allow_lockfile_changes in loop.json", (self.work / ".loop" / "loop.log").read_text())
+        self.assertFalse((self.state / "agents-started").exists())
+
+    def test_a_manifest_or_a_requirements_note_is_not_a_lockfile(self):
+        self.build_writes("package.json", "docs/requirements.md")
+        self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps, ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
 
     def test_a_build_that_changes_nothing_is_blocked_before_review(self):
         (self.state / "build-noop").write_text("")

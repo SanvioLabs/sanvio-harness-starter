@@ -98,6 +98,13 @@ DEFAULTS = {
     "worktree_dir": "",
 }
 
+LOCKFILES = {
+    "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb",
+    "uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "Cargo.lock", "go.sum", "Gemfile.lock",
+    "composer.lock",
+}  # a round that changes one of these, at any depth, blocks the issue unless loop.json allows it
+REQUIREMENTS = re.compile(r"^requirements.*\.txt$")
+
 VERDICT = re.compile(r"^\s*VERDICT:\s*(PASS|FIX)\s*$", re.I | re.M)
 OUTPUT_CAP = 100_000
 REVIEW_MARKER = "<!-- loop-review-pr-report -->"  # first line of the one comment per pull request
@@ -661,6 +668,12 @@ def block_comment(number, why, rounds, cfg, said=None, usage=None):
         quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
         text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
     return text
+
+
+def lockfiles(paths):
+    """The paths whose file name is a lockfile's: one in LOCKFILES, or requirements*.txt."""
+    names = [(p, p.rsplit("/", 1)[-1]) for p in paths]
+    return [p for p, name in names if name in LOCKFILES or REQUIREMENTS.match(name)]
 
 
 class Loop:
@@ -1300,7 +1313,9 @@ class Loop:
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
             self.git("add", "-A", cwd=tree)
-            changed = self.git("diff", "--cached", "--name-only", cwd=tree)[1].split()
+            # -z keeps a path with spaces whole; --no-renames makes a renamed lockfile a deletion too.
+            changed = [p for p in self.git("diff", "--cached", "--name-only", "--no-renames", "-z",
+                                           cwd=tree)[1].split("\0") if p]
             if changed:
                 # Hooks off: the agent can write .githooks/ in the worktree, and git would run it.
                 ccode = self.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", issue["title"],
@@ -1310,6 +1325,24 @@ class Loop:
                     return self.block(number, "commit refused (git exit {})".format(ccode))
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
+            # Every commit the loop made on the branch, not only this round's: a blocked round's lockfile
+            # stays on a reused checkout, and a person's own commit is not the loop's to block.
+            lcode, lout = self.git("log", "--no-renames", "--name-only", "-z", "--format=", "--fixed-strings",
+                                   "--grep=Loop: issue #{}, round".format(number),
+                                   "origin/{}..HEAD".format(self.cfg["base"]), cwd=tree)
+            lockpaths = sorted(set(lockfiles(changed + [p for p in lout.split("\0") if p])))
+            if self.cfg.get("allow_lockfile_changes") is not True and lcode != 0:
+                # A git that fails can't show the branch's lockfiles, so nothing goes on to tests.
+                return self.block(number, "could not list the loop's commits on loop/issue-{} (git exit {}), "
+                                  "so lockfile changes could not be checked and no tests ran".format(number, lcode),
+                                  said=said)
+            if lockpaths and self.cfg.get("allow_lockfile_changes") is not True:
+                return self.block(number, (
+                    "the loop's commits on loop/issue-{} change {}, and the build agent may not change a "
+                    "lockfile, so no tests ran. Put the dependency and its lockfile on {} yourself and drop "
+                    "the agent's commit (reset the branch to origin/{}), or set "
+                    '"allow_lockfile_changes": true in loop.json to let the loop pass them on'
+                ).format(number, ", ".join(lockpaths), self.cfg["base"], self.cfg["base"]), said=said)
             # The whole branch against its base, so a resumed branch's earlier commits count.
             # A git that fails proves nothing.
             dcode, diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)
@@ -1507,6 +1540,10 @@ class Loop:
             if why:
                 self.log("ERROR", "{} in loop.json: {}, so no issue is taken".format(which, why))
                 return 1
+        if not isinstance(self.cfg.get("allow_lockfile_changes", False), bool):
+            self.log("ERROR", "allow_lockfile_changes in loop.json: {} isn't true or false, "
+                     "so no issue is taken".format(repr(self.cfg["allow_lockfile_changes"])[:100]))
+            return 1
         idle = False
         running = {}  # issue number -> its worker thread
         most = workers(self.cfg)
