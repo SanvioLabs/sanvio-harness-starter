@@ -197,6 +197,50 @@ the queue on weeknights only. A value it can't read logs an `ERROR` and the
 loop exits before it takes anything. With `--for` as well, the run still ends
 on time, waiting or not.
 
+**The build agent doesn't install packages.** This is the default, and it
+stays the default. The agent can edit files, but `npm install`, `pip install`
+and anything else that fetches a package need an approval nobody is there to
+give, unless your own `~/.claude/settings.json` or the checkout's
+[`.claude/settings.json`](.claude/settings.json) already allows it, so check both. A ticket whose work
+needs a package the agent has to install blocks after `max_rounds`.
+
+What the agent can still do is edit `package.json`, `pyproject.toml` or a
+lockfile, and the script runs `test_command` with no approval at all. So use a
+test command that installs only what the committed lockfile says and fails when
+the manifest disagrees with it: `npm ci && npm test`, or `uv run --locked
+pytest`. A fresh checkout has no `node_modules`, so a Node project needs that
+`npm ci` anyway. In the pull request, read any manifest or lockfile change
+before you merge it.
+
+To give a ticket a new dependency, add it yourself first:
+
+- Commit the dependency and its lockfile straight to `base`, and the ticket
+  needs nothing more. Or open an issue for it, leave `loop-ready` off it, and
+  merge a pull request that says `Closes #N`. Then put `Depends on #N` on the
+  ticket, naming that issue rather than the pull request: the loop blocks a
+  number that isn't an issue, or an issue closed by hand.
+- If the ticket has already blocked, its old checkout and branch are reused as
+  they are when it's relabelled, without your dependency. Remove both first,
+  `git worktree remove <worktree_dir>/issue-N` then `git branch -D
+  loop/issue-N`, then take `loop:blocked` off and put `loop-ready` back.
+
+A team that wants its loop to install can allow it, in the harness's
+`loop.json` or, with `--project`, the project's own. Name the commands the build
+agent may run:
+
+    {"agent": "claude -p --permission-mode acceptEdits --allowedTools \"Bash(npm install --ignore-scripts *)\""}
+
+That works for a `claude` agent only. `codex` ignores `--allowedTools`, and a
+full command line replaces `claude:<model>`, so add `--model` if you had one.
+It's the team's decision, not the harness's default, and it lets an agent
+nobody is watching pull any package the registry has. Without
+`--ignore-scripts`, that package's install scripts also run on the machine
+with your full environment, including the tokens the test command is denied.
+Allow the narrowest command that does the job. With `--project`, whoever can
+merge to the project's repo can change its `loop.json`, and a private
+registry's token won't reach `test_command`, which runs with every variable
+named like a token removed.
+
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put

@@ -27,6 +27,10 @@ it gets read before it's labelled.
      `WAITING` lines in `.loop/loop.log`, and `waiting_on` on the issue's
      entry in the queue in `.loop/status.json`, show what it waits on.
    - **Where Stelliad is installed,** `stelliad:review-ticket <N>` says READY.
+   - **No package to install,** unless the loop's `agent` is allowed to. By
+     default it can't, so a new dependency goes on `base` first, or on a
+     `Depends on #N` issue; [`HOW-IT-WORKS.md`](../../HOW-IT-WORKS.md) (*The build agent doesn't
+     install packages*) has how, including for a ticket that already blocked.
    - **Nothing outside the repo:** no deploying, sending, publishing,
      credentials, or anything the guard would refuse.
    - **Not assigned to someone else.** The loop skips those anyway.

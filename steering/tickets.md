@@ -51,6 +51,10 @@ skill checks them and asks before it labels.
 - Where Stelliad is installed, `stelliad:review-ticket` says READY. Its
   docs call the Ready label `agent-ready`; here it's `loop-ready`, applied
   through `loop-control`.
+- Any new package it needs is already on `base`, or named on a `Depends on #N`
+  line, unless this loop's `agent` is allowed to install. The build agent
+  can't install one by default; [`HOW-IT-WORKS.md`](../HOW-IT-WORKS.md) (*The build agent doesn't
+  install packages*) has how to add it first.
 - Nothing outside the repo: no deploy, no message, no credentials, nothing the
   guard would refuse.
 - Risk is Low or Medium, and there's no Human Approval section. The loop runs
