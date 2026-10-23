@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop pane start time on its own line
+
+In the [loop pane](examples/mods/loop-pane/), when a job started and how long it
+has run now sit on their own line under its title, above its step, so a long
+step no longer pushes the clock off the edge. Each job takes one more row.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** nothing. `/reload-plugins`, or a new session, picks it up.
+
 ## 2026-10-22: Loop token budget per issue
 
 `max_issue_tokens` in `loop.json` caps the tokens one run of an issue may use.

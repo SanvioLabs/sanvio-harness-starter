@@ -11,13 +11,15 @@ starter                                ● Running 2 · up 1h 04m
 [ Queue 1 ] [ Active 2 ] [ Finished 4 ]
 
 ● #14 Gate: an empty Role cell passes
-  building, round 2 of 5 · started 14:22 · running 6m 12s
+  started 14:22 · running 6m 12s
+  building, round 2 of 5
   tests failed (1), review FIX
 
   [ Watch ]
 
 ● #15 Proposal: stamp the phase
-  planning · started 14:27 · running 1m 03s
+  started 14:27 · running 1m 03s
+  planning
 
 
   [ Watch ]
@@ -45,16 +47,19 @@ Pick **Finished** and it lists the last day's jobs, three at a time:
 ```
 ▲ 1 more
 ● #1 Gate: a fee row with 0 hours passes
-  pull request open · started 09:10 · took 18m 03s
+  started 09:10 · took 18m 03s
+  pull request open
   tests passed, review PASS
   [ Copy pull request link ]
 
 ● #9 README: link the loop section
-  blocked · started 08:02 · took 1h 04m
+  started 08:02 · took 1h 04m
+  blocked
   tests passed, review FIX. still failing after 5 rounds, see .loop/issue-9/
 
 ● #7 Gate: a blank fee cell passes
-  pull request open · started 07:41 · took 12m 40s
+  started 07:41 · took 12m 40s
+  pull request open
   tests passed, review PASS
   [ Copy pull request link ]
 ```

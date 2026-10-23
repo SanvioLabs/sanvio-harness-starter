@@ -29,8 +29,9 @@ const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean 
 const PULSE = { bright: { color: 'cyan', bold: true }, dim: { color: 'cyan', dimColor: true } } as const
 let beat = true
 
-// A job's rows: its title, where it is, two for the last round's results, and its pull request.
-const JOB_ROWS = 5
+// A job's rows: its title, when it started, where it is, two for the last round's results, and its
+// pull request.
+const JOB_ROWS = 6
 
 const EMPTY: Record<Tab, string> = {
   queue: 'Nothing waiting. Label an issue loop-ready to queue it.',
@@ -211,10 +212,11 @@ export const register: Register = on => {
             <Text bold>{clip(`#${row.number} ${row.title}`, inner)}</Text>
           </Box>
           <Box flexDirection="column" marginLeft={2}>
-            <Box flexDirection="row">
-              <Text {...COLORS[state.tone]}>{stateText}</Text>
-              {time && <Text dimColor>{clip(` · ${time}`, inner - stateText.length)}</Text>}
+            {/* Blank for a job from a loop.py that writes no start, so every job takes the same rows. */}
+            <Box key={`clock-${row.number}`}>
+              <Text dimColor>{time ? clip(time, inner) : ' '}</Text>
             </Box>
+            <Text {...COLORS[state.tone]}>{stateText}</Text>
             <Box height={2} overflow="hidden">
               <Text dimColor>{detail ? clip(detail, inner * 2) : ' '}</Text>
             </Box>

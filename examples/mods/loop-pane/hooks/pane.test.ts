@@ -236,7 +236,24 @@ group('a job in the pane', () => {
     const ui = await $.ui.mount(PANE)
     const drawn = JSON.stringify(await ui.drawn())
     expect(drawn).toContain('●')
-    expect(drawn).toContain(` · started ${p(d.getHours())}:${p(d.getMinutes())} · running 6m 1`)
+    expect(drawn).toContain(`started ${p(d.getHours())}:${p(d.getMinutes())} · running 6m 1`)
+    await ui.unmount()
+  })
+  test('the clock has a line of its own under the title, apart from the step', async ($, on) => {
+    seed(on, working)
+    const ui = await $.ui.mount(PANE)
+    const clockRow = JSON.stringify(await ui.find({ key: 'clock-12' }))
+    expect(clockRow).toContain(`started ${p(d.getHours())}:${p(d.getMinutes())}`)
+    expect(clockRow).not.toContain('building')
+    expect(JSON.stringify(await ui.drawn())).not.toContain(' · started')
+    await ui.unmount()
+  })
+  test('a job with no clock keeps the line, so every job takes the same rows', async ($, on) => {
+    const old = { ...working, status: { ...working.status!, issues: [{ ...working.status!.issues[0], started: undefined }] } }
+    seed(on, old)
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.find({ key: 'clock-12' })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).not.toContain('started')
     await ui.unmount()
   })
   test("the header's Running dot pulses with the job's", async ($, on) => {
