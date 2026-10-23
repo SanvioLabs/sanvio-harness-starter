@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop blocks a round that changes a lockfile
+
+A round of the loop's build agent that adds, edits, deletes or renames a
+lockfile (`package-lock.json`, `yarn.lock`, `uv.lock`, `Cargo.lock`,
+`requirements*.txt` and the like, at any depth) now blocks the issue before the
+tests run, and the comment names the paths and says to put the dependency on
+`base` and drop the agent's commit. It reads all the loop's commits on the
+branch, so putting the issue back on the loop doesn't get past it, and it
+blocks if git can't list them. A team that lets the agent install sets `"allow_lockfile_changes": true` in `loop.json`; any other value is an
+`ERROR` when `run` starts. A manifest edited alone isn't caught, so `uv` and
+`cargo` test commands should pass `--locked`.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing, unless your loop lets the agent install: then set
+`"allow_lockfile_changes": true` in its `loop.json`.
+
 ## 2026-10-22: Loop blocks a later round that adds nothing
 
 A build round after the first that stages no new files now blocks the issue at

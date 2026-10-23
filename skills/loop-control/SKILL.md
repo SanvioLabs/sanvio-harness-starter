@@ -31,6 +31,11 @@ it gets read before it's labelled.
      default it can't, so a new dependency goes on `base` first, or on a
      `Depends on #N` issue; [`HOW-IT-WORKS.md`](../../HOW-IT-WORKS.md) (*The build agent doesn't
      install packages*) has how, including for a ticket that already blocked.
+     A round that changes a lockfile blocks the issue before the tests run,
+     naming the paths (it reads every commit the loop made on the branch, so
+     drop the agent's commit before putting the issue back), unless `loop.json` sets `"allow_lockfile_changes":
+     true`, which a team that lets the agent install sets too. Its `uv` and
+     `cargo` test commands should pass `--locked`.
    - **Nothing outside the repo:** no deploying, sending, publishing,
      credentials, or anything the guard would refuse.
    - **Not assigned to someone else.** The loop skips those anyway.

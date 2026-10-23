@@ -258,6 +258,25 @@ merge to the project's repo can change its `loop.json`, and a private
 registry's token won't reach `test_command`, which runs with every variable
 named like a token removed.
 
+Allowing installs also means setting `"allow_lockfile_changes": true` in the
+same `loop.json`, because an install rewrites the lockfile. Until it is set, a
+round whose commit adds, edits, deletes or renames a lockfile, at any depth
+(`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`,
+`Cargo.lock`, `go.sum`, `Gemfile.lock`, `requirements*.txt` and the like),
+blocks the issue before the tests run. The check reads every commit the loop
+made on the issue's branch, so a blocked round's lockfile still blocks the
+issue when it is put back on the loop. The comment on the issue names the
+paths and says to put the dependency and its lockfile on `base` yourself and
+drop the agent's commit (reset the branch to `origin/<base>`), or to set that
+key. If git can't list those commits, the issue is blocked too, with no tests.
+The commits are recognised by the `Loop: issue #N, round` line in their
+message, so a commit the agent makes itself, without that line, isn't counted.
+A lockfile you commit on the branch yourself isn't counted either. Any value
+but `true` or `false` is an `ERROR` when `run` starts, and no issue is taken.
+A manifest edited on its own isn't caught, so a `uv` or `cargo` test command
+should pass `--locked` (`uv run --locked`, `cargo test --locked`), which fails
+when the lockfile disagrees with it.
+
 **What the review can see.** The reviewer gets the plan, the diff and the
 script's test output. With the default `reader_agent` it can't run commands,
 so it checks the rest by reading the code. If the proof is a command, put
