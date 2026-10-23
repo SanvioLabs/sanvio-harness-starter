@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop blocks a later round that adds nothing
+
+A build round after the first that stages no new files now blocks the issue at
+once, with the agent's reply quoted on the issue, instead of running the tests
+and the review again up to `max_rounds`. This reverses the fourth criterion of
+#118, which sent such a round to review. A round with no change against the
+base is still blocked as before, and a resumed branch's first round still goes
+to review.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing.
+
 ## 2026-10-22: Loop records each issue's usage
 
 When the loop's agent is `claude`, it now records each run's tokens and

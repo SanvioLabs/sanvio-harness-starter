@@ -1310,11 +1310,15 @@ class Loop:
                     return self.block(number, "commit refused (git exit {})".format(ccode))
             self.log("BUILD", "round {} done {} file{}".format(
                 round_no, len(changed), "" if len(changed) == 1 else "s"), number)
-            # The whole branch against its base, not this round's files: a round that adds nothing
-            # to earlier rounds' commits still goes to review. A git that fails proves nothing.
+            # The whole branch against its base, so a resumed branch's earlier commits count.
+            # A git that fails proves nothing.
             dcode, diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)
             if dcode == 0 and not diff.strip():
                 return self.block(number, "the build made no change in round {}".format(round_no), said=said)
+            # A later round that stages nothing has nothing new to test or review: the last round's
+            # findings went unanswered, and running on would only repeat them up to max_rounds.
+            if round_no > 1 and not changed:
+                return self.block(number, "the build added nothing in round {}".format(round_no), said=said)
             self.mark(number, step="VALIDATE")
 
             tcode, tout = self.sh(self.cfg["test_command"], cwd=tree, shell=True,

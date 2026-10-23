@@ -381,10 +381,12 @@ elif os.path.exists(os.path.join(state, "build-noop")):
     # Writes nothing, and says so at length: the start of the reply runs past what a comment keeps.
     print("REPLY-START " + "x" * 3000 + " ping @someone. NOTHING-TO-DO-MARKER")
 elif os.path.exists(os.path.join(state, "build-once")):
-    # Writes feature.txt the first round only, so a later round adds no files.
+    # Writes feature.txt the first round only; a later round writes nothing and says so at length.
     if not os.path.exists("feature.txt"):
         open("feature.txt", "w").write("done")
-    print("Added feature.txt.")
+        print("Added feature.txt.")
+    else:
+        print("REPLY-START " + "x" * 3000 + " ping @someone. NOTHING-TO-DO-MARKER")
 else:
     open("feature.txt", "a").write("done")
     print("Added feature.txt.")
@@ -812,14 +814,55 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(blocked), 1)
         self.assertIn("no change", blocked[0])
 
-    def test_a_round_with_no_new_files_after_earlier_commits_is_reviewed(self):
+    def test_a_later_round_that_adds_nothing_is_blocked_before_tests_and_review(self):
+        (self.state / "build-once").write_text("")
+        (self.state / "verdict").write_text("FIX")
+        runs = self.state / "test-runs"
+        self.cfg["test_command"] = "echo run >> {}; test -f feature.txt".format(runs)
+        self.go()
+        steps = [l.split()[2] for l in self.lines()]
+        self.assertEqual(steps[2:], ["BUILD", "VALIDATE", "BUILD", "BLOCKED"])
+        self.assertEqual(steps.count("VALIDATE"), 1)
+        self.assertEqual(len(runs.read_text().splitlines()), 1)
+        remote = git(self.work, "ls-remote", "origin", "loop/issue-12").stdout
+        self.assertEqual(remote, "")
+        self.assertFalse(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_a_later_round_that_adds_nothing_says_so_and_quotes_the_agent(self):
         (self.state / "build-once").write_text("")
         (self.state / "verdict").write_text("FIX")
         self.go()
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        comment = comments[0]
+        self.assertIn("added nothing in round 2", comment)
+        self.assertIn("NOTHING-TO-DO-MARKER", comment)
+        self.assertNotIn("REPLY-START", comment)
+        self.assertNotIn("@someone", comment)
+
+    def test_a_later_round_that_adds_nothing_shows_in_status_and_log(self):
+        (self.state / "build-once").write_text("")
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertEqual((row["state"], row["note"]), ("blocked", "the build added nothing in round 2"))
+        blocked = [l for l in self.lines() if l.split()[2] == "BLOCKED"]
+        self.assertEqual(len(blocked), 1)
+        self.assertIn("added nothing in round 2", blocked[0])
+
+    def test_a_resumed_first_round_with_no_new_commit_is_reviewed(self):
+        # An earlier run left loop/issue-12 with a commit; round 1 adds nothing on top, and still goes to review.
+        git(self.work, "switch", "-q", "-c", "loop/issue-12")
+        (self.work / "feature.txt").write_text("done")
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-q", "-m", "earlier run")
+        git(self.work, "switch", "-q", "main")
+        (self.state / "build-noop").write_text("")
+        (self.state / "verdict").write_text("FIX")
+        self.go()
         steps = [l.split()[2] for l in self.lines()]
-        self.assertEqual(steps.count("VALIDATE"), 2)
-        self.assertIn("still failing after 2 rounds", self.lines()[-1])
-        self.assertNotIn("no change", "\n".join(self.lines()))
+        self.assertEqual(steps[2:], ["BUILD", "VALIDATE", "BUILD", "BLOCKED"])
+        self.assertIn("added nothing in round 2", self.lines()[-1])
 
     def test_a_comment_that_fails_is_logged_and_the_pull_request_stands(self):
         (self.state / "comment-fails").write_text("")
