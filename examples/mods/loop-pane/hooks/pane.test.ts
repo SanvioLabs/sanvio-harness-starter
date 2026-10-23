@@ -249,19 +249,19 @@ group('a job in the pane', () => {
     await ui.unmount()
   })
   test('tokens and cost follow the time in the same single-line clock text', async ($, on) => {
-    const used = { ...working, status: { ...working.status!, issues: [{ ...working.status!.issues[0], tokens: 840_000, cost_usd: 3.4 }] } }
-    seed(on, working)
-    const plain = await $.ui.mount(PANE)
-    const plainHeight = ((await plain.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height
-    await plain.unmount()
-    seed(on, used)
+    // Two jobs at once, one with usage and one without, so one mount compares their heights.
+    const job = working.status!.issues[0]
+    seed(on, { ...working, status: { ...working.status!, issues: [
+      { ...job, tokens: 840_000, cost_usd: 3.4 }, { ...job, number: 13, title: 'Other' }] } })
     const ui = await $.ui.mount(PANE)
+    const height = async (key: string) =>
+      ((await ui.find({ key })) as unknown as { props?: { height?: number } } | undefined)?.props?.height
     // The job keeps the rows it has without usage.
-    const usedHeight = ((await ui.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height
-    expect(plainHeight).toBeDefined()
-    expect(usedHeight).toBe(plainHeight)
+    expect(await height('issue-12')).toBeDefined()
+    expect(await height('issue-12')).toBe(await height('issue-13'))
     // One string in one Text under the clock key: usage is part of the time's line, not a row of its own.
     expect(JSON.stringify(await ui.find({ key: 'clock-12' }))).toMatch(/"started [^"]* · running [^"]* · 840k tokens · ~\$3\.40"/)
+    expect(JSON.stringify(await ui.find({ key: 'clock-13' }))).not.toContain('tokens')
     await ui.unmount()
   })
   test('a job with no clock keeps the line, so every job takes the same rows', async ($, on) => {
