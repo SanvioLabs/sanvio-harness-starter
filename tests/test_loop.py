@@ -728,6 +728,19 @@ class TestAPass(unittest.TestCase):
         self.assertIn("codex", warned[0])
         self.assertIn("agent", warned[0])
 
+    def test_a_claude_command_line_is_counted_but_one_that_chose_text_is_named(self):
+        claude = Path(self.tmp.name) / "bin" / "claude"
+        claude.write_text(AGENT)
+        claude.chmod(claude.stat().st_mode | stat.S_IEXEC)
+        self.cfg.update(agent="claude -p --permission-mode acceptEdits", reader_agent="claude -p", max_issue_tokens=1)
+        self.go()
+        self.assertEqual([l for l in self.lines() if l.split()[2] == "WARN"], [])
+        self.cfg.update(reader_agent="claude -p --output-format text")
+        self.go()
+        warned = [l for l in self.lines() if l.split()[2] == "WARN"]
+        self.assertEqual(len(warned), 1)
+        self.assertIn("reader_agent", warned[0])
+
     def test_an_agent_that_will_not_start_is_recorded_as_not_reported(self):
         missing = str(Path(self.tmp.name) / "no-such-agent")
         self.cfg.update(agent=missing, reader_agent=missing)

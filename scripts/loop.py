@@ -537,6 +537,18 @@ def result_line(line):
     return text, (usage if any(value is not None for value in usage.values()) else None)
 
 
+def reports_usage(cmd):
+    """Whether stream() can read this command's usage: claude, asking for no format of its own or for json."""
+    if not cmd or Path(cmd[0]).name != "claude":
+        return False
+    for at, word in enumerate(cmd):
+        if word == "--output-format":
+            return cmd[at + 1:at + 2] == ["json"]
+        if word.startswith("--output-format="):
+            return word.split("=", 1)[1] == "json"
+    return True
+
+
 def usage_totals(entries):
     """(tokens, cost) over usage.json entries: None for each when no entry reported it."""
     tokens = cost = None
@@ -1588,7 +1600,7 @@ class Loop:
             return 1
         if limit:
             for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
-                if named(self.cfg[which])[0] != "claude":
+                if not reports_usage(command(self.cfg, which)[0]):
                     self.log("WARN", "max_issue_tokens is {:,}, but {} ({}) may not report its tokens, "
                              "so the budget can't count them".format(limit, which, self.cfg[which]))
         idle = False
