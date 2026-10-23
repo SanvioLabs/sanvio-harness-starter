@@ -2574,10 +2574,11 @@ class TestProject(unittest.TestCase):
                 (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
 
     def test_a_project_whose_loop_json_sets_a_machine_key_is_refused(self):
+        site = self.on_github("site")
         for key in ("agent", "allow_lockfile_changes"):
             with self.subTest(key=key):
-                (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS, key: True}))
-                code, err, built = self.main("run", "--project", str(self.project))
+                (site / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS, key: True}))
+                code, err, built = self.main("run", "--project", str(site))
                 self.assertEqual(code, 1)
                 self.assertEqual(len(err.splitlines()), 1, err)
                 self.assertTrue(err.startswith("ERROR "), err)
@@ -2586,14 +2587,17 @@ class TestProject(unittest.TestCase):
                 built.assert_not_called()
 
     def test_a_harness_projects_entry_that_is_malformed_or_sets_a_project_key_is_refused(self):
-        for projects in ({"app": {"test_command": "true"}}, ["app"], {"app": "claude"}):
-            with self.subTest(projects=projects):
-                self.harness_config({"projects": projects})
-                code, err, built = self.main("run", "--project", str(self.project))
+        site = self.on_github("site")
+        (site / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+        for config in ({"projects": {"site": {"test_command": "true"}}}, {"projects": ["site"]},
+                       {"projects": {"site": "claude"}}, ["site"]):
+            with self.subTest(config=config):
+                self.harness_config(config)
+                code, err, built = self.main("run", "--project", str(site))
                 self.assertEqual(code, 1)
                 self.assertEqual(len(err.splitlines()), 1, err)
                 self.assertTrue(err.startswith("ERROR "), err)
-                self.assertIn('"projects"', err)
+                self.assertIn("loop.json", err)
                 built.assert_not_called()
 
     def test_without_a_project_the_harness_projects_entries_override_nothing(self):

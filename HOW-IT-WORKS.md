@@ -273,9 +273,9 @@ registry's token won't reach `test_command`, which runs with every variable
 named like a token removed.
 
 Allowing installs also means setting `"allow_lockfile_changes": true` in the
-same harness `loop.json` (with `--project`, in the project's `"projects"` entry
-there; the project's own file can't set it), because an install rewrites the lockfile. Until it is set, a
-round whose commit adds, edits, deletes or renames a lockfile, at any depth
+same harness `loop.json` (with `--project`, in the project's `"projects"`
+entry there; the project's own file can't set it), because an install rewrites
+the lockfile. Until it is set, a round whose commit adds, edits, deletes or renames a lockfile, at any depth
 (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`,
 `Cargo.lock`, `go.sum`, `Gemfile.lock`, `requirements*.txt` and the like),
 blocks the issue before the tests run. The check reads every commit the loop
