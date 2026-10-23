@@ -250,8 +250,16 @@ group('a job in the pane', () => {
   })
   test('tokens and cost follow the time in the same single-line clock text', async ($, on) => {
     const used = { ...working, status: { ...working.status!, issues: [{ ...working.status!.issues[0], tokens: 840_000, cost_usd: 3.4 }] } }
+    seed(on, working)
+    const plain = await $.ui.mount(PANE)
+    const plainHeight = ((await plain.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height
+    await plain.unmount()
     seed(on, used)
     const ui = await $.ui.mount(PANE)
+    // The job keeps the rows it has without usage.
+    const usedHeight = ((await ui.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height
+    expect(plainHeight).toBeDefined()
+    expect(usedHeight).toBe(plainHeight)
     // One string in one Text under the clock key: usage is part of the time's line, not a row of its own.
     expect(JSON.stringify(await ui.find({ key: 'clock-12' }))).toMatch(/"started [^"]* · running [^"]* · 840k tokens · ~\$3\.40"/)
     await ui.unmount()
