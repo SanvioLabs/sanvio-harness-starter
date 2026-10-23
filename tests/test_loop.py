@@ -348,6 +348,17 @@ AGENT = """#!/usr/bin/env python3
 import json, os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
+if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") + 1:][:1] == ["json"]:
+    # As claude -p --output-format json: the reply once, at the end, in a result object with its usage.
+    import atexit, io
+    real, said = sys.stdout, io.StringIO()
+    sys.stdout = said
+    def emit():
+        real.write(json.dumps({"type": "result", "result": said.getvalue(), "total_cost_usd": 0.25, "usage": {
+            "input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 30,
+            "cache_read_input_tokens": 20}}) + "\\n")
+        real.flush()
+    atexit.register(emit)
 # Which command started, by the words after the script, and for which step.
 step = "plan" if "You are planning" in prompt else "review" if "You are the reviewer" in prompt else "build"
 with open(os.path.join(state, "agents-started"), "a") as f:
@@ -566,6 +577,10 @@ class TestAPass(unittest.TestCase):
         self.tmp.cleanup()
 
     def lines(self):
+        """The log without its USAGE lines, which the tests for usage read from raw_lines()."""
+        return [l for l in self.raw_lines() if l.split()[2] != "USAGE"]
+
+    def raw_lines(self):
         return (self.work / ".loop" / "loop.log").read_text().splitlines()
 
     def status(self):
@@ -582,6 +597,61 @@ class TestAPass(unittest.TestCase):
     def go(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=True, **kwargs)
+
+    def test_a_run_that_reports_no_usage_is_recorded_as_not_reported_never_zero(self):
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["round"]) for e in entries], [("plan", 0), ("build", 1), ("review", 1)])
+        for entry in entries:
+            self.assertFalse(entry["reported"])
+            for name in loop.USAGE_TOKENS + ("cost_usd",):
+                self.assertIsNone(entry[name], name)
+        row = self.status()["issues"][0]
+        self.assertIsNone(row["tokens"])
+        self.assertIsNone(row["cost_usd"])
+        self.assertEqual([l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"],
+                         ["plan round 0 not reported", "build round 1 not reported", "review round 1 not reported"])
+
+    def test_the_pull_request_says_a_step_without_usage_was_not_reported(self):
+        self.go()
+        body = (self.state / "gh-calls").read_text().split("pr create", 1)[1]
+        self.assertIn("## Usage", body)
+        self.assertIn("| plan | not reported | not reported |", body)
+        self.assertIn("| **Total** | not reported | not reported |", body)
+
+    def test_a_block_comment_says_when_usage_was_not_reported(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        self.assertIn("Usage wasn't reported.", self.comments()[0])
+
+    def test_an_agent_that_will_not_start_is_recorded_as_not_reported(self):
+        missing = str(Path(self.tmp.name) / "no-such-agent")
+        self.cfg.update(agent=missing, reader_agent=missing)
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["input_tokens"]) for e in entries], [("plan", False, None)])
+        self.assertEqual([l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"],
+                         ["plan round 0 not reported"])
+
+    def test_the_log_lines_it_already_wrote_are_unchanged(self):
+        self.go()
+        self.assertEqual([l.split(" ", 2)[1:] for l in self.lines()[:4]], [
+            ["#12", 'DISCOVER picked "Add the thing"'],
+            ["#12", "SHAPE done plan.md"],
+            ["#12", "BUILD round 1 done 1 file"],
+            ["#12", "VALIDATE round 1 tests passed review PASS"]])
+        self.assertTrue(self.lines()[4].split(" ", 2)[2].startswith("SCALE PR opened "))
+        self.assertEqual(len(self.lines()), 5)
+
+    def test_the_status_row_keeps_every_field_it_had(self):
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertTrue({"number", "title", "step", "state", "round", "tests", "review", "pr", "note", "updated"} <= set(row))
+        self.assertEqual((row["number"], row["step"], row["state"], row["round"], row["tests"], row["review"], row["note"]),
+                         (12, "SCALE", "pr", 1, "passed", "PASS", ""))
+        self.assertTrue(row["pr"])
+        self.assertIn("tokens", row)
+        self.assertIn("cost_usd", row)
 
     def test_a_good_change_opens_a_pull_request_in_five_steps(self):
         self.assertEqual(self.go(), 0)
@@ -2060,6 +2130,96 @@ class TestProject(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.harness / ".loop").iterdir()), ["lock", "projects"])
         self.assertFalse((self.project / ".loop").exists())
         self.assertEqual(git(self.project, "status", "--porcelain").stdout, "")
+
+    def test_each_claude_run_is_recorded_under_the_projects_state(self):
+        self.go()
+        state = self.harness / ".loop" / "projects" / "app"
+        entries = json.loads((state / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["round"]) for e in entries], [("plan", 0), ("build", 1), ("review", 1)])
+        row = json.loads((state / "status.json").read_text())["issues"][0]
+        for entry in entries:
+            self.assertEqual((entry["input_tokens"], entry["output_tokens"], entry["cache_write_tokens"],
+                              entry["cache_read_tokens"], entry["cost_usd"], entry["reported"]),
+                             (100, 50, 30, 20, 0.25, True))
+            self.assertEqual(entry["run_started"], row["started"])
+        self.assertEqual((row["tokens"], row["cost_usd"], row["state"], row["round"]), (600, 0.75, "pr", 1))
+        self.assertFalse((self.harness / ".loop" / "issue-12").exists())
+        usage = [l.split(" ", 3)[3] for l in (state / "loop.log").read_text().splitlines() if l.split()[2] == "USAGE"]
+        self.assertEqual(usage, ["plan round 0 tokens 200 cost $0.25", "build round 1 tokens 200 cost $0.25",
+                                 "review round 1 tokens 200 cost $0.25"])
+
+    def test_the_log_and_the_files_read_as_plain_text_not_json(self):
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        self.assertNotIn('"type"', (folder / "agent.log").read_text())
+        self.assertIn("Plan: add feature.txt.\n", (folder / "agent.log").read_text())
+        self.assertEqual((folder / "plan.md").read_text(), "Plan: add feature.txt.\n")
+        self.assertEqual((folder / "review.md").read_text(), "Looks right.\nVERDICT: PASS\n")
+        self.assertEqual(loop.parse_verdict((folder / "review.md").read_text()), "PASS")
+        for step in ("plan", "build", "review"):
+            self.assertEqual(json.loads((self.state / (step + "-argv")).read_text())[-2:], ["--output-format", "json"])
+
+    def test_the_pull_request_shows_usage_with_the_estimate_line(self):
+        self.go()
+        body = (self.state / "gh-calls").read_text().split("pr create", 1)[1]
+        self.assertIn("## Usage", body)
+        for row in ("| plan | 200 | $0.25 |", "| build 1 | 200 | $0.25 |", "| review 1 | 200 | $0.25 |",
+                    "| **Total** | 600 | $0.75 |"):
+            self.assertIn(row, body)
+        self.assertIn("Estimated at API prices. A subscription is billed differently.", body)
+
+    def test_a_block_comment_gives_what_the_run_used_before_it_stopped(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        text = (self.state / "gh-calls").read_text()
+        comment = text.split("issue comment ")[1].split("--body ", 1)[1]
+        self.assertIn("Before it stopped it used 1,000 tokens, an estimated $1.25 at API prices.", comment)
+
+    def test_a_claude_run_that_times_out_is_recorded_as_not_reported(self):
+        sleeper = Path(self.tmp.name) / "bin" / "claude"
+        sleeper.write_text("#!/usr/bin/env python3\nimport sys, time\nsys.stdin.read()\ntime.sleep(30)\n")
+        cfg = dict(loop.load_config(self.project), agent_timeout=1)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            loop.Loop(self.harness, cfg, project=self.project).run(once=True)
+        state = self.harness / ".loop" / "projects" / "app"
+        entries = json.loads((state / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["input_tokens"], e["cost_usd"]) for e in entries],
+                         [("plan", False, None, None)])
+        row = json.loads((state / "status.json").read_text())["issues"][0]
+        self.assertEqual((row["state"], row["tokens"], row["cost_usd"]), ("blocked", None, None))
+        self.assertIn("Usage wasn't reported.", (self.state / "gh-calls").read_text())
+
+    def test_a_claude_run_that_ends_in_an_error_says_which_in_its_log(self):
+        failing = Path(self.tmp.name) / "bin" / "claude"
+        failing.write_text("#!/usr/bin/env python3\nimport json, sys\nsys.stdin.read()\nprint(json.dumps("
+                           "{'type': 'result', 'subtype': 'error_max_turns', 'is_error': True, "
+                           "'total_cost_usd': 0.1}))\nsys.exit(1)\n")
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        log = (folder / "agent.log").read_text()
+        self.assertIn("error_max_turns", log)
+        self.assertNotIn('"type"', log)
+        entries = json.loads((folder / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["cost_usd"]) for e in entries], [("plan", True, 0.1)])
+
+    def test_a_command_that_sets_its_own_output_format_keeps_it(self):
+        cfg = json.loads((self.project / "loop.json").read_text())
+        cfg["agent"] = "claude -p --output-format text --permission-mode acceptEdits"
+        (self.project / "loop.json").write_text(json.dumps(cfg))
+        self.go()
+        built = json.loads((self.state / "build-argv").read_text())
+        self.assertEqual(built.count("--output-format"), 1)
+        self.assertEqual(built[built.index("--output-format") + 1], "text")
+        entries = json.loads((self.harness / ".loop" / "projects" / "app" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"]) for e in entries],
+                         [("plan", True), ("build", False), ("review", True)])
+
+    def test_a_block_comment_with_tokens_but_no_cost_names_no_prices(self):
+        usage = [{"input_tokens": 1000, "output_tokens": None, "cache_write_tokens": None,
+                  "cache_read_tokens": None, "cost_usd": None}]
+        text = loop.block_comment(12, "it stopped", 2, loop.DEFAULTS, usage=usage)
+        self.assertIn("Before it stopped it used 1,000 tokens.", text)
+        self.assertNotIn("API prices", text)
 
     def test_every_prompt_carries_the_harness_rules_ahead_of_the_work(self):
         self.go()

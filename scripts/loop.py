@@ -104,6 +104,7 @@ REVIEW_MARKER = "<!-- loop-review-pr-report -->"  # first line of the one commen
 REVIEW_CAP = 60_000  # a report is cut here: a GitHub comment holds 65,536 characters
 PR_BODY_CAP = 60_000  # a pull request's description is cut to this: GitHub holds 65,536 characters
 PR_TEST_LINES = 5  # how many lines from the end of the test output the description shows
+USAGE_TOKENS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
@@ -481,11 +482,75 @@ def review_prompt(plan, diff, tests, code, rules=""):
     ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests))
 
 
-def pr_body(number, rounds, numstat, test_command, plan, review, tests):
+def result_line(line):
+    """(its text, its usage) for a line that is claude's JSON result, else None.
+
+    The usage is a dict of the four token counts and cost_usd, each a number or None, or None when
+    the result reported none of them.
+    """
+    if not line.lstrip().startswith("{"):
+        return None
+    try:
+        found = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(found, dict) or found.get("type") != "result":
+        return None
+    text = found.get("result")
+    if not isinstance(text, str):
+        # An error result has no reply, only its kind, such as error_max_turns: the log says which.
+        kind = found.get("subtype")
+        text = "claude ended: {}".format(kind if isinstance(kind, str) else "error") if found.get("is_error") else ""
+    counts = found.get("usage") if isinstance(found.get("usage"), dict) else {}
+
+    def number(value):
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    usage = {"input_tokens": number(counts.get("input_tokens")),
+             "output_tokens": number(counts.get("output_tokens")),
+             "cache_write_tokens": number(counts.get("cache_creation_input_tokens")),
+             "cache_read_tokens": number(counts.get("cache_read_input_tokens")),
+             "cost_usd": number(found.get("total_cost_usd"))}
+    return text, (usage if any(value is not None for value in usage.values()) else None)
+
+
+def usage_totals(entries):
+    """(tokens, cost) over usage.json entries: None for each when no entry reported it."""
+    tokens = cost = None
+    for entry in entries:
+        counts = [entry.get(name) for name in USAGE_TOKENS]
+        if any(count is not None for count in counts):
+            tokens = (tokens or 0) + sum(count or 0 for count in counts)
+        if entry.get("cost_usd") is not None:
+            cost = (cost or 0) + entry["cost_usd"]
+    return tokens, cost
+
+
+def usage_table(entries):
+    """The pull request's ## Usage section: a row per step and round, and a total."""
+    groups = {}
+    for entry in entries:
+        groups.setdefault((entry.get("step", ""), entry.get("round", 0)), []).append(entry)
+
+    def row(name, group):
+        tokens, cost = usage_totals(group)
+        return "| {} | {} | {} |".format(
+            name, "not reported" if tokens is None else "{:,}".format(tokens),
+            "not reported" if cost is None else "${:,.2f}".format(cost))
+
+    rows = [row("{} {}".format(step, round_no) if round_no else step, group)
+            for (step, round_no), group in groups.items()]
+    rows.append(row("**Total**", entries))
+    return ("## Usage\n\n| Step | Tokens | Cost |\n|---|---|---|\n{}\n\nEstimated at API prices. "
+            "A subscription is billed differently.\n\n").format("\n".join(rows))
+
+
+def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=None):
     """The pull request's description: what a reviewer on GitHub needs without this machine.
 
     numstat is `git diff --numstat` of the branch, or None when git couldn't read it. plan, review
-    and tests are the files' text, or None for a file that wasn't there. The agents' text goes out
+    and tests are the files' text, or None for a file that wasn't there. usage is the issue's
+    usage.json entries; with none, there is no Usage section. The agents' text goes out
     with its mentions made harmless. Over PR_BODY_CAP, the plan is cut first, then the review.
     """
     def missing(name):
@@ -515,6 +580,8 @@ def pr_body(number, rounds, numstat, test_command, plan, review, tests):
     head = ("Closes #{n}.\n\nOpened by the loop after {r} round{s}. The loop doesn't merge.\n\n"
             "## Files\n\n{files}\n\n## Tests\n\n`{cmd}`\n\n{shown}\n\n").format(
         n=number, r=rounds, s="" if rounds == 1 else "s", files=files, cmd=test_command, shown=shown)
+    if usage:
+        head += usage_table(usage)
 
     review_text = missing("review.md") if review is None else safe_to_post(review.strip())
     plan_text = missing("plan.md") if plan is None else safe_to_post(plan.strip())
@@ -570,17 +637,26 @@ def pr_comment(url, rounds):
         url, rounds, "" if rounds == 1 else "s")
 
 
-def block_comment(number, why, rounds, cfg, said=None):
+def block_comment(number, why, rounds, cfg, said=None, usage=None):
     """Why it stopped and how to put it back. The reason is the loop's own words, never agent output.
 
     said, when given, is the build agent's reply. Its tail follows the reason as a quote, apart from
     it, with its mentions made harmless: the agent wrote it, and the issue's text shaped it.
+    usage, when given, is the issue's usage.json entries: one sentence says what the run used.
     """
     took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
     text = ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
             ".loop/issue-{n}/ on the machine that ran it. To try again, fix the ticket (usually the "
             "Acceptance Criteria), take {blocked} off and put {ready} back.").format(
         took=took, why=why, n=number, blocked=cfg["blocked_label"], ready=cfg["ready_label"])
+    if usage is not None:
+        tokens, cost = usage_totals(usage)
+        if tokens is None and cost is None:
+            text += " Usage wasn't reported."
+        else:
+            text += " Before it stopped it used {} tokens{}.".format(
+                "{:,}".format(tokens) if tokens is not None else "an unreported number of",
+                "" if cost is None else ", an estimated ${:,.2f} at API prices".format(cost))
     if said and said.strip():
         quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
         text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
@@ -797,11 +873,13 @@ class Loop:
         """The config key whose command reviews: review_agent when it's set, reader_agent otherwise."""
         return "review_agent" if self.cfg.get("review_agent") else "reader_agent"
 
-    def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True, number=None):
+    def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True, number=None,
+              step="", round_no=0):
         """Run a fresh agent session. Returns (exit code, what it said).
 
         stderr=False keeps its warnings and traces out of what it said, for text that gets posted.
-        With number, each line it says is also appended to .loop/issue-N/agent.log as it comes.
+        With number, each line it says is also appended to .loop/issue-N/agent.log as it comes, and
+        what the run used is recorded in .loop/issue-N/usage.json under step and round_no.
 
         untrusted means cwd holds a stranger's files, and their text may be written to steer the agent.
         Claude Code then runs restricted: the read tools only, confined to that folder, so nothing
@@ -814,13 +892,14 @@ class Loop:
         """
         cmd, why = self.argv(which, untrusted, confine)
         if cmd is None:
+            self.record_usage(number, step, round_no, None)
             return REFUSED, why
         if number is None:
             return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
         self.halt_if_interrupted()
         folder = self.dir / "issue-{}".format(number)
         folder.mkdir(exist_ok=True)
-        result = self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr)
+        result = self.stream(cmd, cwd, prompt, folder / "agent.log", which, stderr, number, step, round_no)
         self.halt_if_interrupted()  # its exit code is the Ctrl-C's kill, not something it got wrong
         return result
 
@@ -861,9 +940,18 @@ class Loop:
         hook = {"type": "command", "command": "python3 " + shlex.quote(str(guard)), "timeout": 10}
         return json.dumps({"hooks": {"PreToolUse": [{"matcher": matcher, "hooks": [hook]}]}})
 
-    def stream(self, cmd, cwd, prompt, path, which, stderr=True):
-        """sh() for an agent, with each line it says appended to path as it arrives, for its window to show."""
+    def stream(self, cmd, cwd, prompt, path, which, stderr=True, number=None, step="", round_no=0):
+        """sh() for an agent, with each line it says appended to path as it arrives, for its window to show.
+
+        A claude command is asked for --output-format json, which prints its reply once, at the end,
+        as it does in text. That line is replaced by the reply's text, so the log, the return value
+        and everything built from it read as plain text, and its usage is recorded for number.
+        """
         timeout = self.cfg["agent_timeout"]
+        # Unless the command already chose a format: that's kept, and usage is read only if it's json.
+        if Path(cmd[0]).name == "claude" and not any(w == "--output-format" or w.startswith("--output-format=")
+                                                     for w in cmd):
+            cmd = cmd + ["--output-format", "json"]
         try:
             # A session of its own: a timeout kills whatever it started too, which would otherwise hold
             # its output open, and a Ctrl-C meant for the loop's terminal doesn't reach it.
@@ -871,8 +959,10 @@ class Loop:
                                     stderr=subprocess.STDOUT if stderr else subprocess.DEVNULL,
                                     text=True, errors="replace", start_new_session=True)
         except FileNotFoundError:
+            self.record_usage(number, step, round_no, None)
             return 127, "command not found: {}".format(cmd[0])
         except OSError as err:
+            self.record_usage(number, step, round_no, None)
             return 126, "could not run {}: {}".format(cmd[0], err.strerror or err)
 
         def feed():
@@ -895,6 +985,7 @@ class Loop:
         timer = threading.Timer(timeout, expire)
         timer.daemon = True
         said = []
+        usage = None
         with proc:
             self.agents.add(proc)
             if self.interrupted.is_set():
@@ -906,6 +997,10 @@ class Loop:
                     handle.write("== {} {} ==\n".format(datetime.now().isoformat(timespec="seconds"), which))
                     handle.flush()
                     for line in proc.stdout:
+                        found = result_line(line)
+                        if found:
+                            line, usage = found
+                            line = line if line.endswith("\n") else line + "\n"
                         said.append(line)
                         handle.write(line)
                         handle.flush()
@@ -913,9 +1008,49 @@ class Loop:
             finally:
                 timer.cancel()
                 self.agents.discard(proc)
+                try:
+                    self.record_usage(number, step, round_no, usage)
+                except OSError as err:
+                    # Never hides the run's own result.
+                    self.log("ERROR", "could not record usage: {}".format(err.strerror or err), number)
         if expired.is_set():
             return 124, "timed out after {}s".format(timeout)
         return proc.returncode, "".join(said)
+
+    def record_usage(self, number, step, round_no, usage):
+        """Append one run to .loop/issue-N/usage.json, then put the issue's totals on its status row.
+
+        usage is result_line()'s, or None when the run reported nothing: its entry says so, with null
+        numbers, never 0. The totals cover every entry, so runs before a relabel count too.
+        """
+        if number is None:
+            return  # a review of someone else's pull request: no issue to record it on
+        with self.write_lock:
+            # Under the lock: another worker's mark() reorders these rows.
+            started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
+            entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None}
+            entry.update(usage or {name: None for name in USAGE_TOKENS + ("cost_usd",)})
+            entries = self.usage(number)
+            entries.append(entry)
+            folder = self.dir / "issue-{}".format(number)
+            folder.mkdir(exist_ok=True)
+            part = folder / "usage.json.part"
+            part.write_text(json.dumps(entries, indent=2) + "\n")
+            os.replace(part, folder / "usage.json")
+            tokens, cost = usage_totals(entries)
+            self.mark(number, tokens=tokens, cost_usd=cost)
+        tokens, cost = usage_totals([entry])
+        self.log("USAGE", "{} round {} {}".format(step, round_no, "not reported" if usage is None else
+                 "tokens {} cost {}".format("not reported" if tokens is None else "{:,}".format(tokens),
+                                            "not reported" if cost is None else "${:,.2f}".format(cost))), number)
+
+    def usage(self, number):
+        """The entries in .loop/issue-N/usage.json: none when it isn't there or can't be read."""
+        try:
+            found = json.loads((self.dir / "issue-{}".format(number) / "usage.json").read_text())
+        except (OSError, ValueError):
+            return []
+        return [e for e in found if isinstance(e, dict)] if isinstance(found, list) else []
 
     # -- the flywheel -----------------------------------------------------
 
@@ -1106,7 +1241,7 @@ class Loop:
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
-        self.comment(number, block_comment(number, why, rounds, self.cfg, said))
+        self.comment(number, block_comment(number, why, rounds, self.cfg, said, self.usage(number)))
         self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):
@@ -1143,7 +1278,8 @@ class Loop:
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
-        code, plan = self.agent("reader_agent", shape_prompt(issue, self.rules), tree, confine=True, number=number)
+        code, plan = self.agent("reader_agent", shape_prompt(issue, self.rules), tree, confine=True, number=number,
+                                step="plan")
         self.discard_edits(tree, "SHAPE", "planner", number)
         if code != 0 or not plan.strip():
             return self.block(number, "shape failed (agent exit {})".format(code))
@@ -1160,7 +1296,7 @@ class Loop:
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
             code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules),
-                                    tree, number=number)
+                                    tree, number=number, step="build", round_no=round_no)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
             self.git("add", "-A", cwd=tree)
@@ -1189,7 +1325,7 @@ class Loop:
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent(self.reviewer(),
                                        review_prompt(plan, diff, tout or "(no output)", tcode, self.rules),
-                                       tree, confine=True, number=number)
+                                       tree, confine=True, number=number, step="review", round_no=round_no)
             self.discard_edits(tree, "REVIEW", "reviewer", number)
             (folder / "review.md").write_text(review)
             verdict = parse_verdict(review) if rcode == 0 else "FIX"
@@ -1234,7 +1370,7 @@ class Loop:
         saved = {name: (folder / name).read_text() if (folder / name).exists() else None
                  for name in ("plan.md", "review.md", "test-output.txt")}
         body = pr_body(number, rounds, numstat if code == 0 else None, self.cfg["test_command"],
-                       saved["plan.md"], saved["review.md"], saved["test-output.txt"])
+                       saved["plan.md"], saved["review.md"], saved["test-output.txt"], self.usage(number))
         code, out = self.gh("pr", "create", "--base", self.cfg["base"], "--head", branch,
                             "--title", "{} (#{})".format(issue["title"], number), "--body", body)
         if code != 0:
