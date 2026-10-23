@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop records each issue's usage
+
+When the loop's agent is `claude`, it now records each run's tokens and
+estimated cost: per run in `.loop/issue-N/usage.json`, as totals on the
+issue's row in `status.json`, as a `USAGE` line in `loop.log`, in a `## Usage`
+table on the pull request, and in one sentence on a block comment. A run that
+reports nothing is `null` and "not reported", never 0. The dollar figure is
+Claude Code's estimate at API prices.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing. A tool that reads `loop.log` line by line will now see `USAGE` lines.
+
 ## 2026-10-22: Loop installs nothing by default
 
 Says what the loop's build agent has always done: it doesn't install packages,

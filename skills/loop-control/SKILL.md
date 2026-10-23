@@ -131,6 +131,11 @@ the harness root as above. Name the tmux session after the project,
    - what the review found, most important first
    - what the review couldn't check: the default reviewer reads, it doesn't
      run commands, so name anything it took on trust
+   - what it used: `tokens` and `cost_usd` on the issue's row in `status.json`,
+     per run in `.loop/issue-<N>/usage.json`, and a `USAGE` line each in
+     `loop.log`. Say the dollar figure is Claude Code's estimate at API
+     prices, and that `null` means the run didn't report it (codex, ollama, a
+     timeout), not that it was free
 3. **Blocked:** say why, from `review.md` and the last test output, and point
    at the entry in `.loop/lessons.md`. If the cause is the ticket (no check,
    too big), say what to change in it. The `learn` skill turns a repeated
