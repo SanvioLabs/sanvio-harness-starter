@@ -121,7 +121,9 @@ table, and a block comment says what the run used before it stopped. A run that
 reports nothing, such as one from `codex` or `ollama`, or one that timed out, is
 `null` and "not reported", never 0. The dollar figure is Claude Code's estimate
 at API prices; a subscription is billed differently. Under `--project`, the
-file is in `.loop/projects/<name>/issue-N/`.
+file is in `.loop/projects/<name>/issue-N/`. A `claude` command in `loop.json`
+that sets its own `--output-format` keeps it, and its usage is read only when
+that's `json`.
 
 A running loop keeps the code it started with: when [`scripts/loop.py`](scripts/loop.py) changes
 on disk under it, it logs one `STALE` line on an idle poll and carries on, and

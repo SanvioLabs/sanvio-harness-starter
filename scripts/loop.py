@@ -497,7 +497,10 @@ def result_line(line):
     if not isinstance(found, dict) or found.get("type") != "result":
         return None
     text = found.get("result")
-    text = text if isinstance(text, str) else ""
+    if not isinstance(text, str):
+        # An error result has no reply, only its kind, such as error_max_turns: the log says which.
+        kind = found.get("subtype")
+        text = "claude ended: {}".format(kind if isinstance(kind, str) else "error") if found.get("is_error") else ""
     counts = found.get("usage") if isinstance(found.get("usage"), dict) else {}
 
     def number(value):
@@ -651,9 +654,9 @@ def block_comment(number, why, rounds, cfg, said=None, usage=None):
         if tokens is None and cost is None:
             text += " Usage wasn't reported."
         else:
-            text += " Before it stopped it used {} tokens{} at API prices.".format(
+            text += " Before it stopped it used {} tokens{}.".format(
                 "{:,}".format(tokens) if tokens is not None else "an unreported number of",
-                "" if cost is None else ", an estimated ${:,.2f}".format(cost))
+                "" if cost is None else ", an estimated ${:,.2f} at API prices".format(cost))
     if said and said.strip():
         quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
         text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
@@ -945,7 +948,9 @@ class Loop:
         and everything built from it read as plain text, and its usage is recorded for number.
         """
         timeout = self.cfg["agent_timeout"]
-        if Path(cmd[0]).name == "claude":
+        # Unless the command already chose a format: that's kept, and usage is read only if it's json.
+        if Path(cmd[0]).name == "claude" and not any(w == "--output-format" or w.startswith("--output-format=")
+                                                     for w in cmd):
             cmd = cmd + ["--output-format", "json"]
         try:
             # A session of its own: a timeout kills whatever it started too, which would otherwise hold
@@ -1020,10 +1025,11 @@ class Loop:
         """
         if number is None:
             return  # a review of someone else's pull request: no issue to record it on
-        started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
-        entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None}
-        entry.update(usage or {name: None for name in USAGE_TOKENS + ("cost_usd",)})
         with self.write_lock:
+            # Under the lock: another worker's mark() reorders these rows.
+            started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
+            entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None}
+            entry.update(usage or {name: None for name in USAGE_TOKENS + ("cost_usd",)})
             entries = self.usage(number)
             entries.append(entry)
             folder = self.dir / "issue-{}".format(number)

@@ -348,7 +348,7 @@ AGENT = """#!/usr/bin/env python3
 import json, os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
-if "--output-format" in sys.argv:
+if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") + 1:][:1] == ["json"]:
     # As claude -p --output-format json: the reply once, at the end, in a result object with its usage.
     import atexit, io
     real, said = sys.stdout, io.StringIO()
@@ -2188,6 +2188,38 @@ class TestProject(unittest.TestCase):
         row = json.loads((state / "status.json").read_text())["issues"][0]
         self.assertEqual((row["state"], row["tokens"], row["cost_usd"]), ("blocked", None, None))
         self.assertIn("Usage wasn't reported.", (self.state / "gh-calls").read_text())
+
+    def test_a_claude_run_that_ends_in_an_error_says_which_in_its_log(self):
+        failing = Path(self.tmp.name) / "bin" / "claude"
+        failing.write_text("#!/usr/bin/env python3\nimport json, sys\nsys.stdin.read()\nprint(json.dumps("
+                           "{'type': 'result', 'subtype': 'error_max_turns', 'is_error': True, "
+                           "'total_cost_usd': 0.1}))\nsys.exit(1)\n")
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        log = (folder / "agent.log").read_text()
+        self.assertIn("error_max_turns", log)
+        self.assertNotIn('"type"', log)
+        entries = json.loads((folder / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["cost_usd"]) for e in entries], [("plan", True, 0.1)])
+
+    def test_a_command_that_sets_its_own_output_format_keeps_it(self):
+        cfg = json.loads((self.project / "loop.json").read_text())
+        cfg["agent"] = "claude -p --output-format text --permission-mode acceptEdits"
+        (self.project / "loop.json").write_text(json.dumps(cfg))
+        self.go()
+        built = json.loads((self.state / "build-argv").read_text())
+        self.assertEqual(built.count("--output-format"), 1)
+        self.assertEqual(built[built.index("--output-format") + 1], "text")
+        entries = json.loads((self.harness / ".loop" / "projects" / "app" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"]) for e in entries],
+                         [("plan", True), ("build", False), ("review", True)])
+
+    def test_a_block_comment_with_tokens_but_no_cost_names_no_prices(self):
+        usage = [{"input_tokens": 1000, "output_tokens": None, "cache_write_tokens": None,
+                  "cache_read_tokens": None, "cost_usd": None}]
+        text = loop.block_comment(12, "it stopped", 2, loop.DEFAULTS, usage=usage)
+        self.assertIn("Before it stopped it used 1,000 tokens.", text)
+        self.assertNotIn("API prices", text)
 
     def test_every_prompt_carries_the_harness_rules_ahead_of_the_work(self):
         self.go()
