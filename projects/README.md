@@ -61,7 +61,17 @@ default tests the harness. For a TypeScript project:
 {"test_command": "npm test"}
 ```
 
-or `node --test` with no `package.json` script. Its `base`, `main` unless it
+or `node --test` with no `package.json` script. The project's `loop.json` may
+set only `test_command`, `test_timeout`, `base`, `ready_label` and
+`blocked_label`. Every other key (`agent`, `max_workers`, `allow_lockfile_changes`
+and the rest) belongs to the harness's `loop.json`, under `"projects"` for one
+project, and a project's own file that sets one is refused:
+
+```json
+{"projects": {"billing": {"agent": "claude", "max_workers": 2}}}
+```
+
+Its `base`, `main` unless it
 says otherwise, is where branches start and pull requests go. The clone has to
 sit directly in this folder and have its `origin` on GitHub, or the loop
 refuses it before it starts. Its state goes in the harness, in

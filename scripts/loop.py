@@ -271,6 +271,26 @@ def load_config(root):
     return cfg
 
 
+# What a project's own loop.json may set. Everything else is the machine's: it decides what the loop may
+# run and spend, so it comes from the harness's loop.json, never from a clone anyone can push to.
+PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label")
+MACHINE_KEYS = frozenset(DEFAULTS) - set(PROJECT_KEYS) | {"allow_lockfile_changes"}
+
+
+def load_project_config(root, project):
+    """The defaults, then the harness's loop.json without "projects", then its projects[<folder name>]
+    entry, then the PROJECT_KEYS of the project's own loop.json."""
+    cfg = dict(DEFAULTS)
+    path = Path(root) / "loop.json"
+    harness = json.loads(path.read_text()) if path.exists() else {}
+    cfg.update({k: v for k, v in harness.items() if k != "projects"})
+    cfg.update((harness.get("projects") or {}).get(Path(project).name, {}))
+    path = Path(project) / "loop.json"
+    own = json.loads(path.read_text()) if path.exists() else {}
+    cfg.update({k: v for k, v in own.items() if k in PROJECT_KEYS})
+    return cfg
+
+
 def project_root(path, root=None):
     """The clone at path, resolved, when the loop may work it as a project; else None, after one ERROR
     line on stderr saying why.
@@ -306,6 +326,24 @@ def project_root(path, root=None):
         return refuse("its loop.json isn't JSON: {}".format(err))
     if not isinstance(cfg, dict) or not isinstance(cfg.get("test_command"), str) or not cfg["test_command"].strip():
         return refuse("its loop.json doesn't set test_command, the command that tests the project")
+    machine = sorted(set(cfg) & MACHINE_KEYS)
+    if machine:
+        return refuse('its loop.json sets {}, which only the harness\'s loop.json may set; move it there under '
+                      '"projects": {{"{}": {{...}}}}'.format(", ".join(machine), folder.name))
+    try:
+        harness = json.loads((projects.parent / "loop.json").read_text())
+    except OSError:
+        harness = {}
+    except ValueError as err:
+        return refuse("the harness's loop.json isn't JSON: {}".format(err))
+    entries = harness.get("projects", {}) if isinstance(harness, dict) else {}
+    if not isinstance(entries, dict) or not all(isinstance(e, dict) for e in entries.values()):
+        return refuse('"projects" in the harness\'s loop.json isn\'t an object of objects, one per project folder')
+    for name, entry in entries.items():
+        other = sorted(set(entry) - MACHINE_KEYS)
+        if other:
+            return refuse('"projects" in the harness\'s loop.json sets {} for {}; a project\'s own loop.json '
+                          'sets those'.format(", ".join(other), name))
     return folder
 
 
@@ -714,7 +752,7 @@ class Loop:
         self.root = Path(root)
         self.project = Path(project) if project else None
         self.repo = self.project or self.root
-        self.cfg = cfg or load_config(self.repo)
+        self.cfg = cfg or (load_project_config(self.root, self.project) if self.project else load_config(self.repo))
         self.dir = self.root / ".loop" / "projects" / self.project.name if self.project else self.root / ".loop"
         self.dir.mkdir(parents=True, exist_ok=True)
         # The checkout a project's agents work in holds none of the harness's rules, so the prompts carry them.

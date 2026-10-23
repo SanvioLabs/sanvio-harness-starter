@@ -118,11 +118,15 @@ the harness root as above. Name the tmux session after the project,
    `{"test_command": "npm test"}`, or `node --test` with no `package.json`
    script. Its `base` (default `main`) is where branches start and pull
    requests go. If it has no `loop.json`, say so and ask the person for the
-   command. Don't write one up.
+   command. Don't write one up. Its `loop.json` may set only `test_command`,
+   `test_timeout`, `base`, `ready_label` and `blocked_label`. Every other key
+   (`agent`, `max_workers`, `allow_lockfile_changes`, ...) is the machine's: it
+   goes in the harness's `loop.json`, for one project under `"projects"`, such
+   as `"projects": {"app": {"agent": "claude", "max_workers": 2}}`.
 2. The loop refuses, with one `ERROR` line and before it takes anything, a
    folder that isn't directly under [`projects/`](../../projects/), one that isn't a git clone of
-   its own, a clone whose `origin` isn't on github.com, or a `loop.json` with
-   no `test_command`.
+   its own, a clone whose `origin` isn't on github.com, a `loop.json` with
+   no `test_command`, or one that sets a machine key.
 3. Issues, labels and pull requests are the project's GitHub repo's. Label
    with `gh issue edit <N> --repo <owner>/<repo> --add-label loop-ready`; with
    no `--repo`, `gh` from the harness root reaches the harness's repo.
