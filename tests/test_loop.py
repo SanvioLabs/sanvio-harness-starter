@@ -1625,6 +1625,75 @@ class TestAPass(unittest.TestCase):
         self.assertFalse(tree.exists())
         self.assertFalse(self.branch_exists())
 
+    def rebase_head(self):
+        """Point the pull request's head at a commit that doesn't contain the loop's, as a rebase does."""
+        other = Path(self.cfg["worktree_dir"]).parent / "rebased"
+        git(self.work, "worktree", "add", "-q", "-b", "rebased", str(other), "origin/" + self.cfg["base"])
+        git(other, "commit", "-q", "--allow-empty", "-m", "rebased onto the base")
+        (self.state / "pr-head").write_text(git(other, "rev-parse", "HEAD").stdout.strip())
+
+    def kept_lines(self):
+        return [l for l in self.lines() if l.split()[2] == "KEPT"]
+
+    def test_a_rebased_pull_request_is_tidied_while_the_branch_is_what_the_loop_pushed(self):
+        tree = self.open_then_idle("MERGED")
+        self.rebase_head()
+        self.assertEqual(self.go(), 0)
+        self.assertFalse(tree.exists())
+        self.assertFalse(self.branch_exists())
+        self.assertEqual(len([l for l in self.lines() if l.split()[2] == "CLEANUP"]), 1)
+
+    def test_a_rebased_pull_request_keeps_a_commit_made_after_the_push(self):
+        tree = self.open_then_idle("MERGED")
+        self.rebase_head()
+        git(tree, "commit", "-q", "--allow-empty", "-m", "never pushed")
+        self.go()
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        kept = self.kept_lines()
+        self.assertEqual(len(kept), 1)
+        self.assertIn("commits the pull request doesn't", kept[0])
+
+    def test_a_rebased_pull_request_keeps_a_worktree_with_changes(self):
+        tree = self.open_then_idle("MERGED")
+        self.rebase_head()
+        (tree / "notes.txt").write_text("not pushed")
+        self.go()
+        self.assertTrue((tree / "notes.txt").exists())
+        self.assertTrue(self.branch_exists())
+        kept = self.kept_lines()
+        self.assertEqual(len(kept), 1)
+        self.assertIn("worktree has changes", kept[0])
+
+    def test_a_rebased_pull_request_from_before_pushed_was_recorded_is_kept(self):
+        tree = self.open_then_idle("MERGED")
+        self.rebase_head()
+        path = self.work / ".loop" / "status.json"
+        status = json.loads(path.read_text())
+        for row in status["issues"]:
+            row.pop("pushed", None)
+        path.write_text(json.dumps(status))
+        self.go()
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        self.assertIn("commits the pull request doesn't", "\n".join(self.kept_lines()))
+
+    def test_a_rebased_pull_request_is_kept_when_the_branch_cannot_be_read(self):
+        tree = self.open_then_idle("MERGED")
+        self.rebase_head()
+        runner = loop.Loop(self.work, self.cfg)
+        real = runner.git
+
+        def git_without_rev_parse(*args, **kwargs):
+            return (128, "fatal") if args and args[0] == "rev-parse" else real(*args, **kwargs)
+
+        with mock.patch.object(runner, "git", git_without_rev_parse), \
+                contextlib.redirect_stdout(io.StringIO()):
+            runner.run(once=True)
+        self.assertTrue(tree.exists())
+        self.assertTrue(self.branch_exists())
+        self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
     def test_a_pull_request_merged_while_idle_is_tidied_on_a_later_poll(self):
         tree = self.open_then_idle("OPEN")
         runner = loop.Loop(self.work, self.cfg)

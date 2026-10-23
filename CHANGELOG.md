@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop tidies a rebased pull request
+
+The loop now records the commit it pushed for each pull request. If a person
+rebases or amends the pull request, its head no longer holds the branch, but the
+loop still removes the worktree and branch after the merge when the branch is
+still that commit. A branch with a later commit, or a worktree with changes, is
+kept as before. Pull requests opened before this keep the old behaviour.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
+
+**Do:** nothing. Restart a running loop to pick it up.
+
 ## 2026-10-22: Loop pane start time on its own line
 
 In the [loop pane](examples/mods/loop-pane/), when a job started and how long it
