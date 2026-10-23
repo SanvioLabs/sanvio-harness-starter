@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-23: Python suite runs the mods' tests
+
+`python3 -m unittest discover -s tests`, and so the loop, now runs
+`claude plugin validate` and `claude plugin test` on every mod under
+[`examples/mods/`](examples/mods/), one test per mod. Where Claude Code isn't
+installed, as in CI, those tests are skipped with the reason.
+
+Files: [`tests/test_mods.py`](tests/test_mods.py), the *Changing it* section of
+each mod's README in [`examples/mods/`](examples/mods/)
+
+**Do:** nothing.
+
 ## 2026-10-22: Loop pane usage on the clock line
 
 In the [loop pane](examples/mods/loop-pane/), each job's tokens and cost now
