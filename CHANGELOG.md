@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop token budget per issue
+
+`max_issue_tokens` in `loop.json` caps the tokens one run of an issue may use.
+Before each build and each review the loop checks the run's total from
+`usage.json`; over the cap, it starts no more agents and blocks the issue with
+the number in the comment. A run already started finishes, so one run can
+overshoot. Relabelling the issue starts a fresh budget. Only runs that report
+tokens count, and the loop warns at start-up about each agent that doesn't. The
+default is `0`, no budget, so nothing changes until you set it.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing. To use it, set `"max_issue_tokens": 2000000` (or your own number) in `loop.json`.
+
 ## 2026-10-22: Loop blocks a round that changes a lockfile
 
 A round of the loop's build agent that adds, edits, deletes or renames a

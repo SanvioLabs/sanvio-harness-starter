@@ -96,6 +96,16 @@ number before the person raises it. Each issue's agents write to
 named `issue-<N>` that follows it (`Ctrl-b w` lists them) and closes when the
 issue ends. A stop lets every running issue finish its step.
 
+`max_issue_tokens` in `loop.json` (default 0, no budget) caps the tokens one
+run of an issue may use. Set it to a whole number above 0. Before each build
+and each review the loop checks, and over the cap it blocks the issue with
+`used N tokens this run, over max_issue_tokens M` in the log and the block
+comment. A run already started finishes, so the overshoot is up to one run.
+Taking `loop:blocked` off and putting the ready label back starts a fresh
+budget. Say that only runs that report tokens count (`claude`), and that the
+loop warns at start-up about each agent that doesn't. Any other value stops
+`run` with an `ERROR` before it takes an issue.
+
 ## A project under projects/
 
 To work a code repo cloned into [`projects/`](../../projects/) rather than the harness, add

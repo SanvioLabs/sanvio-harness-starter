@@ -354,8 +354,10 @@ if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") 
     real, said = sys.stdout, io.StringIO()
     sys.stdout = said
     def emit():
+        # A test can set a step's input tokens in the file input-<step>, to put a run over a budget.
+        own = os.path.join(state, "input-" + step)
         real.write(json.dumps({"type": "result", "result": said.getvalue(), "total_cost_usd": 0.25, "usage": {
-            "input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 30,
+            "input_tokens": int(open(own).read()) if os.path.exists(own) else 100, "output_tokens": 50, "cache_creation_input_tokens": 30,
             "cache_read_input_tokens": 20}}) + "\\n")
         real.flush()
     atexit.register(emit)
@@ -638,6 +640,93 @@ class TestAPass(unittest.TestCase):
         (self.state / "verdict").write_text("FIX")
         self.go()
         self.assertIn("Usage wasn't reported.", self.comments()[0])
+
+    def report_usage(self):
+        """Both stand-in commands ask for json, which is how a claude run reports: 200 tokens a run."""
+        for key in ("agent", "reader_agent"):
+            self.cfg[key] += " --output-format json"
+
+    def started_steps(self):
+        path = self.state / "agents-started"
+        return [l.split()[-1] for l in path.read_text().splitlines()] if path.exists() else []
+
+    def test_a_run_over_the_token_budget_blocks_the_issue_before_its_next_agent(self):
+        self.report_usage()
+        self.cfg["max_issue_tokens"] = 100
+        (self.state / "input-plan").write_text("50")  # 50 + 50 + 30 + 20 = 150 tokens
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan"])
+        self.assertIn("issue edit 12 --add-label loop:blocked", "\n".join(self.calls()))
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        self.assertIn("used 150 tokens this run, over max_issue_tokens 100", self.comments()[0])
+
+    def test_a_build_over_the_budget_stops_the_review_but_a_run_in_its_own_turn_finishes(self):
+        self.report_usage()
+        self.cfg["max_issue_tokens"] = 250  # the planner's 200 is under it; the build takes it to 400
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "build"])
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        self.assertIn("used 400 tokens this run, over max_issue_tokens 250", self.comments()[0])
+
+    def test_tokens_from_an_earlier_run_are_not_counted_and_not_deleted(self):
+        self.report_usage()
+        self.cfg["max_issue_tokens"] = 500
+        folder = self.work / ".loop" / "issue-12"
+        folder.mkdir(parents=True)
+        old = {"step": "build", "round": 1, "run_started": "2020-01-01T00:00:00", "reported": True,
+               "input_tokens": 9_000_000, "output_tokens": 0, "cache_write_tokens": 0, "cache_read_tokens": 0,
+               "cost_usd": 1.0}
+        (folder / "usage.json").write_text(json.dumps([old]))
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "build", "review"])
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+        entries = json.loads((folder / "usage.json").read_text())
+        self.assertEqual(entries[0], old)
+        self.assertEqual(len(entries), 4)
+
+    def test_no_budget_changes_nothing_and_says_nothing(self):
+        for value in (None, "", 0):
+            with self.subTest(value=value):
+                self.tearDown()
+                self.setUp()
+                self.report_usage()
+                if value is None:
+                    self.cfg.pop("max_issue_tokens")
+                else:
+                    self.cfg["max_issue_tokens"] = value
+                self.assertEqual(self.go(), 0)
+                self.assertEqual(self.started_steps(), ["plan", "build", "review"])
+                self.assertEqual(self.status()["issues"][0]["state"], "pr")
+                self.assertNotIn("max_issue_tokens", "\n".join(self.raw_lines()))
+
+    def test_a_budget_that_isnt_a_whole_number_above_zero_stops_the_run_before_any_issue_is_taken(self):
+        for value in (-1, 1.5, "abc", True):
+            with self.subTest(value=value):
+                self.cfg["max_issue_tokens"] = value
+                self.assertEqual(self.go(), 1)
+                self.assertIn("ERROR max_issue_tokens in loop.json: ", self.lines()[-1])
+                self.assertIn(repr(value), self.lines()[-1])
+                gh = self.state / "gh-calls"
+                self.assertNotIn("issue edit", gh.read_text() if gh.exists() else "")
+                self.assertEqual(self.started_steps(), [])
+
+    def test_a_run_that_reports_no_tokens_never_blocks(self):
+        self.cfg["max_issue_tokens"] = 1
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "build", "review"])
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+        self.assertNotIn("BLOCKED", "\n".join(self.lines()))
+
+    def test_the_start_up_names_each_agent_whose_tokens_the_budget_cant_count(self):
+        claude = Path(self.tmp.name) / "bin" / "claude"
+        claude.write_text(AGENT)
+        claude.chmod(claude.stat().st_mode | stat.S_IEXEC)
+        self.cfg.update(agent="codex", reader_agent="claude", max_issue_tokens=1)
+        self.go()
+        warned = [l for l in self.lines() if l.split()[2] == "WARN"]
+        self.assertEqual(len(warned), 1)
+        self.assertIn("codex", warned[0])
+        self.assertIn("agent", warned[0])
 
     def test_an_agent_that_will_not_start_is_recorded_as_not_reported(self):
         missing = str(Path(self.tmp.name) / "no-such-agent")
