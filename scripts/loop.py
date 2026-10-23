@@ -85,6 +85,9 @@ DEFAULTS = {
     "max_rounds": 5,
     # Issues worked at once. Each one's agents are sessions of their own, so usage grows with it.
     "max_workers": 1,
+    # Tokens one run of an issue may use, summed over its agents. Once a run is over, its next agent
+    # isn't started and the issue is blocked. 0 means no budget. Only an agent that reports its usage is counted.
+    "max_issue_tokens": 0,
     "agent_timeout": 1800,
     "test_timeout": 1800,
     "poll_seconds": 60,
@@ -185,6 +188,19 @@ def workers(cfg):
         return max(1, int(value))
     except (ValueError, OverflowError):
         return None
+
+
+def budget(cfg):
+    """(limit, None) from max_issue_tokens: None for no budget, else a whole number above 0.
+
+    (None, why) for anything else, so a typo never turns the budget off unseen.
+    """
+    value = cfg.get("max_issue_tokens")
+    if value is None or value == "" or (value == 0 and not isinstance(value, bool) and isinstance(value, int)):
+        return None, None
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value, None
+    return None, "isn't a whole number of tokens above 0 ({!r})".format(value)
 
 
 def duration(text):
@@ -519,6 +535,18 @@ def result_line(line):
              "cache_read_tokens": number(counts.get("cache_read_input_tokens")),
              "cost_usd": number(found.get("total_cost_usd"))}
     return text, (usage if any(value is not None for value in usage.values()) else None)
+
+
+def reports_usage(cmd):
+    """Whether stream() can read this command's usage: claude, asking for no format of its own or for json."""
+    if not cmd or Path(cmd[0]).name != "claude":
+        return False
+    for at, word in enumerate(cmd):
+        if word == "--output-format":
+            return cmd[at + 1:at + 2] == ["json"]
+        if word.startswith("--output-format="):
+            return word.split("=", 1)[1] == "json"
+    return True
 
 
 def usage_totals(entries):
@@ -1057,6 +1085,23 @@ class Loop:
                  "tokens {} cost {}".format("not reported" if tokens is None else "{:,}".format(tokens),
                                             "not reported" if cost is None else "${:,.2f}".format(cost))), number)
 
+    def run_tokens(self, number):
+        """Tokens the issue's current run has used: the entries stamped with this run's start. A relabelled
+        issue starts again at zero, though usage.json keeps the earlier runs. Unreported runs add nothing."""
+        with self.write_lock:  # another worker's mark() reorders these rows, and a miss would count nothing
+            started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
+            return usage_totals([e for e in self.usage(number) if e.get("run_started") == started])[0] or 0
+
+    def over_budget(self, number):
+        """Why the issue's next agent must not start, or None when it may."""
+        limit = budget(self.cfg)[0]
+        if limit is None:
+            return None
+        used = self.run_tokens(number)
+        if used <= limit:
+            return None
+        return "used {:,} tokens this run, over max_issue_tokens {:,}".format(used, limit)
+
     def usage(self, number):
         """The entries in .loop/issue-N/usage.json: none when it isn't there or can't be read."""
         try:
@@ -1304,6 +1349,9 @@ class Loop:
             if self.stopped():
                 self.mark(number, state="stopped", note="stopped before round {}".format(round_no))
                 return self.log("STOPPED", "before round {}".format(round_no), number)
+            why = self.over_budget(number)
+            if why:
+                return self.block(number, why)
             self.mark(number, step="BUILD", round=round_no)
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
@@ -1359,6 +1407,9 @@ class Loop:
             (folder / "test-output.txt").write_text(tout[-OUTPUT_CAP:])
             (folder / "diff.patch").write_text(diff[:OUTPUT_CAP])
 
+            why = self.over_budget(number)
+            if why:
+                return self.block(number, why)
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent(self.reviewer(),
                                        review_prompt(plan, diff, tout or "(no output)", tcode, self.rules),
@@ -1544,6 +1595,15 @@ class Loop:
             self.log("ERROR", "allow_lockfile_changes in loop.json: {} isn't true or false, "
                      "so no issue is taken".format(repr(self.cfg["allow_lockfile_changes"])[:100]))
             return 1
+        limit, why = budget(self.cfg)
+        if why:
+            self.log("ERROR", "max_issue_tokens in loop.json: {}, so no issue is taken".format(why)[:200])
+            return 1
+        if limit:
+            for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
+                if not reports_usage(command(self.cfg, which)[0]):
+                    self.log("WARN", "max_issue_tokens is {:,}, but {} ({}) may not report its tokens, "
+                             "so the budget can't count them".format(limit, which, self.cfg[which]))
         idle = False
         running = {}  # issue number -> its worker thread
         most = workers(self.cfg)

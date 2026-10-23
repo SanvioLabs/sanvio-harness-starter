@@ -127,6 +127,18 @@ file is in `.loop/projects/<name>/issue-N/`. A `claude` command in `loop.json`
 that sets its own `--output-format` keeps it, and its usage is read only when
 that's `json`.
 
+**A token budget.** Set `max_issue_tokens` in `loop.json` to a whole number and
+the loop counts the tokens one run of an issue has used, over its plan, builds
+and reviews. Before each build and before each review it checks: over the
+number, it starts no more agents and blocks the issue, and the block comment
+says `used N tokens this run, over max_issue_tokens M`. A run already started
+always finishes, so one run can overshoot by up to a run's worth. Relabelling
+the issue starts a fresh budget, though `usage.json` keeps the earlier runs.
+Only a run that reports its tokens counts, so `codex`, `ollama` and a timed-out
+run add nothing, and the loop logs a `WARN` at start-up naming each such
+agent. `0` or empty means no budget; anything else that isn't a whole number
+above 0 stops the run before it takes an issue.
+
 A running loop keeps the code it started with: when [`scripts/loop.py`](scripts/loop.py) changes
 on disk under it, it logs one `STALE` line on an idle poll and carries on, and
 `python3 scripts/loop.py stop` then starting it again picks up the new code.
@@ -153,6 +165,7 @@ keeps its default:
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
+| `max_issue_tokens` | `0` | Tokens one run of an issue may use before it's blocked. `0` means no budget. *A token budget* above has the detail |
 | `hours` | empty | When `run` and `review` may start something, in local time, such as `Mon-Fri 09:00-17:00`. Empty means any time; `--hours` replaces it for one run. *In working hours* below has the format |
 | `worktree_dir` | `~/.harness-loop/<repo>` | Where the build checkouts go. Keep it outside the clone: an agent started inside it loads this repo's [`CLAUDE.md`](CLAUDE.md) twice and stops to ask you to restart from the root |
 | `ready_label`, `blocked_label` | `loop-ready`, `loop:blocked` | What it looks for, and what it leaves on a failure |
