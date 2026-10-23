@@ -252,8 +252,9 @@ export function duration(ms: number): string {
 export function usage(row: Row): string | null {
   const t = row.tokens
   if (!t || !(t > 0)) return null
-  const thousands = Math.round(t / 1000)
-  const tokens = t < 1000 ? String(Math.round(t)) : thousands < 1000 ? `${thousands}k` : `${(t / 1_000_000).toFixed(1)}M`
+  const whole = Math.round(t)
+  const thousands = Math.round(whole / 1000)
+  const tokens = whole < 1000 ? String(whole) : thousands < 1000 ? `${thousands}k` : `${(whole / 1_000_000).toFixed(1)}M`
   return `${tokens} tokens${row.cost_usd && row.cost_usd > 0 ? ` · ~$${row.cost_usd.toFixed(2)}` : ''}`
 }
 
