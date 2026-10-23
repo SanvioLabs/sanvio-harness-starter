@@ -69,7 +69,9 @@ Pick **Finished** and it lists the last day's jobs, three at a time:
   [ Copy pull request link ]
 ```
 
-It's a Claude Code mod, so it works in Claude Code only, and it was built and
+It's a Claude Code mod, so it works in Claude Code only: it was seen working in
+the terminal, the VS Code extension and Claude Desktop's Code tab on
+2026-10-23, with Claude Code 2.1.309. It was built and
 tested on Claude Code 2.1.296. Codex and Kiro don't have mods.
 
 ## Open it

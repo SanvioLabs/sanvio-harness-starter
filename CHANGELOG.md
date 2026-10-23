@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-23: Where to run it
+
+The README's *Set up* now says what works in the terminal, the VS Code
+extension, Claude Desktop's Code tab and Claude Desktop's chat, from a test run
+in each: all of the harness in the first three, none of it in chat. It also
+says that two clones on one machine share one set of mods. Each mod's README
+names where it was seen working.
+
+Files: [`README.md`](README.md), the three mod READMEs in [`examples/mods/`](examples/mods/), [`tests/test_steering.py`](tests/test_steering.py), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing.
+
 ## 2026-10-23: Python suite runs the mods' tests
 
 `python3 -m unittest discover -s tests`, and so the loop, now runs
