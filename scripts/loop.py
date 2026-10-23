@@ -1003,7 +1003,11 @@ class Loop:
             finally:
                 timer.cancel()
                 self.agents.discard(proc)
-                self.record_usage(number, step, round_no, usage)
+                try:
+                    self.record_usage(number, step, round_no, usage)
+                except OSError as err:
+                    # Never hides the run's own result.
+                    self.log("ERROR", "could not record usage: {}".format(err.strerror or err), number)
         if expired.is_set():
             return 124, "timed out after {}s".format(timeout)
         return proc.returncode, "".join(said)

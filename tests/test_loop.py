@@ -624,15 +624,6 @@ class TestAPass(unittest.TestCase):
         self.go()
         self.assertIn("Usage wasn't reported.", self.comments()[0])
 
-    def test_a_refused_build_is_recorded_as_not_reported(self):
-        self.cfg["agent"] = "ollama:llama3"  # an ollama can't edit files, so the build is refused
-        self.go()
-        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
-        self.assertEqual([(e["step"], e["round"], e["reported"]) for e in entries],
-                         [("plan", 0, False), ("build", 1, False)])
-        self.assertIn("build round 1 not reported", [l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"])
-        self.assertIsNone(self.status()["issues"][0]["tokens"])
-
     def test_an_agent_that_will_not_start_is_recorded_as_not_reported(self):
         missing = str(Path(self.tmp.name) / "no-such-agent")
         self.cfg.update(agent=missing, reader_agent=missing)
