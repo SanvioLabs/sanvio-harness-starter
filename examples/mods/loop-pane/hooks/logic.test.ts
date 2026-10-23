@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, waiting, waitingOn, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, usage, waiting, waitingOn, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -307,6 +307,52 @@ group('the clock', () => {
   test('a row from an older loop.py, with no start, has no clock', () => {
     expect(clock(ROW, true, START)).toBeNull()
     expect(clock({ ...ROW, started: 'soon' }, true, START)).toBeNull()
+  })
+  test('tokens follow the time, and the cost follows the tokens', () => {
+    const run = { ...ROW, started: local(START) }
+    const at = START + 372_000
+    expect(clock({ ...run, tokens: 840_000 }, true, at)).toBe('started 14:22 · running 6m 12s · 840k tokens')
+    expect(clock({ ...run, tokens: 1_200_000, cost_usd: 3.4 }, true, at)).toBe('started 14:22 · running 6m 12s · 1.2M tokens · ~$3.40')
+    expect(clock({ ...run, tokens: 950 }, true, at)).toBe('started 14:22 · running 6m 12s · 950 tokens')
+    const done = { ...ROW, state: 'pr', started: local(START), updated: local(START + 18 * 60_000), tokens: 840_000, cost_usd: 3.4 }
+    expect(clock(done, true, at)).toBe('started 14:22 · took 18m 00s · 840k tokens · ~$3.40')
+    expect(clock({ ...run, state: 'blocked', tokens: 840_000 }, false, at)).toBe('started 14:22 · 840k tokens')
+  })
+  test('a token count rounds to the unit it is read in', () => {
+    expect(usage({ ...ROW, tokens: 999 })).toBe('999 tokens')
+    expect(usage({ ...ROW, tokens: 1_000 })).toBe('1k tokens')
+    expect(usage({ ...ROW, tokens: 999_499 })).toBe('999k tokens')
+    expect(usage({ ...ROW, tokens: 999_500 })).toBe('1.0M tokens')
+    expect(usage({ ...ROW, tokens: 1_000_000 })).toBe('1.0M tokens')
+    expect(usage({ ...ROW, tokens: 12_345_678 })).toBe('12.3M tokens')
+  })
+  test('null, missing or zero usage leaves the line as it was', () => {
+    const run = { ...ROW, started: local(START) }
+    const plain = 'started 14:22 · running 6m 12s'
+    expect(clock({ ...run, tokens: undefined }, true, START + 372_000)).toBe(plain)
+    expect(clock({ ...run, tokens: 0, cost_usd: 0 }, true, START + 372_000)).toBe(plain)
+    expect(clock({ ...run, cost_usd: 3.4 }, true, START + 372_000)).toBe(plain)
+    expect(usage(ROW)).toBeNull()
+  })
+  test('usage survives the status file only as a number above zero', () => {
+    const read = (extra: object) => parseStatus(JSON.stringify({ issues: [{ ...ROW, started: '2026-10-15T14:22:05', ...extra }] }))?.issues[0]
+    expect(read({ tokens: 840000, cost_usd: 3.4 })).toMatchObject({ tokens: 840000, cost_usd: 3.4 })
+    for (const bad of ['12', 'NaN', null, 0, -5, {}, [], true]) {
+      const row = read({ tokens: bad, cost_usd: bad })
+      expect(row?.tokens).toBeUndefined()
+      expect(row?.cost_usd).toBeUndefined()
+      const line = clock(row!, true, START + 372_000) ?? ''
+      expect(line).not.toContain('NaN')
+      expect(line).not.toContain('undefined')
+      expect(line).toBe('started 14:22 · running 6m 12s')
+    }
+  })
+  test('in a narrow pane the usage is what gets cut', () => {
+    const line = clock({ ...ROW, started: local(START), tokens: 840_000, cost_usd: 3.4 }, true, START + 372_000)!
+    const clipped = clip(line, 40)
+    expect(clipped.startsWith('started 14:22 · running 6m 12s')).toBe(true)
+    expect(clipped.endsWith('…')).toBe(true)
+    expect(clipped).not.toContain('~$')
   })
   test('the start survives the status file', () => {
     const text = JSON.stringify({ issues: [{ ...ROW, started: '2026-10-15T14:22:05' }] })

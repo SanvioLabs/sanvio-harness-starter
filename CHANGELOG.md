@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-22: Loop pane usage on the clock line
+
+In the [loop pane](examples/mods/loop-pane/), each job's tokens and cost now
+follow its start time and duration, for example `840k tokens · ~$3.40`, totalled
+over every run of the issue. The cost is Claude Code's estimate at API prices,
+not a bill. A job with no tokens recorded shows neither, and a narrow pane cuts
+the usage first. No extra row.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** nothing. `/reload-plugins`, or a new session, picks it up.
+
 ## 2026-10-22: Loop tidies a rebased pull request
 
 The loop now records the commit it pushed for each pull request. If a person

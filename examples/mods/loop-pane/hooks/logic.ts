@@ -27,6 +27,7 @@ const ENDED: Record<string, { tone: Tone; text: string }> = {
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const orNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined)
 
 // The status file, or null when there's none or it can't be read. A row without a number is dropped.
 export function parseStatus(text: string | null): Status | null {
@@ -63,6 +64,8 @@ export function parseStatus(text: string | null): Status | null {
       started: orNull(r.started) ?? undefined,
       updated: orNull(r.updated) ?? undefined,
       window: orNull(r.window) ?? undefined,
+      tokens: positive(r.tokens),
+      cost_usd: positive(r.cost_usd),
     }))
   return {
     running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux),
@@ -244,19 +247,31 @@ export function duration(ms: number): string {
   return `${Math.floor(m / 60)}h ${pad(m % 60)}m`
 }
 
-// When a job started and how long it has been running, or took. loop.py writes local time with no
-// zone, which Date.parse reads as local too. A start on another day carries its date. A row from an
-// older loop.py has no start, so no clock.
+// What a job has used, over every run: 840k tokens · ~$3.40. The cost is Claude Code's estimate at API
+// prices and shows only beside tokens. Null when the row has none, as from an older loop.py.
+export function usage(row: Row): string | null {
+  const t = row.tokens
+  if (!t || !(t > 0)) return null
+  const thousands = Math.round(t / 1000)
+  const tokens = t < 1000 ? String(Math.round(t)) : thousands < 1000 ? `${thousands}k` : `${(t / 1_000_000).toFixed(1)}M`
+  return `${tokens} tokens${row.cost_usd && row.cost_usd > 0 ? ` · ~$${row.cost_usd.toFixed(2)}` : ''}`
+}
+
+// When a job started and how long it has been running, or took, then what it has used. loop.py writes
+// local time with no zone, which Date.parse reads as local too. A start on another day carries its
+// date. A row from an older loop.py has no start, so no clock.
 export function clock(row: Row, isRunning: boolean, now: number): string | null {
   const from = row.started ? Date.parse(row.started) : Number.NaN
   if (!Number.isFinite(from)) return null
   const at = new Date(from)
   const time = `${pad(at.getHours())}:${pad(at.getMinutes())}`
   const when = at.toDateString() === new Date(now).toDateString() ? time : `${MONTHS[at.getMonth()]} ${at.getDate()} ${time}`
-  if (dot(row, isRunning).isPulsing) return `started ${when} · running ${duration(now - from)}`
   const end = row.updated ? Date.parse(row.updated) : Number.NaN
-  if (!Number.isFinite(end)) return `started ${when}`
-  return `started ${when} · ${ENDED[row.state] ? 'took' : 'ran'} ${duration(end - from)}`
+  let line = `started ${when}`
+  if (dot(row, isRunning).isPulsing) line += ` · running ${duration(now - from)}`
+  else if (Number.isFinite(end)) line += ` · ${ENDED[row.state] ? 'took' : 'ran'} ${duration(end - from)}`
+  const used = usage(row)
+  return used ? `${line} · ${used}` : line
 }
 
 // A short line for each issue that has just reached an end: a pull request, a block or a stop.

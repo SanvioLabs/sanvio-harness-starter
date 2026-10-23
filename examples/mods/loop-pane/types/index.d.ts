@@ -17,6 +17,9 @@ export type Row = {
   // When this run of the issue began, in local time. An older loop.py doesn't write it.
   started?: string
   updated?: string
+  // Totals over every run of the issue. A loop.py older than #179 doesn't write them.
+  tokens?: number
+  cost_usd?: number
   // The issue's tmux window, issue-N, while it's open.
   window?: string
 }

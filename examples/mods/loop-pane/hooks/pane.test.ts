@@ -248,6 +248,18 @@ group('a job in the pane', () => {
     expect(JSON.stringify(await ui.drawn())).not.toContain(' · started')
     await ui.unmount()
   })
+  test('tokens and cost follow the time on the clock line without adding a row', async ($, on) => {
+    seed(on, working)
+    const plain = await $.ui.mount(PANE)
+    const height = ((await plain.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height
+    await plain.unmount()
+    const used = { ...working, status: { ...working.status!, issues: [{ ...working.status!.issues[0], tokens: 840_000, cost_usd: 3.4 }] } }
+    seed(on, used)
+    const ui = await $.ui.mount(PANE)
+    expect(JSON.stringify(await ui.find({ key: 'clock-12' }))).toContain('840k tokens · ~$3.40')
+    expect(((await ui.find({ key: 'issue-12' })) as unknown as { props?: { height?: number } }).props?.height).toBe(height)
+    await ui.unmount()
+  })
   test('a job with no clock keeps the line, so every job takes the same rows', async ($, on) => {
     const old = { ...working, status: { ...working.status!, issues: [{ ...working.status!.issues[0], started: undefined }] } }
     seed(on, old)
