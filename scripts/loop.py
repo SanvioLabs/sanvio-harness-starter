@@ -105,7 +105,7 @@ REVIEW_CAP = 60_000  # a report is cut here: a GitHub comment holds 65,536 chara
 PR_BODY_CAP = 60_000  # a pull request's description is cut to this: GitHub holds 65,536 characters
 PR_TEST_LINES = 5  # how many lines from the end of the test output the description shows
 USAGE_TOKENS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
-SAID_CAP = 2_000 # how much of the build agent's last reply a block comment quotes, from its end
+SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
@@ -889,6 +889,7 @@ class Loop:
         """
         cmd, why = self.argv(which, untrusted, confine)
         if cmd is None:
+            self.record_usage(number, step, round_no, None)
             return REFUSED, why
         if number is None:
             return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
@@ -953,8 +954,10 @@ class Loop:
                                     stderr=subprocess.STDOUT if stderr else subprocess.DEVNULL,
                                     text=True, errors="replace", start_new_session=True)
         except FileNotFoundError:
+            self.record_usage(number, step, round_no, None)
             return 127, "command not found: {}".format(cmd[0])
         except OSError as err:
+            self.record_usage(number, step, round_no, None)
             return 126, "could not run {}: {}".format(cmd[0], err.strerror or err)
 
         def feed():
@@ -1000,8 +1003,7 @@ class Loop:
             finally:
                 timer.cancel()
                 self.agents.discard(proc)
-        if number is not None:
-            self.record_usage(number, step, round_no, usage)
+                self.record_usage(number, step, round_no, usage)
         if expired.is_set():
             return 124, "timed out after {}s".format(timeout)
         return proc.returncode, "".join(said)
@@ -1012,6 +1014,8 @@ class Loop:
         usage is result_line()'s, or None when the run reported nothing: its entry says so, with null
         numbers, never 0. The totals cover every entry, so runs before a relabel count too.
         """
+        if number is None:
+            return  # a review of someone else's pull request: no issue to record it on
         started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
         entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None}
         entry.update(usage or {name: None for name in USAGE_TOKENS + ("cost_usd",)})

@@ -624,6 +624,44 @@ class TestAPass(unittest.TestCase):
         self.go()
         self.assertIn("Usage wasn't reported.", self.comments()[0])
 
+    def test_a_refused_build_is_recorded_as_not_reported(self):
+        self.cfg["agent"] = "ollama:llama3"  # an ollama can't edit files, so the build is refused
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["round"], e["reported"]) for e in entries],
+                         [("plan", 0, False), ("build", 1, False)])
+        self.assertIn("build round 1 not reported", [l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"])
+        self.assertIsNone(self.status()["issues"][0]["tokens"])
+
+    def test_an_agent_that_will_not_start_is_recorded_as_not_reported(self):
+        missing = str(Path(self.tmp.name) / "no-such-agent")
+        self.cfg.update(agent=missing, reader_agent=missing)
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["input_tokens"]) for e in entries], [("plan", False, None)])
+        self.assertEqual([l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"],
+                         ["plan round 0 not reported"])
+
+    def test_the_log_lines_it_already_wrote_are_unchanged(self):
+        self.go()
+        self.assertEqual([l.split(" ", 2)[1:] for l in self.lines()[:4]], [
+            ["#12", 'DISCOVER picked "Add the thing"'],
+            ["#12", "SHAPE done plan.md"],
+            ["#12", "BUILD round 1 done 1 file"],
+            ["#12", "VALIDATE round 1 tests passed review PASS"]])
+        self.assertTrue(self.lines()[4].split(" ", 2)[2].startswith("SCALE PR opened "))
+        self.assertEqual(len(self.lines()), 5)
+
+    def test_the_status_row_keeps_every_field_it_had(self):
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertTrue({"number", "title", "step", "state", "round", "tests", "review", "pr", "note", "updated"} <= set(row))
+        self.assertEqual((row["number"], row["step"], row["state"], row["round"], row["tests"], row["review"], row["note"]),
+                         (12, "SCALE", "pr", 1, "passed", "PASS", ""))
+        self.assertTrue(row["pr"])
+        self.assertIn("tokens", row)
+        self.assertIn("cost_usd", row)
+
     def test_a_good_change_opens_a_pull_request_in_five_steps(self):
         self.assertEqual(self.go(), 0)
         steps = [l.split()[2] for l in self.lines()]

@@ -107,6 +107,11 @@ first, with its `step`, `round`, `state` (`working`, `pr`, `blocked`,
 `stopped` or `skipped`), the last `tests` and `review`, and the `pr` link.
 It's rewritten whole at each step, so a reader never sees half of it.
 
+In Claude Code, `/loop-pane` draws it in a pane beside the conversation
+([`examples/mods/loop-pane/`](examples/mods/loop-pane/)). On a Mac, a run inside tmux also writes
+`.loop/watch.command`, and the pane's **Watch it** button opens it: a new
+Terminal window attached to the session, read-only.
+
 **What an issue used.** When the agent is `claude`, each run's tokens and cost
 go in `.loop/issue-N/usage.json`: one entry per run (plan, each build round,
 each review) with its `step`, `round`, the four token counts and `cost_usd`.
@@ -117,10 +122,6 @@ reports nothing, such as one from `codex` or `ollama`, or one that timed out, is
 `null` and "not reported", never 0. The dollar figure is Claude Code's estimate
 at API prices; a subscription is billed differently. Under `--project`, the
 file is in `.loop/projects/<name>/issue-N/`.
-In Claude Code, `/loop-pane` draws it in a pane beside the conversation
-([`examples/mods/loop-pane/`](examples/mods/loop-pane/)). On a Mac, a run inside tmux also writes
-`.loop/watch.command`, and the pane's **Watch it** button opens it: a new
-Terminal window attached to the session, read-only.
 
 A running loop keeps the code it started with: when [`scripts/loop.py`](scripts/loop.py) changes
 on disk under it, it logs one `STALE` line on an idle poll and carries on, and
