@@ -102,4 +102,4 @@ claude plugin validate github-status
 claude plugin test github-status
 ```
 
-CI doesn't run these, because they need Claude Code installed.
+`python3 -m unittest discover -s tests`, and so the loop, runs these wherever Claude Code is installed. CI doesn't install Claude Code, so it skips them.
