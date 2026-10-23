@@ -1448,10 +1448,13 @@ class Loop:
             self.mark(number, state="skipped", note="issue is {}".format(state.strip().lower()))
             return self.log("SCALE", "skipped: issue is {}, no pull request opened".format(state.strip().lower()), number)
         self.halt_if_interrupted()  # the Ctrl-C reaches gh too, so a failed look is no reason to push
+        sha_code, sha = self.git("rev-parse", "--verify", "-q", branch)
         with self.git_lock:  # -u writes the clone's one config file, which two pushes can't both lock
             code, out = self.git("push", "-q", "-u", "origin", branch)
         if code != 0:
             return self.block(number, "push failed: " + out.strip()[:200])
+        if sha_code == 0 and sha.strip():
+            self.mark(number, pushed=sha.strip())  # tidy() needs it if the pull request is rebased
         # In the clone, which shares the worktree's refs. A git that fails still opens the pull request.
         code, numstat = self.git("diff", "--numstat", "origin/{}...{}".format(self.cfg["base"], branch))
         folder = self.dir / "issue-{}".format(number)
@@ -1479,6 +1482,8 @@ class Loop:
         the pull request: a commit made in the worktree and never pushed keeps both.
         Runs on every idle poll, so a pull request merged while the loop sits idle is still
         tidied. A worktree it keeps, or can't check, is logged once per run, not every poll.
+        If a person rebased or amended the pull request, its head no longer holds the branch, so
+        the branch also goes when its tip is still the commit the loop pushed.
         """
         for row in list(self.status["issues"]):
             number = row["number"]
@@ -1505,6 +1510,12 @@ class Loop:
             # Exit 1 means a commit on the branch isn't in the pull request; any other failure,
             # such as a head this clone hasn't fetched, also keeps it.
             code, _ = self.git("merge-base", "--is-ancestor", branch, head) if head else (1, "")
+            if code != 0 and row.get("pushed"):
+                # A rebased or amended pull request has a new head, but a branch still at the
+                # commit the loop pushed has nothing that isn't on GitHub.
+                tip_code, tip = self.git("rev-parse", "--verify", "-q", branch)
+                if tip_code == 0 and tip.strip() == row["pushed"]:
+                    code = 0
             if code != 0:
                 self.log_once("KEPT", "{} has commits the pull request doesn't".format(branch), number)
                 continue
