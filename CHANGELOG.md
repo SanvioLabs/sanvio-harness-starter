@@ -39,7 +39,9 @@ default is `0`, no budget, so nothing changes until you set it.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
 
-**Do:** nothing. To use it, set `"max_issue_tokens": 2000000` (or your own number) in `loop.json`.
+**Do:** nothing. To use it, set `max_issue_tokens` in `loop.json`. Pick the number from what your
+issues already use, which `python3 scripts/token_report.py` shows: cache reads count, and they are most of
+a run.
 
 ## 2026-10-22: Loop blocks a round that changes a lockfile
 

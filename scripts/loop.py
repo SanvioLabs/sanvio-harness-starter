@@ -1088,8 +1088,9 @@ class Loop:
     def run_tokens(self, number):
         """Tokens the issue's current run has used: the entries stamped with this run's start. A relabelled
         issue starts again at zero, though usage.json keeps the earlier runs. Unreported runs add nothing."""
-        started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
-        return usage_totals([e for e in self.usage(number) if e.get("run_started") == started])[0] or 0
+        with self.write_lock:  # another worker's mark() reorders these rows, and a miss would count nothing
+            started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
+            return usage_totals([e for e in self.usage(number) if e.get("run_started") == started])[0] or 0
 
     def over_budget(self, number):
         """Why the issue's next agent must not start, or None when it may."""

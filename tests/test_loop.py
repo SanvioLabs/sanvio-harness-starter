@@ -710,6 +710,22 @@ class TestAPass(unittest.TestCase):
                 self.assertNotIn("issue edit", gh.read_text() if gh.exists() else "")
                 self.assertEqual(self.started_steps(), [])
 
+    def test_the_run_total_waits_for_another_workers_write(self):
+        lp = loop.Loop(self.work, self.cfg)
+        held, done = threading.Event(), threading.Event()
+
+        def hold():
+            with lp.write_lock:
+                held.set()
+                done.wait(0.5)
+
+        threading.Thread(target=hold, daemon=True).start()
+        held.wait(5)
+        began = time.monotonic()
+        lp.run_tokens(12)
+        done.set()
+        self.assertGreaterEqual(time.monotonic() - began, 0.4)
+
     def test_a_run_that_reports_no_tokens_never_blocks(self):
         self.cfg["max_issue_tokens"] = 1
         self.go()
