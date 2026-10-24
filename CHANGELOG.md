@@ -30,10 +30,11 @@ fine).
 ## 2026-10-24: Harness report shows the loop's cost
 
 `token_report.py`, and so the harness report, ends with a *Loop cost* table:
-each issue's estimated dollars as the loop recorded them for its runs in the
-period, and their total, at API prices. Issues the loop ran before it recorded
-cost have none. Conversations stay in tokens, since their transcripts carry no
-cost.
+each issue's estimated dollars as the loop recorded them, how many of its runs
+recorded none, and the total. It's an estimate at API prices, not what was
+billed, and a run counts by when the loop picked its issue up. Conversations
+stay in tokens, since their transcripts carry no cost. A project's loop issues
+are now named `<project>/issue-N` in the token tables too, so the two line up.
 
 Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py),
 [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)

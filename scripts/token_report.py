@@ -8,12 +8,13 @@
 Reads Claude Code's own transcripts, ~/.claude/projects/**/*.jsonl, subagents
 included, and counts the tokens on each reply whose working folder is this
 harness: conversations at its root, each repo under projects/, and each issue
-the loop built in its worktrees. It prints counts only. Nothing it prints holds
-a prompt, a reply, a file path or a line of code. Tokens, and Claude Code only:
-Codex, Kiro and other tools keep their own logs. Dollars only for the loop's
-runs, from the estimate at API prices each run recorded in .loop/issue-N/usage.json;
-a conversation's transcript carries no cost. The skills/harness-report/ skill
-runs this next to usage_report.py.
+the loop built in its worktrees. Nothing it prints holds a prompt, a reply, a
+file path or a line of code: counts, model names, session ids, issue names,
+and for the loop, estimated dollars. Claude Code only: Codex, Kiro and other
+tools keep their own logs. The dollars are the estimate at API prices each loop
+run recorded in .loop/**/usage.json, not what was billed; a conversation's
+transcript carries no cost, so it stays in tokens. The skills/harness-report/
+skill runs this next to usage_report.py.
 """
 import argparse
 import datetime
@@ -44,9 +45,13 @@ def loop_dir(root):
 
 
 def loop_costs(root, since):
-    """{issue: estimated dollars} from the loop's usage.json records, counting runs started on or after
-    `since`. A harness issue is issue-N, a project's is <name>/issue-N. An issue none of whose runs
-    recorded a cost is left out, and so is a record that can't be read or a cost that isn't a number."""
+    """{issue: (estimated dollars or None, runs without a cost)} from the loop's usage.json records.
+
+    A harness issue is issue-N, a project's is <name>/issue-N. A run counts when its run_started, the
+    time the loop picked the issue up, is on or after `since`; a run with no run_started is in no
+    period. A run without a numeric cost_usd (it ended early, its agent isn't Claude, or it predates the
+    loop recording cost) is counted as one without. A record that can't be read is skipped.
+    """
     state = Path(root) / ".loop"
     paths = [(p.parent.name, p) for p in state.glob("issue-*/usage.json")]
     paths += [("{}/{}".format(p.parent.parent.name, p.parent.name), p) for p in state.glob("projects/*/issue-*/usage.json")]
@@ -58,21 +63,29 @@ def loop_costs(root, since):
             continue
         if not isinstance(found, list):
             continue
-        runs = [e for e in found if isinstance(e, dict) and str(e.get("run_started", ""))[:10] >= since
-                and isinstance(e.get("cost_usd"), (int, float)) and not isinstance(e.get("cost_usd"), bool)]
-        _, cost = usage_totals(runs)
-        if cost is not None:
-            out[name] = cost
+        runs = [e for e in found if isinstance(e, dict) and isinstance(e.get("run_started"), str)
+                and e["run_started"][:10] >= since]
+        priced = [e for e in runs if isinstance(e.get("cost_usd"), (int, float)) and not isinstance(e.get("cost_usd"), bool)]
+        if runs:
+            out[name] = (usage_totals(priced)[1], len(runs) - len(priced))
     return out
 
 
 def cost_table(costs):
     if not costs:
         return ["None recorded.", ""]
-    out = ["| Issue | Estimated cost |", "|---|---|"]
-    out += ["| {} | ${:,.2f} |".format(name, costs[name]) for name in sorted(costs, key=natural)]
-    return out + ["", "Total: ${:,.2f}, estimated at API prices. Runs from before the loop recorded a cost "
-                      "have none.".format(sum(costs.values())), ""]
+    out = ["| Issue | Estimated cost | Runs without a cost |", "|---|---|---|"]
+    for name in sorted(costs, key=natural):
+        cost, without = costs[name]
+        out.append("| {} | {} | {} |".format(name, "none recorded" if cost is None else "${:,.2f}".format(cost), without))
+    total = sum(cost for cost, _ in costs.values() if cost is not None)
+    without = sum(n for _, n in costs.values())
+    note = ["Total: ${:,.2f}, estimated at API prices, not what was billed.".format(total)]
+    if without:
+        note.append("{} run{} recorded no cost, so the issues they belong to cost more than shown.".format(
+            without, "" if without == 1 else "s"))
+    note.append("Runs are counted by when the loop picked the issue up.")
+    return out + ["", " ".join(note), ""]
 
 
 def read(projects_dir, since):
@@ -131,7 +144,11 @@ def group(entry, root, loop_dir):
     except (OSError, RuntimeError, ValueError):
         return None
     if here != loop_dir and here.is_relative_to(loop_dir):
-        return ("Loop", here.relative_to(loop_dir).parts[0])
+        parts = here.relative_to(loop_dir).parts
+        # A project's worktrees sit one folder down, in <project>/issue-N.
+        if not parts[0].startswith("issue-") and len(parts) > 1:
+            return ("Loop", "{}/{}".format(parts[0], parts[1]))
+        return ("Loop", parts[0])
     projects = root / "projects"
     if here != projects and here.is_relative_to(projects):
         return ("projects/", here.relative_to(projects).parts[0])
@@ -207,7 +224,7 @@ def report(entries, since, until, root, loop_dir, costs=None):
         if name == "Loop":
             issues[row] += n
 
-    if not any(groups.values()):
+    if not any(groups.values()) and not costs:
         return "No Claude Code usage under this harness since {}.".format(since)
 
     out = ["# Claude Code tokens, {} to {}".format(since, until), "",
