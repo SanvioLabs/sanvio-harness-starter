@@ -1,6 +1,6 @@
 ---
 name: harness-report
-description: Turn your harness usage for a sprint into a short report you share with the harness owner, with what you'd add, change or drop. Reads only your own local usage log and Claude Code's token counts, and you read the report before it goes anywhere. Use at the end of a sprint, or when someone asks for "my harness report", "what did I use this sprint", "sprint follow-up", "what should we add to the harness", "token burn", "how many tokens", or "what did the loop cost".
+description: Turn your harness usage for a sprint into a short report you share with the harness owner, with what you'd add, change or drop. Reads only your own local usage log, Claude Code's token counts and the loop's own cost records, and you read the report before it goes anywhere. Use at the end of a sprint, or when someone asks for "my harness report", "what did I use this sprint", "sprint follow-up", "what should we add to the harness", "token burn", "how many tokens", or "what did the loop cost".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
@@ -14,7 +14,8 @@ and decides what goes into the harness.
 The log is written by [`.claude/hooks/usage_log.py`](../../.claude/hooks/usage_log.py). It holds names and counts,
 never prompts, paths or code. The token counts come from Claude Code's own
 transcripts on your machine, read by [`scripts/token_report.py`](../../scripts/token_report.py), which prints
-only numbers, model names and session ids.
+only numbers, model names, session ids and issue names. The one dollar figure,
+the loop's, comes from the estimate the loop records for each run.
 
 ## Steps
 
@@ -36,9 +37,12 @@ only numbers, model names and session ids.
    python3 scripts/token_report.py --since <YYYY-MM-DD>
    ```
 
-   It reads Claude Code's own transcripts and prints counts only: tokens for
-   conversations here, for each repo under [`projects/`](../../projects/) and for each issue the
-   loop built. Tokens, not dollars, and Claude Code only.
+   It reads Claude Code's own transcripts and prints tokens for conversations
+   here, for each repo under [`projects/`](../../projects/) and for each issue the loop built,
+   Claude Code only. It also prints each loop issue's cost as the loop recorded
+   it: an estimate at API prices, not what was billed, low wherever a run
+   recorded none, and counted by when the loop picked the issue up. A
+   conversation's transcript carries no cost, so conversations stay in tokens.
 3. **Show them the summary,** then ask, one at a time:
    - What worked well enough that the team should use it?
    - Where did you work around the harness: a skill you skipped, a guard you
@@ -48,8 +52,9 @@ only numbers, model names and session ids.
    12 times, said yes 12 times" argues for loosening that ask). Don't invent a
    proposal they didn't make.
 4. **Write the report** to `reports/usage/<YYYY-MM-DD>-<user>.md`: the summary
-   as printed, then a `## Tokens` section with the token summary as printed,
-   then a `## Proposals` section with their answers. Leave nothing unfilled.
+   as printed, then a `## Tokens and loop cost` section with the token summary
+   as printed, then a `## Proposals` section with their answers. Leave nothing
+   unfilled.
 5. **Have them read it.** It's going to the team. They can cut anything.
 6. **Name the commands to share it,** and let them run them:
 

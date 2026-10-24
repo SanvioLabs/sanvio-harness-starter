@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Harness report shows the loop's cost
+
+`token_report.py`, and so the harness report, ends with a *Loop cost* table:
+each issue's estimated dollars as the loop recorded them, how many of its runs
+recorded none, and the total. It's an estimate at API prices, not what was
+billed, and a run counts by when the loop picked its issue up. Conversations
+stay in tokens, since their transcripts carry no cost. A project's loop issues
+are now named `<project>/issue-N` in the token tables too, so the two line up.
+
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py),
+[`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`CHANGELOG.md`](CHANGELOG.md)
+
+**Do:** nothing.
+
 ## 2026-10-23: Project loop.json sets project keys only
 
 With `--project`, the project's own `loop.json` now sets only `test_command`,
