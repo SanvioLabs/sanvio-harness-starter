@@ -275,7 +275,8 @@ named like a token removed.
 Allowing installs also means setting `"allow_lockfile_changes": true` in the
 same harness `loop.json` (with `--project`, in the project's `"projects"`
 entry there; the project's own file can't set it), because an install rewrites
-the lockfile. Until it is set, a round whose commit adds, edits, deletes or renames a lockfile, at any depth
+the lockfile. Until it is set, a round whose commit adds, edits, deletes or
+renames a lockfile, at any depth
 (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`,
 `Cargo.lock`, `go.sum`, `Gemfile.lock`, `requirements*.txt` and the like),
 blocks the issue before the tests run. The check reads every commit the loop
@@ -328,8 +329,10 @@ keyed by the folder name:
 
     {"max_rounds": 3, "projects": {"app": {"agent": "claude", "max_workers": 2}}}
 
-The order is the defaults, the harness's keys, its `"projects"` entry for the
-folder, then the project's own five. A project's `loop.json` that sets one of
+The order is the defaults, the harness's other keys, its `"projects"` entry for
+the folder, then the project's own five. One of the five the project leaves out
+is the default, not the harness's value: the harness's `base` describes the
+harness. A project's `loop.json` that sets one of
 the others is refused with an `ERROR` line naming the key, because a clone
 anyone can merge to mustn't choose what the loop runs or spends. Without
 `--project`, `"projects"` is ignored. Its state stays in
