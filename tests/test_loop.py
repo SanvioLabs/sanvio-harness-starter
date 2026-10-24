@@ -2556,6 +2556,12 @@ class TestProject(unittest.TestCase):
         cfg = loop.Loop(self.harness, project=self.project).cfg
         self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS], ["make test", 9, "dev", "go", "stuck"])
 
+    def test_a_project_key_the_projects_loop_json_leaves_out_is_the_default_not_the_harnesss(self):
+        (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+        self.harness_config({"test_timeout": 9, "base": "staging", "ready_label": "go", "blocked_label": "stuck"})
+        cfg = loop.Loop(self.harness, project=self.project).cfg
+        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS[1:]], [loop.DEFAULTS[k] for k in loop.PROJECT_KEYS[1:]])
+
     def test_every_machine_key_comes_from_the_harness_then_its_projects_entry_then_the_defaults(self):
         machine = {k: v for k, v in loop.DEFAULTS.items() if k not in loop.PROJECT_KEYS}
         machine["allow_lockfile_changes"] = False

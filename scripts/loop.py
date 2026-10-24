@@ -278,12 +278,13 @@ MACHINE_KEYS = frozenset(DEFAULTS) - set(PROJECT_KEYS) | {"allow_lockfile_change
 
 
 def load_project_config(root, project):
-    """The defaults, then the harness's loop.json without "projects", then its projects[<folder name>]
-    entry, then the PROJECT_KEYS of the project's own loop.json."""
+    """The defaults, then the harness's loop.json without "projects" or the PROJECT_KEYS, then its
+    projects[<folder name>] entry, then the PROJECT_KEYS of the project's own loop.json. A project key the
+    project leaves out is the default, not the harness's: the harness's base or labels describe the harness."""
     cfg = dict(DEFAULTS)
     path = Path(root) / "loop.json"
     harness = json.loads(path.read_text()) if path.exists() else {}
-    cfg.update({k: v for k, v in harness.items() if k != "projects"})
+    cfg.update({k: v for k, v in harness.items() if k != "projects" and k not in PROJECT_KEYS})
     cfg.update((harness.get("projects") or {}).get(Path(project).name, {}))
     path = Path(project) / "loop.json"
     own = json.loads(path.read_text()) if path.exists() else {}
