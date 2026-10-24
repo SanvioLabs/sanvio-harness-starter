@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-23: Project loop.json sets project keys only
+
+With `--project`, the project's own `loop.json` now sets only `test_command`,
+`test_timeout`, `base`, `ready_label` and `blocked_label`. Every other key,
+`agent` and `allow_lockfile_changes` included, comes from the harness's
+`loop.json`, for one project under `"projects": {"<folder>": {...}}`. A project
+file that sets one is refused with an `ERROR` line, so whoever can merge to a
+project can't change what the loop runs there.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py),
+[`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`projects/README.md`](projects/README.md),
+[`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md)
+
+**Do:** if a project's `loop.json` sets a key other than those five, move it
+into the harness's `loop.json` under `"projects"`, keyed by the folder name.
+
 ## 2026-10-23: Where to run it
 
 The README's *Set up* now says what works in the terminal, the VS Code

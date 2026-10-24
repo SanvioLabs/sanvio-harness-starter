@@ -2344,9 +2344,9 @@ class TestProject(unittest.TestCase):
         self.project = self.harness / "projects" / "app"
         subprocess.run(["git", "clone", "-q", str(self.origin), str(self.project)], check=True, capture_output=True)
         self.trees = tmp / "trees"
-        (self.project / "loop.json").write_text(json.dumps({
-            "agent": "claude", "reader_agent": "claude", "test_command": PROJECT_TESTS, "base": "develop",
-            "max_rounds": 2, "poll_seconds": 0, "worktree_dir": str(self.trees)}))
+        (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS, "base": "develop"}))
+        self.harness_config({"agent": "claude", "reader_agent": "claude", "max_rounds": 2, "poll_seconds": 0,
+                             "worktree_dir": str(self.trees)})
         (self.project / "README.md").write_text("hi")
         self.commit(self.project)
         git(self.project, "push", "-q", "-u", "origin", "main")
@@ -2363,6 +2363,10 @@ class TestProject(unittest.TestCase):
         os.environ.update(self.old_tmux)
         os.environ.pop("LOOP_TEST_STATE", None)
         self.tmp.cleanup()
+
+    def harness_config(self, cfg):
+        """The harness's loop.json, where the machine's settings for every project live."""
+        (self.harness / "loop.json").write_text(json.dumps(cfg))
 
     def commit(self, repo):
         git(repo, "config", "user.email", "t@example.test")
@@ -2534,9 +2538,9 @@ class TestProject(unittest.TestCase):
         self.assertEqual([(e["step"], e["reported"], e["cost_usd"]) for e in entries], [("plan", True, 0.1)])
 
     def test_a_command_that_sets_its_own_output_format_keeps_it(self):
-        cfg = json.loads((self.project / "loop.json").read_text())
+        cfg = json.loads((self.harness / "loop.json").read_text())
         cfg["agent"] = "claude -p --output-format text --permission-mode acceptEdits"
-        (self.project / "loop.json").write_text(json.dumps(cfg))
+        self.harness_config(cfg)
         self.go()
         built = json.loads((self.state / "build-argv").read_text())
         self.assertEqual(built.count("--output-format"), 1)
@@ -2544,6 +2548,67 @@ class TestProject(unittest.TestCase):
         entries = json.loads((self.harness / ".loop" / "projects" / "app" / "issue-12" / "usage.json").read_text())
         self.assertEqual([(e["step"], e["reported"]) for e in entries],
                          [("plan", True), ("build", False), ("review", True)])
+
+    def test_a_projects_own_loop_json_sets_only_the_project_keys(self):
+        (self.project / "loop.json").write_text(json.dumps({
+            "test_command": "make test", "test_timeout": 9, "base": "dev", "ready_label": "go",
+            "blocked_label": "stuck"}))
+        cfg = loop.Loop(self.harness, project=self.project).cfg
+        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS], ["make test", 9, "dev", "go", "stuck"])
+
+    def test_a_project_key_the_projects_loop_json_leaves_out_is_the_default_not_the_harnesss(self):
+        (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+        self.harness_config({"test_timeout": 9, "base": "staging", "ready_label": "go", "blocked_label": "stuck"})
+        cfg = loop.Loop(self.harness, project=self.project).cfg
+        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS[1:]], [loop.DEFAULTS[k] for k in loop.PROJECT_KEYS[1:]])
+
+    def test_every_machine_key_comes_from_the_harness_then_its_projects_entry_then_the_defaults(self):
+        machine = {k: v for k, v in loop.DEFAULTS.items() if k not in loop.PROJECT_KEYS}
+        machine["allow_lockfile_changes"] = False
+        self.assertEqual(set(machine), set(loop.MACHINE_KEYS))
+        for key, default in machine.items():
+            with self.subTest(key=key):
+                (self.harness / "loop.json").unlink(missing_ok=True)
+                self.assertEqual(loop.Loop(self.harness, project=self.project).cfg.get(key, default), default)
+                self.harness_config({key: "from harness", "projects": {"other": {key: "other"}}})
+                self.assertEqual(loop.Loop(self.harness, project=self.project).cfg[key], "from harness")
+                self.harness_config({key: "from harness", "projects": {"app": {key: "from entry"}}})
+                self.assertEqual(loop.Loop(self.harness, project=self.project).cfg[key], "from entry")
+                # What the project's own file says is never used, whatever it is.
+                (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS, key: "mine"}))
+                self.assertEqual(loop.Loop(self.harness, project=self.project).cfg[key], "from entry")
+                (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+
+    def test_a_project_whose_loop_json_sets_a_machine_key_is_refused(self):
+        site = self.on_github("site")
+        for key in ("agent", "allow_lockfile_changes"):
+            with self.subTest(key=key):
+                (site / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS, key: True}))
+                code, err, built = self.main("run", "--project", str(site))
+                self.assertEqual(code, 1)
+                self.assertEqual(len(err.splitlines()), 1, err)
+                self.assertTrue(err.startswith("ERROR "), err)
+                self.assertIn(key, err)
+                self.assertIn('"projects"', err)
+                built.assert_not_called()
+
+    def test_a_harness_projects_entry_that_is_malformed_or_sets_a_project_key_is_refused(self):
+        site = self.on_github("site")
+        (site / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+        for config in ({"projects": {"site": {"test_command": "true"}}}, {"projects": ["site"]},
+                       {"projects": {"site": "claude"}}, ["site"]):
+            with self.subTest(config=config):
+                self.harness_config(config)
+                code, err, built = self.main("run", "--project", str(site))
+                self.assertEqual(code, 1)
+                self.assertEqual(len(err.splitlines()), 1, err)
+                self.assertTrue(err.startswith("ERROR "), err)
+                self.assertIn("loop.json", err)
+                built.assert_not_called()
+
+    def test_without_a_project_the_harness_projects_entries_override_nothing(self):
+        self.harness_config({"max_rounds": 3, "projects": {"app": {"max_rounds": 9}}})
+        self.assertEqual(loop.Loop(self.harness).cfg["max_rounds"], 3)
 
     def test_a_block_comment_with_tokens_but_no_cost_names_no_prices(self):
         usage = [{"input_tokens": 1000, "output_tokens": None, "cache_write_tokens": None,

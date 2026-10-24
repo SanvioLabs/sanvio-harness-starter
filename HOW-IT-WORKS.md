@@ -255,8 +255,8 @@ To give a ticket a new dependency, add it yourself first:
   loop/issue-N`, then take `loop:blocked` off and put `loop-ready` back.
 
 A team that wants its loop to install can allow it, in the harness's
-`loop.json` or, with `--project`, the project's own. Name the commands the build
-agent may run:
+`loop.json`; with `--project`, under `"projects"` there, as described below. Name
+the commands the build agent may run:
 
     {"agent": "claude -p --permission-mode acceptEdits --allowedTools \"Bash(npm install --ignore-scripts *)\""}
 
@@ -266,14 +266,17 @@ It's the team's decision, not the harness's default, and it lets an agent
 nobody is watching pull any package the registry has. Without
 `--ignore-scripts`, that package's install scripts also run on the machine
 with your full environment, including the tokens the test command is denied.
-Allow the narrowest command that does the job. With `--project`, whoever can
-merge to the project's repo can change its `loop.json`, and a private
+Allow the narrowest command that does the job. With `--project`, the agent
+setting is read from the harness's `loop.json`, never from the project's, so
+whoever can merge to the project's repo can't widen it. A private
 registry's token won't reach `test_command`, which runs with every variable
 named like a token removed.
 
 Allowing installs also means setting `"allow_lockfile_changes": true` in the
-same `loop.json`, because an install rewrites the lockfile. Until it is set, a
-round whose commit adds, edits, deletes or renames a lockfile, at any depth
+same harness `loop.json` (with `--project`, in the project's `"projects"`
+entry there; the project's own file can't set it), because an install rewrites
+the lockfile. Until it is set, a round whose commit adds, edits, deletes or
+renames a lockfile, at any depth
 (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `uv.lock`, `poetry.lock`,
 `Cargo.lock`, `go.sum`, `Gemfile.lock`, `requirements*.txt` and the like),
 blocks the issue before the tests run. The check reads every commit the loop
@@ -316,7 +319,23 @@ because the default tests the harness. For a TypeScript project,
 script; [`examples/typescript/`](examples/typescript/) has a fuller one. The loop refuses, with one
 `ERROR` line and before it takes anything, a folder that isn't directly under
 [`projects/`](projects/), one that isn't a git clone of its own, a clone whose `origin`
-isn't on github.com, or a `loop.json` without `test_command`. Its state stays in
+isn't on github.com, or a `loop.json` without `test_command`.
+
+Which `loop.json` sets what: the project's own sets only `test_command`,
+`test_timeout`, `base`, `ready_label` and `blocked_label`. Every other key,
+`agent`, `max_workers` and `allow_lockfile_changes` among them, comes from the
+harness's `loop.json`, and can be set for one project under `"projects"` there,
+keyed by the folder name:
+
+    {"max_rounds": 3, "projects": {"app": {"agent": "claude", "max_workers": 2}}}
+
+The order is the defaults, the harness's other keys, its `"projects"` entry for
+the folder, then the project's own five. One of the five the project leaves out
+is the default, not the harness's value: the harness's `base` describes the
+harness. A project's `loop.json` that sets one of
+the others is refused with an `ERROR` line naming the key, because a clone
+anyone can merge to mustn't choose what the loop runs or spends. Without
+`--project`, `"projects"` is ignored. Its state stays in
 the harness, in `.loop/projects/<name>/` (`status.json`, `loop.log`,
 `issue-N/` and a lock of its own, so it runs beside the harness's loop). None of
 it goes in the project's folder, which gets only the `loop/issue-N` branches
