@@ -9,9 +9,11 @@ Reads Claude Code's own transcripts, ~/.claude/projects/**/*.jsonl, subagents
 included, and counts the tokens on each reply whose working folder is this
 harness: conversations at its root, each repo under projects/, and each issue
 the loop built in its worktrees. It prints counts only. Nothing it prints holds
-a prompt, a reply, a file path or a line of code. Tokens, not dollars, and
-Claude Code only: Codex, Kiro and other tools keep their own logs. The
-skills/harness-report/ skill runs this next to usage_report.py.
+a prompt, a reply, a file path or a line of code. Tokens, and Claude Code only:
+Codex, Kiro and other tools keep their own logs. Dollars only for the loop's
+runs, from the estimate at API prices each run recorded in .loop/issue-N/usage.json;
+a conversation's transcript carries no cost. The skills/harness-report/ skill
+runs this next to usage_report.py.
 """
 import argparse
 import datetime
@@ -23,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from loop import load_config  # noqa: E402 (needs scripts/ on the path first)
+from loop import load_config, usage_totals  # noqa: E402 (needs scripts/ on the path first)
 from usage_report import since_date  # noqa: E402 (same reason)
 
 # The four counts on a reply's message.usage, with the names the tables give them.
@@ -39,6 +41,38 @@ def loop_dir(root):
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".harness-loop" / Path(root).name
+
+
+def loop_costs(root, since):
+    """{issue: estimated dollars} from the loop's usage.json records, counting runs started on or after
+    `since`. A harness issue is issue-N, a project's is <name>/issue-N. An issue none of whose runs
+    recorded a cost is left out, and so is a record that can't be read or a cost that isn't a number."""
+    state = Path(root) / ".loop"
+    paths = [(p.parent.name, p) for p in state.glob("issue-*/usage.json")]
+    paths += [("{}/{}".format(p.parent.parent.name, p.parent.name), p) for p in state.glob("projects/*/issue-*/usage.json")]
+    out = {}
+    for name, path in paths:
+        try:
+            found = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(found, list):
+            continue
+        runs = [e for e in found if isinstance(e, dict) and str(e.get("run_started", ""))[:10] >= since
+                and isinstance(e.get("cost_usd"), (int, float)) and not isinstance(e.get("cost_usd"), bool)]
+        _, cost = usage_totals(runs)
+        if cost is not None:
+            out[name] = cost
+    return out
+
+
+def cost_table(costs):
+    if not costs:
+        return ["None recorded.", ""]
+    out = ["| Issue | Estimated cost |", "|---|---|"]
+    out += ["| {} | ${:,.2f} |".format(name, costs[name]) for name in sorted(costs, key=natural)]
+    return out + ["", "Total: ${:,.2f}, estimated at API prices. Runs from before the loop recorded a cost "
+                      "have none.".format(sum(costs.values())), ""]
 
 
 def read(projects_dir, since):
@@ -140,7 +174,7 @@ def top_table(counter, header, label=None, limit=TOP):
     return out + [""]
 
 
-def report(entries, since, until, root, loop_dir):
+def report(entries, since, until, root, loop_dir, costs=None):
     groups = {name: {} for name, _ in GROUPS}
     models, sessions, issues = Counter(), Counter(), Counter()
     first_seen = {}
@@ -187,7 +221,8 @@ def report(entries, since, until, root, loop_dir):
     out += ["## Top sessions", ""] + top_table(
         sessions, "Session", lambda s: "`{}`, first {}".format(s, first_seen[s]))
     out += ["## Top loop issues", ""] + top_table(issues, "Issue")
-    out.append("Claude Code sessions only; tokens, not dollars.")
+    out += ["## Loop cost", ""] + cost_table(costs)
+    out.append("Claude Code sessions only. Dollars only for the loop's runs, as the loop recorded them at API prices.")
     return "\n".join(out)
 
 
@@ -199,7 +234,7 @@ def main(argv=None):
                         help="Claude Code's transcripts folder, if not ~/.claude/projects")
     args = parser.parse_args(argv)
     entries = read(Path(args.projects).expanduser(), args.since)
-    print(report(entries, args.since, today.isoformat(), ROOT, loop_dir(ROOT)))
+    print(report(entries, args.since, today.isoformat(), ROOT, loop_dir(ROOT), loop_costs(ROOT, args.since)))
     return 0
 
 

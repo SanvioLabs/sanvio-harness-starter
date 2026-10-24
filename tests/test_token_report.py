@@ -155,11 +155,54 @@ class Output(Harness):
         self.assertIn("| claude-other | 100 |", out)
         self.assertIn("100 of 400 tokens (25%) were spent by subagents.", out)
         self.assertIn("`c`, first 2026-10-03", out)
-        self.assertTrue(out.endswith("Claude Code sessions only; tokens, not dollars."))
+        self.assertIn("## Loop cost", out)
+        self.assertTrue(out.endswith("Claude Code sessions only. Dollars only for the loop's runs, as the loop "
+                                     "recorded them at API prices."))
 
     def test_nothing_under_the_harness_says_so(self):
         out = token_report.report([entry(self.root.parent / "elsewhere")], SINCE, "2026-10-22", self.root, self.loop)
         self.assertEqual(out, "No Claude Code usage under this harness since 2026-10-01.")
+
+
+class LoopCost(Harness):
+    """The loop's own estimates, from each issue's usage.json under the harness's .loop/."""
+
+    def record(self, relative, entries):
+        write(self.root / ".loop", relative, [json.dumps(entries)])
+
+    def test_costs_come_from_the_loops_records_since_the_date(self):
+        self.record("issue-7/usage.json", [
+            {"step": "plan", "run_started": "2026-10-05T09:00:00", "cost_usd": 1.25},
+            {"step": "build", "run_started": "2026-10-06T09:00:00", "cost_usd": 0.5},
+            {"step": "review", "run_started": "2026-10-06T09:00:00", "cost_usd": None},
+            {"step": "plan", "run_started": "2026-09-30T09:00:00", "cost_usd": 9.0}])
+        self.record("issue-12/usage.json", [{"step": "plan", "run_started": "2026-10-05T09:00:00", "cost_usd": None}])
+        self.record("projects/app/issue-3/usage.json", [
+            {"step": "plan", "run_started": "2026-10-05T09:00:00", "cost_usd": 0.25}])
+        self.assertEqual(token_report.loop_costs(self.root, SINCE), {"issue-7": 1.75, "app/issue-3": 0.25})
+
+    def test_unreadable_records_and_odd_values_are_skipped(self):
+        write(self.root / ".loop", "issue-1/usage.json", ["not json"])
+        self.record("issue-2/usage.json", {"cost_usd": 3})
+        self.record("issue-3/usage.json", [["x"], {"run_started": "2026-10-05", "cost_usd": "lots"},
+                                           {"run_started": "2026-10-05", "cost_usd": True},
+                                           {"run_started": "2026-10-05", "cost_usd": 2}])
+        self.assertEqual(token_report.loop_costs(self.root, SINCE), {"issue-3": 2})
+
+    def test_no_loop_folder_reads_as_no_costs(self):
+        self.assertEqual(token_report.loop_costs(self.root, SINCE), {})
+
+    def test_the_report_lists_them_with_a_total(self):
+        out = token_report.report([entry(self.root)], SINCE, "2026-10-22", self.root, self.loop,
+                                  costs={"issue-12": 0.25, "issue-7": 1.75})
+        self.assertIn("| Issue | Estimated cost |", out)
+        self.assertIn("| issue-7 | $1.75 |", out)
+        self.assertLess(out.index("| issue-7 | $1.75 |"), out.index("| issue-12 | $0.25 |"))
+        self.assertIn("Total: $2.00, estimated at API prices.", out)
+
+    def test_without_costs_it_says_none_were_recorded(self):
+        out = token_report.report([entry(self.root)], SINCE, "2026-10-22", self.root, self.loop)
+        self.assertIn("## Loop cost\n\nNone recorded.", out)
 
 
 class Privacy(Harness):

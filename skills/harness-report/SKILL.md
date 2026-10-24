@@ -38,7 +38,9 @@ only numbers, model names and session ids.
 
    It reads Claude Code's own transcripts and prints counts only: tokens for
    conversations here, for each repo under [`projects/`](../../projects/) and for each issue the
-   loop built. Tokens, not dollars, and Claude Code only.
+   loop built, and Claude Code only. Dollars only for the loop: each issue's
+   cost as the loop recorded it, estimated at API prices. A conversation's
+   transcript carries no cost, so those stay in tokens.
 3. **Show them the summary,** then ask, one at a time:
    - What worked well enough that the team should use it?
    - Where did you work around the harness: a skill you skipped, a guard you
