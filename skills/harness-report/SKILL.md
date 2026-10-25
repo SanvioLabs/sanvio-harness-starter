@@ -59,7 +59,7 @@ the loop's, comes from the estimate the loop records for each run.
 5. **Have them read it.** It's going to the owner. They can cut anything.
 6. **Say how to share it:** they send the file to the harness owner
    themselves, the way the team passes documents around. It stays in
-   `reports/usage/` on their machine, gitignored, where step 1 finds it next
+   [`reports/usage/`](../../reports/usage/) on their machine, gitignored, where step 1 finds it next
    sprint.
 
 ## For the owner

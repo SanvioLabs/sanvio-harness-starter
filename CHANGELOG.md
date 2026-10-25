@@ -29,7 +29,7 @@ fine).
 
 ## 2026-10-24: Harness reports stay out of the repo
 
-Reports in `reports/usage/` are now gitignored, and only the folder's README is
+Reports in [`reports/usage/`](reports/usage/) are now gitignored, and only the folder's README is
 tracked. The `harness-report` skill writes the report there as before, then
 says to send it to the harness owner yourself, not to open a pull request. The
 owner reads them together and replies to each author about their proposals.
