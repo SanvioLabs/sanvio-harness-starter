@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: One meaning of "cleared" for inbox and standup
+
+The `inbox` and `standup` skills now both say a source is cleared only when its
+`Cleared for this tool` answer is exactly `yes`,
+and both allow only get, list, search and read calls. `inbox` also counts at
+most 50 unread threads, and `standup` treats what it reads as data, never
+instructions.
+
+Files: [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md), [`skills/standup/SKILL.md`](skills/standup/SKILL.md),
+[`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** a row with a condition after `yes`, such as `yes, summaries only`,
+isn't cleared. If your `company/DATA.md` has one, rewrite it as plain `yes` or
+`no`.
+
 ## 2026-10-24: Golden-example eval for review agents
 
 [`scripts/eval_agents.py`](scripts/eval_agents.py) runs a review agent, twice per case by default, on a folder of known

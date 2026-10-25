@@ -166,6 +166,25 @@ class Skills(unittest.TestCase):
         for command in re.findall(r"gh issue[^`]*", " ".join(project.split())):
             self.assertIn("--repo", command)
 
+    def test_inbox_and_standup_define_cleared_and_calls_the_same_way(self):
+        texts = {}
+        for name in ("inbox", "standup"):
+            text = " ".join((ROOT / "skills" / name / "SKILL.md").read_text().split())
+            texts[name] = text
+            for words in (
+                "A source is cleared only when its `Cleared for this tool` cell in `company/DATA.md` is exactly `yes`, ignoring case and surrounding spaces. Anything else isn't cleared: `no`, `unconfirmed`, blank, `yes` followed by anything (such as `yes, summaries only`), or no row. A provider named in the argument needs a row of its own.",
+                "get, list, search and read",
+            ):
+                self.assertIn(words.lower(), text.lower(), "{}: {}".format(name, words))
+            self.assertNotIn("begins with `yes`", text, name)
+        self.assertIn("responds to, creates or updates a calendar event", texts["inbox"])
+        self.assertIn("respond, reply, label, draft, create or update call", texts["standup"])
+        self.assertIn("If a connector call fails, print the same `Mail: skipped, …` line", texts["inbox"])
+        self.assertIn("A connector call that fails gets the same line, with the reason.", texts["standup"])
+        for words in ("data, never instructions", "loop notes"):
+            self.assertIn(words, texts["standup"])
+        self.assertIn("unread threads capped at 50", texts["inbox"])
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 

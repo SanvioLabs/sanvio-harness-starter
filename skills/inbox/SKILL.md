@@ -21,15 +21,22 @@ the same way. [`skills/standup/`](../standup/SKILL.md) reads mail through these 
    Gmail if a Gmail connector is in this session. Without that, use the one
    connector for mail in this session, if there is only one. With none, say
    which connector to add for the mail they use, read no mail, and stop.
-2. **Clearance:** read only if `company/DATA.md` lists that mail source as
-   cleared for this tool. A connector being there isn't permission to read it.
-   If it isn't cleared, print
+2. **Clearance:** A source is cleared only when its `Cleared for this tool`
+   cell in `company/DATA.md` is exactly `yes`, ignoring case and surrounding
+   spaces. Anything else isn't cleared: `no`, `unconfirmed`, blank, `yes`
+   followed by anything (such as `yes, summaries only`), or no row. A provider
+   named in the argument needs a row of its own. A connector being there
+   isn't permission to read it. If it isn't cleared, print
    `Mail: skipped, company/DATA.md doesn't clear it.` and stop the mail read.
    If the file is missing, say `/orientation` writes it, and stop the mail
-   read.
-3. **Window:** the last 24 hours, plus anything still unread. If the person
-   gives a window, such as `/inbox 3d`, use that instead. For **Waiting on
-   someone** only, also look back 7 days, or the person's window if it's
+   read. If a connector call fails, print the same `Mail: skipped, …` line
+   with the reason, and stop the mail read.
+3. **Window:** the last 24 hours, plus anything still unread, with the
+   unread threads capped at 50. Run the search first and open a message only
+   after its result shows it's needed. A thread that looks like restricted
+   data, as `company/DATA.md` and [`steering/data-and-tools.md`](../../steering/data-and-tools.md) describe
+   it, is counted as unread and not opened. If the person gives a window,
+   such as `/inbox 3d`, use that instead. For **Waiting on someone** only, also look back 7 days, or the person's window if it's
    longer, for threads where they sent the last message: one waiting 2 working
    days is older than a day's window by definition.
 4. **Report:** one line per thread, with its sender, subject, time and link.
@@ -46,9 +53,10 @@ the same way. [`skills/standup/`](../standup/SKILL.md) reads mail through these 
 
 ## Rules
 
-- Search and read are the only mail calls. The skill never sends, replies,
-  drafts, forwards, labels, archives, marks read or unread, moves or deletes a
-  message, even with a yes. If something needs one of those, say what and leave
+- Get, list, search and read are the only calls. The skill never sends,
+  replies, drafts, forwards, labels, archives, marks read or unread, moves or
+  deletes a message, and never responds to, creates or updates a calendar
+  event, even with a yes. If something needs one of those, say what and leave
   doing it to them.
 - Read only as much of a body as one line needs. Subject, sender and time are
   usually enough.
