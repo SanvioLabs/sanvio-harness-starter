@@ -23,10 +23,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HEADING = "## Plugins and mods"
+FAILED = "Couldn't read plugin versions"
 
 
 def installed():
-    """[(id, version, scope)] for the enabled plugins that apply to this harness, sorted by id."""
+    """[(id, version, scope)] for the enabled plugins that apply to this harness, sorted by id then scope.
+
+    One plugin can be registered at more than one scope, user and project say, at different versions, and
+    both load. Each shows as its own row rather than one hiding the other."""
     try:
         result = subprocess.run(["claude", "plugin", "list", "--json"], capture_output=True, text=True, timeout=60)
     except FileNotFoundError:
@@ -47,7 +51,8 @@ def installed():
             continue
         name = record.get("id")
         if isinstance(name, str) and name:
-            rows[name] = (name, text(record.get("version")), text(record.get("scope")))
+            scope = text(record.get("scope"))
+            rows[(name, scope)] = (name, text(record.get("version")), scope)
     return [rows[name] for name in sorted(rows)]
 
 
@@ -75,7 +80,8 @@ def table(rows):
 
 
 def earlier(path):
-    """(date, {id: version}) from a harness report's plugin table, or None when it has none."""
+    """(date, {(id, scope): version}) from a harness report's plugin table, or None when it has none, or
+    when that report couldn't read the versions."""
     match = re.match(r"(\d{4}-\d{2}-\d{2})", Path(path).name)
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -87,23 +93,30 @@ def earlier(path):
     for line in lines[lines.index(HEADING) + 1:]:
         if line.startswith("#"):
             break
+        if line.startswith(FAILED):
+            return None
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if line.startswith("|") and len(cells) == 3 and cells[0] != "Plugin" and not set(cells[0]) <= {"-", ":"}:
-            versions[cells[0]] = cells[1]
+            versions[(cells[0], cells[2])] = cells[1]
     return match.group(1), versions
 
 
 def changes(before, rows):
-    """The plugins that changed version, are new, or are gone, as short phrases in id order."""
-    now = {name: version for name, version, _ in rows}
+    """The plugins that changed version, are new, or are gone, as short phrases in id order. A plugin
+    registered at more than one scope, then or now, is named with the scope that changed."""
+    now = {(name, scope): version for name, version, scope in rows}
+    keys = set(before) | set(now)
+    twice = {name for name, _ in keys if sum(1 for other, _ in keys if other == name) > 1}
     out = []
-    for name in sorted(set(before) | set(now)):
-        if name not in before:
-            out.append("{} (new)".format(name))
-        elif name not in now:
-            out.append("{} (gone)".format(name))
-        elif before[name] != now[name]:
-            out.append("{} {} → {}".format(name, before[name], now[name]))
+    for key in sorted(keys):
+        name, scope = key
+        label = "{} ({})".format(name, scope) if name in twice else name
+        if key not in before:
+            out.append("{} (new)".format(label))
+        elif key not in now:
+            out.append("{} (gone)".format(label))
+        elif before[key] != now[key]:
+            out.append("{} {} → {}".format(label, before[key], now[key]))
     return out
 
 
@@ -127,7 +140,8 @@ def main(argv=None):
     try:
         print(report(installed(), args.previous))
     except ValueError as error:
-        print("Couldn't read plugin versions: {}.".format(error))
+        # Under the heading, so the next report finds the section and knows there was nothing to compare.
+        print("\n".join([HEADING, "", "{}: {}.".format(FAILED, error)]))
     return 0
 
 

@@ -84,13 +84,41 @@ class PluginReportTest(unittest.TestCase):
     def test_claude_missing(self):
         result = run(path="/nonexistent")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(result.stdout.splitlines()), 1)
-        self.assertTrue(result.stdout.startswith("Couldn't read plugin versions: "))
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[:2], ["## Plugins and mods", ""])
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[2].startswith("Couldn't read plugin versions: "))
 
     def test_claude_prints_something_that_is_not_json(self):
         result = run(stdout="not json at all")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.splitlines(), ["Couldn't read plugin versions: claude's answer wasn't JSON."])
+        self.assertEqual(result.stdout.splitlines(),
+                         ["## Plugins and mods", "", "Couldn't read plugin versions: claude's answer wasn't JSON."])
+
+    def test_a_report_that_couldnt_read_versions_is_no_earlier_report(self):
+        with tempfile.TemporaryDirectory() as folder:
+            failed = Path(folder) / "2026-10-10-pat.md"
+            failed.write_text(run(stdout="not json").stdout + "\n## Proposals\n")
+            result = run(["--previous", str(failed)], stdout=json.dumps(FIXTURE))
+        self.assertEqual(result.stdout.splitlines()[-1], "No earlier report to compare with.")
+
+    def test_a_plugin_registered_at_two_scopes_shows_both(self):
+        twice = FIXTURE + [
+            {"id": "lens@market", "version": "0.2.0", "scope": "user", "enabled": True},
+            {"id": "lens@market", "version": "0.1.0", "scope": "project", "enabled": True, "projectPath": str(ROOT)}]
+        result = run(stdout=json.dumps(twice))
+        self.assertIn("| lens@market | 0.1.0 | project |", result.stdout)
+        self.assertIn("| lens@market | 0.2.0 | user |", result.stdout)
+
+    def test_a_change_at_one_of_two_scopes_names_the_scope(self):
+        twice = FIXTURE + [
+            {"id": "lens@market", "version": "0.2.0", "scope": "user", "enabled": True},
+            {"id": "lens@market", "version": "0.2.0", "scope": "project", "enabled": True, "projectPath": str(ROOT)}]
+        with tempfile.TemporaryDirectory() as folder:
+            old = previous(folder, [("loop-pane@inline", "0.2", "session"), ("stelliad@sanvio-harness-starter", "1.3", "project"),
+                                    ("lens@market", "0.2.0", "user"), ("lens@market", "0.1.0", "project")])
+            result = run(["--previous", old], stdout=json.dumps(twice))
+        self.assertEqual(result.stdout.splitlines()[-1], "Changed since 2026-10-10: lens@market (project) 0.1.0 → 0.2.0")
 
     def test_no_install_or_project_path_in_the_output(self):
         with tempfile.TemporaryDirectory() as folder:
