@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Loop run history
+
+[`scripts/loop.py`](scripts/loop.py) adds one line to `.loop/history.jsonl` each time a run of an issue
+ends, whether it opened a pull request, was blocked, stopped or skipped: when it started and
+ended, its outcome, rounds, each round's test result and verdict, its tokens and cost, and which
+agent and reviewer ran. Numbers and labels only, no titles or review text, and lines are never
+changed. [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md) says what each key holds.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md).
+
+**Do:** nothing. The file starts with the next run that ends.
+
 ## 2026-10-24: One meaning of "cleared" for inbox and standup
 
 The `inbox` and `standup` skills now both say a source is cleared only when its

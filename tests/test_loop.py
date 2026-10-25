@@ -387,6 +387,8 @@ elif "You are the reviewer" in prompt:
         open("sneaky.txt", "w").write("x")
     verdict = open(os.path.join(state, "verdict")).read().strip()
     print("Looks right." if verdict == "PASS" else "feature.txt is wrong.")
+    if os.path.exists(os.path.join(state, "review-says")):  # more review text, when a test sets it
+        print(open(os.path.join(state, "review-says")).read().strip())
     print("VERDICT: " + verdict)
 elif os.path.exists(os.path.join(state, "build-noop")):
     # Writes nothing, and says so at length: the start of the reply runs past what a comment keeps.
@@ -865,6 +867,132 @@ class TestAPass(unittest.TestCase):
         numbers = [r["number"] for r in self.status()["issues"]]
         self.assertEqual(len(numbers), loop.STATUS_KEEP)
         self.assertEqual(numbers[:2], [3, loop.STATUS_KEEP + 5])
+
+    # -- the history of runs ----------------------------------------------
+
+    HISTORY_KEYS = {"v", "run", "issue", "project", "started", "ended", "outcome", "rounds", "tests",
+                    "verdicts", "tokens", "cost_usd", "agent", "reviewer"}
+
+    def history(self):
+        path = self.work / ".loop" / "history.jsonl"
+        return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
+
+    def test_a_pull_request_adds_one_history_line_with_only_its_keys(self):
+        self.go()
+        lines = self.history()
+        self.assertEqual(len(lines), 1)
+        line = lines[0]
+        self.assertEqual(set(line), self.HISTORY_KEYS)
+        self.assertEqual((line["v"], line["issue"], line["project"], line["outcome"], line["rounds"]),
+                         (1, 12, None, "pr", 1))
+        self.assertEqual((line["tests"], line["verdicts"]), (["passed"], ["PASS"]))
+        self.assertEqual(line["started"], self.status()["issues"][0]["started"])
+        self.assertEqual(line["run"], "12-" + line["started"])
+        self.assertLessEqual(line["started"], line["ended"])
+        self.assertEqual((line["tokens"], line["cost_usd"]), (None, None))
+        for key in ("agent", "reviewer"):
+            self.assertTrue(line[key], key)
+            self.assertNotIn("/", line[key], key)
+
+    def test_a_history_line_counts_only_this_runs_tokens(self):
+        self.report_usage()
+        folder = self.work / ".loop" / "issue-12"
+        folder.mkdir(parents=True)
+        (folder / "usage.json").write_text(json.dumps([{
+            "step": "build", "round": 1, "run_started": "2020-01-01T00:00:00", "reported": True,
+            "input_tokens": 9_000_000, "output_tokens": 0, "cache_write_tokens": 0, "cache_read_tokens": 0,
+            "cost_usd": 1.0}]))
+        self.go()
+        line = self.history()[0]
+        self.assertEqual((line["tokens"], line["cost_usd"]), (600, 0.75))  # plan, build, review: 200 and $0.25 each
+
+    def test_a_build_that_fails_adds_a_blocked_line_with_no_rounds_validated(self):
+        self.cfg["agent"] = "false"
+        self.go()
+        line = self.history()[0]
+        self.assertEqual((line["outcome"], line["rounds"], line["tests"], line["verdicts"]), ("blocked", 1, [], []))
+        self.assertEqual(line["agent"], "false")
+
+    def test_two_rounds_add_one_line_with_a_result_for_each(self):
+        (self.state / "verdict").write_text("FIX")
+        self.go()
+        lines = self.history()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0]["outcome"], lines[0]["rounds"]), ("blocked", 2))
+        self.assertEqual((lines[0]["tests"], lines[0]["verdicts"]), (["passed", "passed"], ["FIX", "FIX"]))
+        self.assertEqual(lines[0]["rounds"], len(lines[0]["tests"]))
+
+    def test_a_stop_before_round_one_adds_a_stopped_line(self):
+        runner = loop.Loop(self.work, self.cfg)
+        real = runner.agent
+
+        def agent_then_stop(which, prompt, cwd, **kwargs):
+            result = real(which, prompt, cwd, **kwargs)
+            if "You are planning" in prompt:
+                (runner.dir / "STOP").write_text("")
+            return result
+        runner.agent = agent_then_stop
+        with contextlib.redirect_stdout(io.StringIO()):
+            runner.run(once=True)
+        lines = self.history()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0]["outcome"], lines[0]["rounds"], lines[0]["tests"]), ("stopped", 0, []))
+
+    def test_an_issue_closed_meanwhile_adds_a_skipped_line(self):
+        (self.state / "issue-state").write_text("CLOSED")
+        self.go()
+        lines = self.history()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0]["outcome"], lines[0]["tests"]), ("skipped", ["passed"]))
+
+    def test_an_issue_blocked_before_its_run_starts_adds_no_line(self):
+        (self.state / "graphql.json").write_text(json.dumps({
+            "title": "Add the thing", "body": "changed", "authorAssociation": "NONE",
+            "lastEditedAt": "2026-10-14T11:00:00Z",
+            "timelineItems": {"nodes": [{"__typename": "LabeledEvent", "createdAt": "2026-10-14T10:00:00Z",
+                                         "label": {"name": "loop-ready"}}]}}))
+        self.go()
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        self.assertEqual(self.history(), [])
+
+    def test_no_title_review_or_block_reason_reaches_the_history(self):
+        marker = "HISTORY-MARKER-222"
+        (self.state / "issues.json").write_text(json.dumps([issue(12, title="Fix " + marker)]))
+        (self.state / "verdict").write_text("FIX")
+        (self.state / "review-says").write_text(marker + " is in the review")
+        self.go()
+        self.assertIn(marker, (self.work / ".loop" / "issue-12" / "review.md").read_text())
+        self.build_writes(marker + "/package-lock.json")
+        self.go()
+        row = self.status()["issues"][0]
+        self.assertIn(marker, row["title"])
+        self.assertIn(marker, row["note"])  # the lockfile block names the path
+        self.assertEqual([l["outcome"] for l in self.history()], ["blocked", "blocked"])
+        text = (self.work / ".loop" / "history.jsonl").read_text()
+        for word in (marker, "http", ".loop/"):
+            self.assertNotIn(word, text)
+
+    def test_a_second_run_adds_a_line_and_leaves_the_first_as_it_was(self):
+        self.cfg["agent"] = "false"
+        self.go()
+        path = self.work / ".loop" / "history.jsonl"
+        first = path.read_bytes()
+        started = json.loads(first)["started"]
+        while datetime.now().isoformat(timespec="seconds") == started:
+            time.sleep(0.05)  # started is to the second, and a run in the same one would share its run
+        self.go()
+        self.assertTrue(path.read_bytes().startswith(first))
+        lines = self.history()
+        self.assertEqual(len(lines), 2)
+        self.assertNotEqual(lines[0]["run"], lines[1]["run"])
+
+    def test_a_history_that_cannot_be_written_is_logged_by_type_and_the_run_stands(self):
+        (self.work / ".loop" / "history.jsonl").mkdir(parents=True)
+        self.go()
+        errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertTrue(errors[0].endswith("#12 ERROR could not write history.jsonl: IsADirectoryError"), errors[0])
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
 
     def test_a_pull_request_closes_the_issue_and_the_issue_hears_about_it(self):
         self.go()
