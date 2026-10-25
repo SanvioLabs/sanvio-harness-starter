@@ -11,10 +11,19 @@ case.json that says what a good review of it looks like:
     agent           the agent in agents/, such as reviewer
     work            optional: the work file's name in the case's folder, work.md by default
     brief           optional: the job's brief, a path from the harness root
-    must_find       texts from the work file that at least one finding must quote
+    must_find       texts from the work file that at least one finding must quote. An entry can be a
+                    list of alternatives, and any one of them in a finding is enough
+    must_mention    optional: texts the reply must hold anywhere, findings or not
     must_not_flag   texts no finding may quote
     max_findings    most findings the reply may hold
     verdict         optional: the **Verdict:** the reply must end on
+
+A finding is the block around a **Where:** line. It starts at the title and severity lines just
+above it: the lines directly above, back to a blank line, a heading, a closing line or the previous
+**Where:** line. So a finding written with no blank line before the next one can lose its last lines
+to the next, which changes no grade. It ends at the next finding or the first closing line after its
+**Where:**: a heading, or a line starting **Recommendations:**, **Not checked:** or **Summary:**.
+Matching ignores case.
 
 A case passes a run when its reply meets all of that and the agent left the checkout as it found it.
 Each case runs --runs times (two by default): all pass is stable, some is flaky, none is failing.
@@ -42,6 +51,7 @@ from loop import command, confined, result_line  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT = 900  # seconds one agent session may take
 WHERE = re.compile(r"^\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*Where:\*\*", re.M)
+CLOSING = re.compile(r"^(?:#+ |\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*(?:Recommendations|Not checked|Summary):\*\*)", re.M)
 VERDICT = re.compile(r"\*\*Verdict:\*\*\s*([A-Za-z][A-Za-z-]*)")
 TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 
@@ -52,6 +62,7 @@ def load_cases(folder):
     for spec in sorted(Path(folder).glob("*/case.json")):
         case = json.loads(spec.read_text())
         case.setdefault("must_find", [])
+        case.setdefault("must_mention", [])
         case.setdefault("must_not_flag", [])
         case.setdefault("max_findings", 10)
         case.update(name=spec.parent.name, folder=spec.parent, work=spec.parent / case.get("work", "work.md"))
@@ -69,10 +80,29 @@ def prompt(case, root=ROOT):
     return "\n\n".join(parts) + "\n"
 
 
+def opening(reply, line, floor):
+    """Where the finding whose **Where:** line starts at line begins: back over the lines directly above,
+    stopping at a blank line, a heading, a closing line or floor."""
+    while line > floor:
+        above = reply.rfind("\n", 0, line - 1) + 1
+        text = reply[above:line - 1]
+        if not text.strip() or CLOSING.match(text):
+            break
+        line = above
+    return line
+
+
 def findings(reply):
-    """The reply's findings: the blocks that each start at a **Where:** line. A reply with none has zero."""
-    starts = [m.start() for m in WHERE.finditer(reply)]
-    return [reply[a:b] for a, b in zip(starts, starts[1:] + [len(reply)])]
+    """The reply's findings: a block around each **Where:** line, from its title to the next finding or the
+    first closing line. A reply with no **Where:** line has zero."""
+    lines = [reply.rfind("\n", 0, m.end()) + 1 for m in WHERE.finditer(reply)]
+    floors = [0] + [reply.find("\n", at) + 1 for at in lines[:-1]]
+    starts = [opening(reply, at, floor) for at, floor in zip(lines, floors)]
+    found = []
+    for at, start, end in zip(lines, starts, starts[1:] + [len(reply)]):
+        closing = CLOSING.search(reply, at)
+        found.append(reply[start:min(end, closing.start()) if closing else end])
+    return found
 
 
 def grade(case, reply, changed=()):
@@ -81,8 +111,12 @@ def grade(case, reply, changed=()):
     text = "\n".join(found).lower()
     reasons = []
     for anchor in case["must_find"]:
-        if anchor.lower() not in text:
-            reasons.append("missed: " + anchor)
+        options = anchor if isinstance(anchor, list) else [anchor]
+        if not any(option.lower() in text for option in options):
+            reasons.append("missed: " + " | ".join(options))
+    for anchor in case["must_mention"]:
+        if anchor.lower() not in reply.lower():
+            reasons.append("not mentioned: " + anchor)
     for anchor in case["must_not_flag"]:
         if anchor.lower() in text:
             reasons.append("flagged: " + anchor)

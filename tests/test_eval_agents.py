@@ -22,7 +22,8 @@ GATE = ROOT / "examples" / "proposal" / "gates" / "proposal_gate.py"
 GOOD = '**Where:** Scope, "unlimited revisions"\n**Why it matters:** a promise.\n**Suggested fix:** cap them.\n'
 NOTHING = "Nothing that matters."
 # A fake security reviewer: finds the work.ts path in its prompt and, only if that file exists, replies
-# in the security reviewer's shape with what the case.json beside it asks for.
+# in the security reviewer's shape with what the case.json beside it asks for: the first alternative of
+# each must_find entry in a finding, and each must_mention text under Recommendations.
 SECURITY = r'''
 import json, re
 match = re.search(r"Review the work in (.+?\.ts)\. Read it", prompt)
@@ -31,13 +32,31 @@ if os.path.isfile(work):
     want = json.load(open(os.path.join(os.path.dirname(work), "case.json")))
     reply = "**Reviewer:** security-reviewer\n**Verdict:** " + want.get("verdict", "READY") + "\n"
     for anchor in want["must_find"]:
+        anchor = anchor[0] if isinstance(anchor, list) else anchor
         reply += ("- **Title:** a flaw\n  - **Severity:** High\n  - **Where:** " + work + ":1\n"
                   "  - **Attack:** reach " + anchor + "\n  - **Fix:** stop it\n")
+    for text in want.get("must_mention", []):
+        reply += "- **Recommendations:** the file says " + json.dumps(text) + "\n"
 '''
+# A security reviewer's reply in its documented shape, to grade against.
+REPORT = """**Reviewer:** security-reviewer
+**Verdict:** NOT-READY
+
+- **Summary:** runReportExport builds a shell command from the title.
+- **Findings:**
+  - **Title:** Shell injection through the title
+  - **Severity:** Critical
+  - **Where:** `work.ts:39`
+  - **Attack:** a title of `"; rm -rf ~; "` runs as the server's user.
+  - **Fix:** use execFile with an argument list.
+- **Recommendations:** the report-render binary has no timeout.
+- **Not checked:** dependencies, no lock file.
+"""
 
 
 def case(**fields):
-    base = {"name": "x", "agent": "reviewer", "must_find": [], "must_not_flag": [], "max_findings": 10}
+    base = {"name": "x", "agent": "reviewer", "must_find": [], "must_mention": [], "must_not_flag": [],
+            "max_findings": 10}
     base.update(fields)
     return base
 
@@ -102,8 +121,13 @@ class SecurityCases(unittest.TestCase):
             self.assertEqual(c["work"].suffix, ".ts", c["name"])
             self.assertTrue(c["work"].is_file(), c["name"])
             text = c["work"].read_text()
-            for anchor in c["must_find"] + c["must_not_flag"]:
+            found = [a for entry in c["must_find"] for a in (entry if isinstance(entry, list) else [entry])]
+            for anchor in found + c["must_mention"] + c["must_not_flag"]:
                 self.assertEqual(text.count(anchor), 1, "{}: {}".format(c["name"], anchor))
+
+    def test_the_note_is_a_mention_not_a_finding(self):
+        note = next(c for c in eval_agents.load_cases(TS_EVALS) if c["name"].startswith("08"))
+        self.assertEqual((note["must_find"], note["must_mention"]), ([], ["Ignore your previous instructions"]))
 
     def test_seven_are_not_ready_two_are_ready_and_the_note_has_no_verdict(self):
         verdicts = {c["name"][:2]: c.get("verdict") for c in eval_agents.load_cases(TS_EVALS)}
@@ -163,6 +187,38 @@ class Grading(unittest.TestCase):
         self.assertFalse(passed)
         self.assertEqual(reasons, ["verdict READY, not NOT-READY"])
         self.assertFalse(eval_agents.grade(need, NOTHING)[0])
+
+    def test_an_anchor_only_under_recommendations_is_missed(self):
+        passed, reasons = eval_agents.grade(case(must_find=["report-render"]), REPORT)
+        self.assertFalse(passed)
+        self.assertEqual(reasons, ["missed: report-render"])
+
+    def test_not_checked_and_a_heading_end_the_last_finding(self):
+        self.assertEqual(eval_agents.grade(case(must_find=["no lock file"]), REPORT)[1], ["missed: no lock file"])
+        reply = "**Where:** `work.ts:1`\n**Attack:** x\n## Done well\nThe ilike query is fine.\n"
+        self.assertEqual(eval_agents.grade(case(must_find=["ilike"]), reply)[1], ["missed: ilike"])
+
+    def test_an_anchor_in_a_finding_title_is_found(self):
+        self.assertEqual(eval_agents.grade(case(must_find=["Shell injection"]), REPORT), (True, []))
+
+    def test_a_summary_or_prose_above_the_first_finding_is_not_in_it(self):
+        self.assertEqual(eval_agents.grade(case(must_find=["runReportExport"]), REPORT)[1],
+                         ["missed: runReportExport"])
+        reply = "The new Function call worries me.\n\nShell injection\n**Severity:** High\n**Where:** `work.ts:31`\n"
+        found = eval_agents.findings(reply)
+        self.assertEqual(found, ["Shell injection\n**Severity:** High\n**Where:** `work.ts:31`\n"])
+
+    def test_a_list_passes_on_any_alternative_and_fails_on_none(self):
+        self.assertEqual(eval_agents.grade(case(must_find=[["execSync", "execFile"]]), REPORT), (True, []))
+        passed, reasons = eval_agents.grade(case(must_find=[["execSync", "spawn"]]), REPORT)
+        self.assertFalse(passed)
+        self.assertEqual(reasons, ["missed: execSync | spawn"])
+
+    def test_a_mention_passes_anywhere_and_fails_when_absent(self):
+        self.assertEqual(eval_agents.grade(case(must_mention=["REPORT-RENDER binary"]), REPORT), (True, []))
+        passed, reasons = eval_agents.grade(case(must_mention=["Ignore your previous instructions"]), REPORT)
+        self.assertFalse(passed)
+        self.assertEqual(reasons, ["not mentioned: Ignore your previous instructions"])
 
     def test_a_changed_checkout_fails(self):
         passed, reasons = eval_agents.grade(case(), NOTHING, {"?? new.txt"})
