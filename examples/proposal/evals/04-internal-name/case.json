@@ -1,0 +1,7 @@
+{
+  "agent": "reviewer",
+  "brief": "examples/proposal/agents/proposal-reviewer.md",
+  "must_find": ["Hermes"],
+  "must_not_flag": [],
+  "max_findings": 10
+}
