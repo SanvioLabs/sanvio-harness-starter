@@ -202,8 +202,12 @@ class Skills(unittest.TestCase):
 
     def test_no_skill_grants_a_shell_command_in_every_session(self):
         # Claude Code applies allowed-tools in any session the skill is active in, guard or no guard.
+        # Read raw, not through frontmatter(): YAML takes `allowed-tools :` and a continued line too.
         for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
-            self.assertNotIn("Bash", frontmatter(skill.read_text()).get("allowed-tools", ""), skill.parent.name)
+            text = skill.read_text()
+            head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+            grants = re.findall(r"^\s*allowed-tools\s*:(.*(?:\n[ \t].*)*)", head, re.M)
+            self.assertFalse(any("Bash" in g for g in grants), skill.parent.name)
 
     def test_every_approved_headless_tool_only_reads(self):
         # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.

@@ -122,8 +122,11 @@ One skill is marked: `review-pr`. No Bash allow rule is safe on its own, since
 `gh pr view -R <host>/...` reaches any host and your own Bash allow rules apply
 to a headless run too, so [`.claude/hooks/guard.py`](.claude/hooks/guard.py) holds a run [`bin/harness`](bin/harness)
 started to `gh pr view <n>`, `gh pr diff <n>` and `gh issue view <n>`, with
-`--comments` on a view. Every other command and every connector is refused, a
-call the guard can't check is refused too, and the wrapper loads no MCP servers.
+`--comments` on a view. Every other command and every connector is refused, so
+is a call the guard fails on while checking it, and the wrapper loads no MCP
+servers. The guard has to start for any of that: with no `python3` on the path,
+or a guard that times out, only the `gh` prefixes hold, and those don't stop
+`-R`.
 A headless review doesn't run the tests, and says so in its report. It can still
 read and search files: the guard doesn't see `Grep` or `Glob` yet, so treat its
 report as you would a session's before passing it on.

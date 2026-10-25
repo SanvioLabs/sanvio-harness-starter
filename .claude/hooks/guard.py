@@ -34,6 +34,7 @@ import os
 import re
 import shlex
 import sys
+import traceback
 
 CREDENTIAL = re.compile(
     r"(^|[\s/'\"=<:])("  # : as well, for git show HEAD:.env
@@ -295,8 +296,10 @@ def main():
         verdict = decide(event)
     except Exception:
         if not headless:
-            # Unreadable input: let the call through and say so, rather than block every tool.
-            print(json.dumps({"systemMessage": "[guard] couldn't read the tool call, so it wasn't checked"}))
+            # Unreadable input, or a bug here: let the call through and say so, rather than block every
+            # tool, and leave the traceback on stderr so a guard bug doesn't fail quietly.
+            traceback.print_exc()
+            print(json.dumps({"systemMessage": "[guard] couldn't check the tool call, so it wasn't checked"}))
             return 0
         # Nobody is watching a headless run, so a call the guard couldn't check doesn't run.
         verdict = ("deny", HEADLESS_UNCHECKED)
