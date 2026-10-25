@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: review-skill quarantines outside the repo
+
+`review-skill` now copies an outside skill or plugin to `~/skill-quarantine/`,
+outside every folder an agent loads from, instead of `incoming/` in the repo,
+where Claude Code could load its `CLAUDE.md` or `.claude/skills/` as soon as a
+file was read. It treats everything in the skill as data, reviews a skill with
+no licence and adopts from nowhere, lists a plugin's hooks, MCP servers and
+agents, flags more (bidi and tag characters, auto-loaded files, symlinks and
+binaries, sending files out, persistence, permission-mode flags), and deletes
+the copy at the end.
+
+Files: [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md), [`README.md`](README.md), [`STARTER-SKILLS.md`](STARTER-SKILLS.md),
+`.gitignore`, [`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** move or delete anything left in `incoming/`, then remove the folder.
+
 ## 2026-10-24: Sprint report lists plugins and mods
 
 The `harness-report` skill now runs [`scripts/plugin_report.py`](scripts/plugin_report.py), which lists the

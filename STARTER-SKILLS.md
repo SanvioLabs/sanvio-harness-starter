@@ -14,7 +14,7 @@ bad. Review it, then have your harness write its own version.
 **1. Review it.** Ask your agent: "Review this skill: <link>." The
 `review-skill` skill in this repo does the following:
 
-- Copies the skill into `incoming/`, never into [`skills/`](skills/), and doesn't run or
+- Copies the skill into `~/skill-quarantine/`, never into [`skills/`](skills/), and doesn't run or
   load anything in it.
 - Reads every file, scripts included, and lists what it would make an agent do:
   commands, URLs, files read or written, anything installed.
@@ -23,7 +23,12 @@ bad. Review it, then have your harness write its own version.
   - anything that touches credentials, `.env` files or keys
   - `curl | sh` or other download-and-run
   - writes outside the repo
-  - hidden text: HTML comments, zero-width characters, base64
+  - hidden text: HTML comments, zero-width, bidi and tag characters, base64
+  - files an agent loads by itself: `CLAUDE.md`, `AGENTS.md`, a `.claude/` folder
+  - symlinks and binaries
+  - sending local files out
+  - persistence: shell profiles, scheduled jobs, agent settings
+  - permission-mode flags
   - a description so broad it fires on everything
 - Sorts everything the skill does into **covered** (you already have it),
   **gap** (you don't) or **conflict** (it contradicts your rules).

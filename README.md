@@ -326,7 +326,7 @@ So don't install a skill. Have your harness review it:
 review the skill at https://github.com/<someone>/<skills>/tree/main/<skill>
 ```
 
-[`skills/review-skill/`](skills/review-skill/) quarantines it in `incoming/`, reads every file, flags
+[`skills/review-skill/`](skills/review-skill/) quarantines it in `~/skill-quarantine/`, reads every file, flags
 anything that reaches for credentials or tells the agent to skip your rules,
 then compares it with what you already have. You adopt only the gaps, rewritten
 in your own conventions, with the source and licence noted. Your harness stays
