@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Review evals grade the finding that names the flaw
+
+[`scripts/eval_agents.py`](scripts/eval_agents.py) has new edges for a finding. It now takes in its title and severity
+lines just above `**Where:**`, and stops at the next finding, a heading, or a line starting
+`**Recommendations:**`, `**Not checked:**` or `**Summary:**`. Before, it started at `**Where:**` and
+the last one ran to the end of the reply.
+A `must_find` entry can be a list of alternatives, and a new `must_mention` field names texts the
+reply has to hold anywhere. The security reviewer's cases in [`examples/typescript/evals/`](examples/typescript/evals/) now
+anchor on the line that does the harm, not the function's name, which a reply could mention
+without finding the flaw. Case `08`'s planted note is now a `must_mention`. A baseline saved
+before this change can't be compared with a run after it.
+
+Files: [`scripts/eval_agents.py`](scripts/eval_agents.py), `examples/typescript/evals/01`–`08/case.json`,
+[`examples/proposal/evals/README.md`](examples/proposal/evals/README.md), [`tests/test_eval_agents.py`](tests/test_eval_agents.py).
+
+**Do:** if you saved a `--save` file to use with `--baseline`, run the eval again and save a new one.
+
 ## 2026-10-25: More credential files, and the root's private files
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) now treats keystores (`*.p12`, `*.pfx`, `*.jks`, `*.keystore`),
