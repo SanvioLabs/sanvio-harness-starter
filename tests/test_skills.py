@@ -185,6 +185,27 @@ class Skills(unittest.TestCase):
             self.assertIn(words, texts["standup"])
         self.assertIn("unread threads capped at 50", texts["inbox"])
 
+    def test_headless_skills_list_only_approved_tools(self):
+        approved = [l for l in (ROOT / "bin" / "harness-tools").read_text().splitlines() if l and not l.startswith("#")]
+        headless = set()
+        for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            fields = frontmatter(skill.read_text())
+            if fields.get("headless") != "true":
+                continue
+            name = skill.parent.name
+            headless.add(name)
+            entries = [e.strip() for e in fields.get("allowed-tools", "").split(",") if e.strip()]
+            self.assertTrue(entries, "{}: headless with no allowed-tools".format(name))
+            for entry in entries:
+                self.assertIn(entry, approved, name)
+
+    def test_every_approved_headless_tool_only_reads(self):
+        # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.
+        read_only = re.compile(r"Read|Grep|Glob")
+        for line in (ROOT / "bin" / "harness-tools").read_text().splitlines():
+            if line and not line.startswith("#"):
+                self.assertTrue(read_only.fullmatch(line), line)
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 

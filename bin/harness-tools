@@ -1,0 +1,13 @@
+# The only tools a skill marked headless: true may list in allowed-tools, one per line.
+# bin/harness refuses a skill whose list names anything else, and tests/test_skills.py
+# checks every entry here only reads. A skill's allowed-tools also applies in an ordinary
+# session while the skill runs, so an entry belongs here only if it can't run a program,
+# write a file or reach a host of its own choosing, whatever flags follow it.
+# Adding one is a reviewed change to this file.
+#
+# No Bash entry yet. `gh pr view -R <host>/...` reaches any host, checked 2026-10-25, and
+# with Bash among the tools a person's own Bash allow rules would apply to a run nobody
+# watches. A Bash entry waits on a guard.py rule that holds headless runs to exact commands.
+Read
+Grep
+Glob

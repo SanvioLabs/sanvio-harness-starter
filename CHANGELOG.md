@@ -27,6 +27,23 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Run a skill headless with bin/harness
+
+[`bin/harness`](bin/harness) runs a skill from any folder without opening a session:
+`harness <skill> [arguments]`, or `harness --json <skill>` for JSON output. It
+starts `claude -p` at the harness root and runs only skills marked
+`headless: true`, with only the tools their `allowed-tools` line names, each of
+which has to be in [`bin/harness-tools`](bin/harness-tools). It pins the permission mode and the
+tools. No skill is marked yet: every Bash command checked could run a program,
+write a file or reach another host, so marking `review-pr` waits on a guard
+rule for headless runs. The usage log marks a session it started as `headless`.
+
+Files: [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py),
+[`README.md`](README.md), [`tests/test_harness_cli.py`](tests/test_harness_cli.py), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_usage.py`](tests/test_usage.py)
+
+**Do:** to use it, add `alias harness=~/path/to/my-harness/bin/harness` to your
+shell's startup file, with the path to your copy.
+
 ## 2026-10-25: Security reviewer eval cases
 
 Ten TypeScript cases for `security-reviewer` are in [`examples/typescript/evals/`](examples/typescript/evals/), the set to start

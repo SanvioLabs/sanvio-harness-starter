@@ -98,6 +98,39 @@ marketplace is registered under one name for the whole machine, so the mods
 load from whichever clone registered it first. `claude plugin list` says which
 folder they're read from.
 
+### Run a skill from anywhere
+
+[`bin/harness`](bin/harness) runs a skill without opening a session, from any folder. It starts
+`claude -p` at the harness root, so the rules, skills and guards load as they
+would in the terminal. Add an alias to your shell's startup file:
+
+```bash
+alias harness=~/path/to/my-harness/bin/harness
+harness <skill> [arguments]
+harness --json <skill> [arguments]    # Claude Code's JSON output, for a script to read
+```
+
+It runs only a skill whose frontmatter says `headless: true`, and passes the
+tools its `allowed-tools` line names to `--allowedTools`, so those run without
+asking. Every entry on that list has to be in [`bin/harness-tools`](bin/harness-tools), or the
+skill doesn't start, and the wrapper sets the permission mode and the tools
+itself. Any other name stops with exit code 2 before Claude starts.
+
+No skill is marked yet. A skill's `allowed-tools` also applies in an ordinary
+session, so an entry goes in [`bin/harness-tools`](bin/harness-tools) only if no flag after it can
+run a program, write a file or reach another host, and no Bash command passes
+that on its own: `git fetch --upload-pack` runs a program, `git diff --output`
+writes a file, and `gh pr view -R <host>/...` reaches any host. With Bash among
+a run's tools, your own Bash allow rules would also apply to a run nobody
+watches. `review-pr` gets marked once [`.claude/hooks/guard.py`](.claude/hooks/guard.py) holds headless
+runs to exact `gh` reads.
+
+A headless run has nobody to ask. When the guard would ask you before a
+connector call, the call is refused. A skill that needs to ask you a question
+can't wait for the answer, so give it everything in the arguments. The
+arguments reach the skill joined by spaces, so quoting inside one argument is
+lost.
+
 ## Where things live
 
 The harness holds the method. Everything else is reached where it lives.
