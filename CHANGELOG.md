@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Security reviewer eval cases
+
+Ten TypeScript cases for `security-reviewer` are in [`examples/typescript/evals/`](examples/typescript/evals/), the set to start
+from for a team that writes code and no proposals. Seven plant one flaw each (a shell command,
+a file path, a missing owner check, SQL, a server-side fetch, `new Function`, a sign-in redirect)
+and expect NOT-READY. One holds a comment telling the reviewer to approve it, and two are clean
+and expect READY. [`scripts/eval_agents.py`](scripts/eval_agents.py) now takes a `work` field in `case.json` naming the file
+to review, `work.md` when it's left out, so existing cases are unchanged.
+
+Files: [`examples/typescript/evals/`](examples/typescript/evals/), [`scripts/eval_agents.py`](scripts/eval_agents.py), [`examples/proposal/evals/README.md`](examples/proposal/evals/README.md), [`tests/test_eval_agents.py`](tests/test_eval_agents.py), [`AGENTS.md`](AGENTS.md).
+
+**Do:** nothing. After you change [`agents/security-reviewer.md`](agents/security-reviewer.md) or its model, run
+`python3 scripts/eval_agents.py examples/typescript/evals`.
+
 ## 2026-10-25: Loop run history
 
 [`scripts/loop.py`](scripts/loop.py) adds one line to `.loop/history.jsonl` each time a run of an issue

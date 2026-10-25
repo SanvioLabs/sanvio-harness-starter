@@ -17,9 +17,23 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import eval_agents  # noqa: E402
 
 EVALS = ROOT / "examples" / "proposal" / "evals"
+TS_EVALS = ROOT / "examples" / "typescript" / "evals"
 GATE = ROOT / "examples" / "proposal" / "gates" / "proposal_gate.py"
 GOOD = '**Where:** Scope, "unlimited revisions"\n**Why it matters:** a promise.\n**Suggested fix:** cap them.\n'
 NOTHING = "Nothing that matters."
+# A fake security reviewer: finds the work.ts path in its prompt and, only if that file exists, replies
+# in the security reviewer's shape with what the case.json beside it asks for.
+SECURITY = r'''
+import json, re
+match = re.search(r"Review the work in (.+?\.ts)\. Read it", prompt)
+work = match.group(1) if match else ""
+if os.path.isfile(work):
+    want = json.load(open(os.path.join(os.path.dirname(work), "case.json")))
+    reply = "**Reviewer:** security-reviewer\n**Verdict:** " + want.get("verdict", "READY") + "\n"
+    for anchor in want["must_find"]:
+        reply += ("- **Title:** a flaw\n  - **Severity:** High\n  - **Where:** " + work + ":1\n"
+                  "  - **Attack:** reach " + anchor + "\n  - **Fix:** stop it\n")
+'''
 
 
 def case(**fields):
@@ -31,7 +45,7 @@ def case(**fields):
 def fake_agent(folder, body):
     """The --agent value for a fake agent that reads the prompt, runs body, and says what body sets as reply."""
     script = Path(folder) / "fake_agent.py"
-    script.write_text("import sys, os\nsys.stdin.read()\nreply = ''\n" + body + "\nprint(reply)\n")
+    script.write_text("import sys, os\nprompt = sys.stdin.read()\nreply = ''\n" + body + "\nprint(reply)\n")
     return "{} {}".format(shlex.quote(sys.executable), shlex.quote(str(script)))
 
 
@@ -76,6 +90,35 @@ class Cases(unittest.TestCase):
         self.assertIn("# Reviewer", text)
         self.assertIn("# Proposal reviewer brief", text)
         self.assertIn(str(c["work"].resolve()), text)
+
+
+class SecurityCases(unittest.TestCase):
+    def test_all_ten_load_with_a_ts_file_holding_each_anchor_once(self):
+        cases = eval_agents.load_cases(TS_EVALS)
+        self.assertEqual(len(cases), 10)
+        for c in cases:
+            self.assertEqual(c["agent"], "security-reviewer", c["name"])
+            self.assertNotIn("brief", c, c["name"])
+            self.assertEqual(c["work"].suffix, ".ts", c["name"])
+            self.assertTrue(c["work"].is_file(), c["name"])
+            text = c["work"].read_text()
+            for anchor in c["must_find"] + c["must_not_flag"]:
+                self.assertEqual(text.count(anchor), 1, "{}: {}".format(c["name"], anchor))
+
+    def test_seven_are_not_ready_two_are_ready_and_the_note_has_no_verdict(self):
+        verdicts = {c["name"][:2]: c.get("verdict") for c in eval_agents.load_cases(TS_EVALS)}
+        want = {"{:02d}".format(n): "NOT-READY" for n in range(1, 8)}
+        want.update({"08": None, "09": "READY", "10": "READY"})
+        self.assertEqual(verdicts, want)
+
+    def test_an_agent_that_reads_each_ts_file_passes_every_case(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = fake_agent(tmp, SECURITY)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = eval_agents.main([str(TS_EVALS), "--runs", "1", "--agent", agent, "--checkout", tmp])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("10 stable, 0 flaky, 0 failing", out.getvalue())
 
 
 class Grading(unittest.TestCase):
