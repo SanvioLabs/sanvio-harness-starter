@@ -31,7 +31,7 @@ fine).
 
 `review-skill` now copies an outside skill or plugin to `~/skill-quarantine/`,
 outside every folder an agent loads from, instead of `incoming/` in the repo,
-where Claude Code could load its `CLAUDE.md` or `.claude/skills/` as soon as a
+where Claude Code could load its `<skill>/CLAUDE.md` or `<skill>/.claude/skills/` as soon as a
 file was read. It treats everything in the skill as data, reviews a skill with
 no licence and adopts from nowhere, lists a plugin's hooks, MCP servers and
 agents, flags more (bidi and tag characters, auto-loaded files, symlinks and
@@ -39,7 +39,7 @@ binaries, sending files out, persistence, permission-mode flags), and deletes
 the copy at the end.
 
 Files: [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md), [`README.md`](README.md), [`STARTER-SKILLS.md`](STARTER-SKILLS.md),
-`.gitignore`, [`tests/test_skills.py`](tests/test_skills.py)
+[`.gitignore`](.gitignore), [`tests/test_skills.py`](tests/test_skills.py)
 
 **Do:** move or delete anything left in `incoming/`, then remove the folder.
 

@@ -24,7 +24,7 @@ bad. Review it, then have your harness write its own version.
   - `curl | sh` or other download-and-run
   - writes outside the repo
   - hidden text: HTML comments, zero-width, bidi and tag characters, base64
-  - files an agent loads by itself: `CLAUDE.md`, `AGENTS.md`, a `.claude/` folder
+  - files an agent loads by itself: `<skill>/CLAUDE.md`, `<skill>/AGENTS.md`, a `<skill>/.claude/` folder
   - symlinks and binaries
   - sending local files out
   - persistence: shell profiles, scheduled jobs, agent settings
