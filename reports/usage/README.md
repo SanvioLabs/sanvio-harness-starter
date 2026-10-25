@@ -7,6 +7,10 @@ never go into the repo; only this README is tracked. The owner reads a
 sprint's reports together, takes the proposals worth taking, and says why for
 the ones it doesn't.
 
+Each report also lists the plugins and mods enabled for that person, by id,
+version and scope, and says which changed since their last report. The owner
+reviews the ones that changed before the next sprint.
+
 Counts and proposals only. The raw logs stay in `.harness/usage/` on each
 person's machine, and that folder is gitignored.
 

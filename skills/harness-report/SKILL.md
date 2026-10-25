@@ -16,7 +16,10 @@ The log is written by [`.claude/hooks/usage_log.py`](../../.claude/hooks/usage_l
 never prompts, paths or code. The token counts come from Claude Code's own
 transcripts on your machine, read by [`scripts/token_report.py`](../../scripts/token_report.py), which prints
 only numbers, model names, session ids and issue names. The one dollar figure,
-the loop's, comes from the estimate the loop records for each run.
+the loop's, comes from the estimate the loop records for each run. The plugin
+list comes from `claude plugin list --json`, read by
+[`scripts/plugin_report.py`](../../scripts/plugin_report.py), which prints each enabled plugin's id,
+version and scope and no path.
 
 ## Steps
 
@@ -44,6 +47,16 @@ the loop's, comes from the estimate the loop records for each run.
    it: an estimate at API prices, not what was billed, low wherever a run
    recorded none, and counted by when the loop picked the issue up. A
    conversation's transcript carries no cost, so conversations stay in tokens.
+
+   Then the plugins and mods, with their last report (step 1) to compare with:
+
+   ```bash
+   python3 scripts/plugin_report.py --previous reports/usage/<their last report>
+   ```
+
+   Leave out `--previous` if there isn't one. It lists the enabled plugins and
+   mods and says which changed version, arrived or went since that report. If
+   it can't read them it says so in a line, and the report carries that line.
 3. **Show them the summary,** then ask, one at a time:
    - What worked well enough that the team should use it?
    - Where did you work around the harness: a skill you skipped, a guard you
@@ -52,12 +65,22 @@ the loop's, comes from the estimate the loop records for each run.
    Use their words. Point at the numbers where they back a proposal up ("asked
    12 times, said yes 12 times" argues for loosening that ask). Don't invent a
    proposal they didn't make.
-4. **Write the report** to `reports/usage/<YYYY-MM-DD>-<user>.md`: the summary
+4. **Review what changed, if they own this harness.** Ask once: "Do you own
+   this harness?" On a no, or if the plugin output has no `Changed since` line,
+   skip this step. On a yes, run `stelliad:review-skill` on the installed folder
+   of each changed or new plugin, or [`skills/review-skill/`](../review-skill/SKILL.md) where Stelliad isn't
+   installed. Read each folder from `claude plugin list --json` yourself, and
+   never put it in the report. There is no old version on disk to diff against,
+   so the review reads the whole folder and its changelog if it has one. The
+   findings go under `## Changed plugins` in the report. Don't ask again for
+   this report, and don't record the answer.
+5. **Write the report** to `reports/usage/<YYYY-MM-DD>-<user>.md`: the summary
    as printed, then a `## Tokens and loop cost` section with the token summary
-   as printed, then a `## Proposals` section with their answers. Leave nothing
-   unfilled.
-5. **Have them read it.** It's going to the owner. They can cut anything.
-6. **Say how to share it:** they send the file to the harness owner
+   as printed, then the plugin output as printed (it starts with its own
+   `## Plugins and mods` heading), then `## Changed plugins` if step 4 ran,
+   then a `## Proposals` section with their answers. Leave nothing unfilled.
+6. **Have them read it.** It's going to the owner. They can cut anything.
+7. **Say how to share it:** they send the file to the harness owner
    themselves, the way the team passes documents around. It stays in
    [`reports/usage/`](../../reports/usage/) on their machine, gitignored, where step 1 finds it next
    sprint.
