@@ -340,6 +340,102 @@ class Search(unittest.TestCase):
                 self.assertTrue(re.fullmatch(matchers[0], tool), "{} doesn't see {}".format(script, tool))
 
 
+class MoreCredentials(unittest.TestCase):
+    """Keystores, cluster and cloud config, and the like are credentials as much as an env file is."""
+
+    NAMES = ("certs/store.p12", "certs/STORE.P12", "client.pfx", "app.jks", "release.keystore",
+             "/home/me/.kube/config", "keys/service-account-prod.json", "/srv/site/.htpasswd",
+             "/home/me/.docker/config.json", "/home/me/.gnupg/secring.gpg")
+
+    def test_each_is_refused_to_every_tool_that_names_it(self):
+        for name in self.NAMES:
+            for verdict in (call("Read", file_path=name), call("Edit", file_path=name),
+                            call("Grep", pattern="x", path=name), call("Bash", command="cat " + name)):
+                self.assertEqual(verdict[0] if verdict else None, "deny", name)
+
+    def test_a_folder_of_them_is_refused_to_a_search(self):
+        for folder in ("/home/me/.gnupg", "/home/me/.kube/", "~/.gnupg"):
+            self.assertEqual(call("Grep", pattern="x", path=folder)[0], "deny", folder)
+
+    def test_a_glob_that_can_only_match_one_is_refused(self):
+        for glob in ("*.p12", "*.P12", ".kube/*", "*.{pfx,jks}", "service-account*.json"):
+            self.assertEqual(call("Grep", pattern="x", glob=glob)[0], "deny", glob)
+        for glob in ("*.json", "*config.json", "config.json"):
+            self.assertIsNone(call("Grep", pattern="x", glob=glob), glob)
+
+    def test_a_secret_printing_command_is_refused_in_any_case(self):
+        for command in ("PRINTENV", "Printenv HOME", "GH AUTH TOKEN"):
+            self.assertEqual(call("Bash", command=command)[0], "deny", command)
+
+    def test_ordinary_files_are_still_readable(self):
+        for name in ("README.md", "package.json", "tsconfig.json", "keys.py", "config.json", "src/keystore.ts"):
+            self.assertIsNone(call("Read", file_path=name), name)
+            self.assertIsNone(call("Bash", command="cat " + name), name)
+
+
+class HeadlessPrivate(unittest.TestCase):
+    """Inside the root, the files that hold tokens or company data stay out of a headless run's reach."""
+
+    def test_each_private_place_is_refused(self):
+        for path in (".claude/settings.local.json", ".claude/SETTINGS.LOCAL.JSON", ".git/config",
+                     "projects/app/.git/config", "company/COMPANY.md", "local-data/export.csv",
+                     os.path.join(guard.ROOT, "company", "DATA.md")):
+            self.assertEqual(headless("Read", file_path=path), ("deny", guard.HEADLESS_PRIVATE), path)
+        for tool_input in ({"path": "company"}, {"path": "local-data/"}, {"path": "projects/app/.git"},
+                           {"path": ".claude/settings.local.json"}, {"path": "projects/app", "glob": "config"},
+                           {"path": "projects/app", "glob": ".git/*"}):
+            self.assertEqual(headless("Grep", pattern="x", **tool_input), ("deny", guard.HEADLESS_PRIVATE), tool_input)
+        for tool_input in ({"pattern": "company/*"}, {"pattern": "{company,src}/*"}, {"pattern": "*/.git/config"},
+                           {"pattern": "*", "path": "local-data"}, {"pattern": "**/company/*"},
+                           {"pattern": "**/settings.local.json"}):
+            self.assertEqual(headless("Glob", **tool_input), ("deny", guard.HEADLESS_PRIVATE), tool_input)
+
+    def test_a_search_glob_that_brings_a_private_place_back_in_is_refused(self):
+        # A ripgrep glob that matches an ignored or hidden folder or file searches it: {company,*.md}
+        # lists company/, measured with Claude Code's own --hidden --glob '!.git' on 2026-10-25.
+        for glob in ("{company,*.md}", "company/**", "local-data/**", "*.local.json", "settings.local.json",
+                     ".claude/**", "{.claude,settings.local.json}", "{.git,*.md}", "co*y", "/company"):
+            self.assertEqual(headless("Grep", pattern="x", glob=glob), ("deny", guard.HEADLESS_PRIVATE), glob)
+        for glob in ("*.md", "src/**/*.go", "**/*.ts", "!*.lock"):
+            self.assertIsNone(headless("Grep", pattern="x", glob=glob), glob)
+
+    def test_a_caret_class_is_read_as_ripgrep_reads_it(self):
+        # ripgrep reads [^x] as any character but x: {compan[^_],*.md} listed company/, measured 2026-10-25.
+        for glob in ("{compan[^_],*.md}", "settings.local.jso[^_]", ".en[^_]"):
+            self.assertEqual(headless("Grep", pattern="x", path="projects/app", glob=glob)[0], "deny", glob)
+        for glob in ("*.p1[^_]", ".en[^_]", "id_rs[^_]"):
+            self.assertEqual(call("Grep", pattern="x", glob=glob)[0], "deny", glob)
+        self.assertIsNone(call("Grep", pattern="x", glob="*.m[^_]"))
+
+    def test_a_glob_can_still_list_names_where_it_names_no_private_place(self):
+        self.assertIsNone(headless("Glob", pattern="*"))
+        self.assertIsNone(headless("Glob", pattern="**/*.md"))
+        self.assertIsNone(headless("Glob", pattern="projects/*/config/**"))
+        self.assertIsNone(headless("Glob", pattern="**/config/*.rb"))
+
+    def test_a_link_into_a_private_place_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            (root / "company").mkdir(parents=True)
+            (root / "company" / "COMPANY.md").write_text("x")
+            (root / "notes.md").symlink_to(root / "company" / "COMPANY.md")
+            with mock.patch.object(guard, "ROOT", os.path.realpath(root)):
+                self.assertEqual(headless("Read", _cwd=str(root), file_path="notes.md"),
+                                 ("deny", guard.HEADLESS_PRIVATE))
+
+    def test_the_rest_of_the_root_still_passes(self):
+        self.assertIsNone(headless("Read", file_path="projects/app/.gitignore"))
+        self.assertIsNone(headless("Read", file_path="steering/company-notes.md"))
+        self.assertIsNone(headless("Read", file_path="companyx/notes.md"))
+        self.assertIsNone(headless("Grep", pattern="x", path="projects/app", glob="*.md"))
+        self.assertIsNone(headless("Grep", pattern="x"))
+        self.assertIsNone(headless("Glob", pattern="projects/*/src/**"))
+
+    def test_outside_a_headless_run_they_read_as_before(self):
+        self.assertIsNone(call("Read", file_path=os.path.join(guard.ROOT, ".claude", "settings.local.json")))
+        self.assertIsNone(call("Read", file_path=os.path.join(guard.ROOT, "company", "COMPANY.md")))
+
+
 class SessionStart(unittest.TestCase):
     def test_all_passing_says_nothing(self):
         self.assertIsNone(session_start.report([("PASS", "python 3.12", None)]))
