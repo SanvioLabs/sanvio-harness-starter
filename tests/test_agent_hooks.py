@@ -1,6 +1,7 @@
 """Run with: python3 -m unittest discover -s tests"""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -180,9 +181,10 @@ class SecurityReviewerShell(unittest.TestCase):
                                         "agent_type": "reviewer"}))
 
 
-def headless(tool, **tool_input):
+def headless(tool, _cwd=guard.ROOT, **tool_input):
+    """The guard's verdict in a run bin/harness started, which it starts at the root."""
     with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
-        return guard.decide({"tool_name": tool, "tool_input": tool_input})
+        return guard.decide({"tool_name": tool, "tool_input": tool_input, "cwd": _cwd})
 
 
 class HeadlessRun(unittest.TestCase):
@@ -234,6 +236,108 @@ class HeadlessRun(unittest.TestCase):
             self.assertIsNone(call("Bash", command="npm test"))
             self.assertIsNone(call("Bash", command="gh pr view -R example.invalid/o/r 1"))
             self.assertIsNone(call("mcp__claude_ai_Gmail__search_threads", query="x"))
+            self.assertIsNone(call("Read", file_path="/etc/hosts"))
+            self.assertIsNone(call("Grep", pattern="x", path="/etc"))
+
+    def test_a_file_tool_reaching_outside_the_root_is_refused(self):
+        up = os.path.join(guard.ROOT, "..", "elsewhere")
+        for tool, tool_input in (
+                ("Read", {"file_path": "/etc/hosts"}), ("Read", {"file_path": up}), ("Read", {"file_path": "../x"}),
+                ("Grep", {"pattern": "x", "path": "/etc"}), ("Grep", {"pattern": "x", "path": up}),
+                ("Grep", {"pattern": "x", "path": ".."}),
+                ("Glob", {"pattern": "*", "path": "/etc"}), ("Glob", {"pattern": "*", "path": up}),
+                ("Glob", {"pattern": "/etc/*"}), ("Glob", {"pattern": "../**"}),
+                ("Glob", {"pattern": "skills/*/../../../**"}), ("Glob", {"pattern": "{..,x}/**"}),
+                ("Glob", {"pattern": "{..,a}/{..,b}/**"}), ("Glob", {"pattern": "{/,x}etc/**"}),
+                ("Glob", {"pattern": "\\.\\./**"}),
+                ("Glob", {"pattern": "{" + ",".join("a%d" % i for i in range(65)) + "}/*"})):
+            self.assertEqual(headless(tool, **tool_input), ("deny", guard.HEADLESS_OUTSIDE), (tool, tool_input))
+
+    def test_a_link_out_of_the_root_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, outside = Path(tmp) / "root", Path(tmp) / "outside"
+            root.mkdir()
+            outside.mkdir()
+            (outside / "notes.md").write_text("x")
+            (root / "link").symlink_to(outside)
+            with mock.patch.object(guard, "ROOT", os.path.realpath(root)):
+                for tool, tool_input in (("Read", {"file_path": str(root / "link" / "notes.md")}),
+                                         ("Grep", {"pattern": "x", "path": str(root / "link")}),
+                                         ("Glob", {"pattern": "link/*"}), ("Glob", {"pattern": "*", "path": "link"})):
+                    self.assertEqual(headless(tool, _cwd=str(root), **tool_input), ("deny", guard.HEADLESS_OUTSIDE),
+                                     tool)
+                self.assertIsNone(headless("Glob", _cwd=str(root), pattern="*"))
+
+    def test_a_file_tool_inside_the_root_passes(self):
+        self.assertIsNone(headless("Read", file_path=os.path.join(guard.ROOT, "README.md")))
+        self.assertIsNone(headless("Read", file_path="projects/some-repo/src/app.py"))
+        self.assertIsNone(headless("Grep", pattern="x"))
+        self.assertIsNone(headless("Grep", pattern="x", path="steering"))
+        self.assertIsNone(headless("Glob", pattern="*", path="skills/"))
+        self.assertIsNone(headless("Glob", pattern="**/*.md"))
+
+    def test_a_run_whose_folder_is_outside_the_root_reads_nothing(self):
+        self.assertEqual(headless("Grep", _cwd="/etc", pattern="x"), ("deny", guard.HEADLESS_OUTSIDE))
+
+
+class Search(unittest.TestCase):
+    """Grep reads what it searches, so a credential is as off limits to it as to Read. Glob only lists names."""
+
+    def test_a_grep_naming_a_credential_is_refused(self):
+        for tool_input in ({"path": "/repo/.env"}, {"path": "/home/me/.ssh/id_ed25519"}, {"path": "/home/me/.ssh"},
+                           {"path": "/home/me/.aws/"}, {"glob": "*.pem"}, {"glob": ".env*"}, {"glob": "**/.env"},
+                           {"glob": "*.{pem,key}"}, {"glob": ".env.*"},
+                           # A wildcard or class inside the name, an escape, another case, a list.
+                           {"glob": ".en?"}, {"glob": ".e*v"}, {"glob": "*.pe?"}, {"glob": "id_*"},
+                           {"glob": ".e[n]v"}, {"glob": "*.pe[m]"}, {"glob": "\\.env"}, {"glob": ".ss[h]/*"},
+                           {"glob": ".ENV"}, {"glob": "*.md,.env"}, {"glob": "*.md .env"},
+                           # Padding a brace list past what the guard checks refuses rather than skips.
+                           {"glob": "{.env," + ",".join("a%d" % i for i in range(64)) + "}"},
+                           # A path that only names a credential once it's tidied up.
+                           {"path": "/home/me/.ssh//"}, {"path": "~/.aws/./"}, {"path": "projects/app/.ENV"},
+                           {"path": "certs/server.PEM"}):
+            verdict = call("Grep", pattern="KEY", **tool_input)
+            self.assertEqual(verdict[0] if verdict else None, "deny", tool_input)
+            self.assertIn("looks like a credential file", verdict[1])
+
+    def test_a_link_to_a_credential_is_refused_by_where_it_lands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = Path(tmp) / "server.pem"
+            secret.write_text("x")
+            (Path(tmp) / "setup.md").symlink_to(secret)
+            for tool, tool_input in (("Read", {"file_path": str(Path(tmp) / "setup.md")}),
+                                     ("Grep", {"pattern": "x", "path": str(Path(tmp) / "setup.md")})):
+                self.assertEqual(call(tool, **tool_input)[0], "deny", tool)
+
+    def test_an_ordinary_search_passes(self):
+        for tool_input in ({}, {"path": "steering/"}, {"glob": "*.md"}, {"glob": "*.{py,md}"}, {"glob": "*"},
+                           {"glob": "**/*.ts"}, {"glob": "*key*"}, {"glob": "*.env.example"},
+                           {"glob": ".env.example*"}, {"path": "/repo/.env.example"}, {"type": "sh"}):
+            self.assertIsNone(call("Grep", pattern="KEY", **tool_input), tool_input)
+
+    def test_a_headless_search_by_a_type_that_takes_in_credentials_is_refused(self):
+        self.assertEqual(headless("Grep", pattern="KEY", type="sh")[0], "deny")
+        self.assertEqual(headless("Grep", pattern="KEY", type=["py", "sh"])[0], "deny")
+        self.assertIsNone(headless("Grep", pattern="KEY", type="py"))
+
+    def test_a_headless_glob_that_can_match_a_credential_is_refused_however_broad(self):
+        for glob in ("*env*", "*key*", "*en*", "*"):
+            self.assertEqual(headless("Grep", pattern="KEY", glob=glob)[0], "deny", glob)
+        for glob in ("*.md", "*.{py,ts}", "src/**/*.go"):
+            self.assertIsNone(headless("Grep", pattern="KEY", glob=glob), glob)
+
+    def test_listing_names_passes_even_for_credentials(self):
+        self.assertIsNone(call("Glob", pattern="**/*.md"))
+        self.assertIsNone(call("Glob", pattern="**/.env*"))
+
+    def test_the_guard_is_wired_to_every_tool_it_has_a_rule_for(self):
+        settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
+        for script in ("guard.py", "usage_log.py"):
+            matchers = [entry["matcher"] for entry in settings["hooks"]["PreToolUse"]
+                        if any(script in hook["command"] for hook in entry["hooks"])]
+            self.assertEqual(len(matchers), 1, script)
+            for tool in guard.CHECKED_TOOLS + ("mcp__any__get_thing",):
+                self.assertTrue(re.fullmatch(matchers[0], tool), "{} doesn't see {}".format(script, tool))
 
 
 class SessionStart(unittest.TestCase):

@@ -10,6 +10,8 @@
 # 2026-10-25, and with Bash among a run's tools a person's own Bash allow rules apply too.
 # The Bash entries below are safe headless because .claude/hooks/guard.py refuses every
 # command in a headless run except `gh pr view <n>`, `gh pr diff <n>` and `gh issue view <n>`.
+# Read, Grep and Glob are safe headless because the guard holds their paths, and a Glob's
+# pattern, inside the harness root.
 Read
 Grep
 Glob
