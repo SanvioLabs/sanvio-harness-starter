@@ -134,6 +134,37 @@ class Report(unittest.TestCase):
         self.assertIn("| `mcp__gmail__send_email` | 1 | 1 |", text)
         self.assertIn("Never used here: `whats-new`", text)
 
+    def earlier_report(self, tmp, text):
+        path = Path(tmp) / "earlier.md"
+        path.write_text(text)
+        return usage_report.earlier_unused(path)
+
+    def test_a_skill_unused_in_both_periods_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = usage_report.read(self.write_log(tmp), "2026-10-01")
+            earlier = self.earlier_report(tmp, "# Old\n\nNever used here: `whats-new`, `learn`\n")
+        text = usage_report.report(lines, "2026-10-01", "2026-10-14", ["learn", "review-pr", "whats-new"], earlier)
+        self.assertIn("Unused two sprints running: `whats-new`\n", text)
+
+    def test_no_overlap_says_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = usage_report.read(self.write_log(tmp), "2026-10-01")
+            earlier = self.earlier_report(tmp, "Never used here: `learn`\n")
+        text = usage_report.report(lines, "2026-10-01", "2026-10-14", ["learn", "review-pr", "whats-new"], earlier)
+        self.assertIn("Unused two sprints running: none", text)
+
+    def test_without_a_usable_previous_report_no_line_is_printed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = self.write_log(tmp)
+            earlier = Path(tmp) / "earlier.md"
+            earlier.write_text("# Old report\n\nNo skills line here.\n")
+            script = str(ROOT / "scripts" / "usage_report.py")
+            for extra in ([], ["--previous", str(earlier)], ["--previous", str(Path(tmp) / "missing.md")]):
+                result = subprocess.run([sys.executable, script, "--log", str(log), "--since", "2026-10-01"] + extra,
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0)
+                self.assertNotIn("Unused two sprints running", result.stdout)
+
     def test_a_missing_log_says_why(self):
         result = subprocess.run([sys.executable, str(ROOT / "scripts" / "usage_report.py"),
                                  "--log", "/nonexistent/me.jsonl"], capture_output=True, text=True, timeout=30)

@@ -29,8 +29,12 @@ version and scope and no path.
 2. **Run the summary:**
 
    ```bash
-   python3 scripts/usage_report.py --since <YYYY-MM-DD>
+   python3 scripts/usage_report.py --since <YYYY-MM-DD> --previous reports/usage/<their last report>
    ```
+
+   Leave out `--previous` if there isn't a last report. With it, the summary
+   adds an `Unused two sprints running:` line naming the skills on both that
+   report's `Never used here:` line and this one's.
 
    If it says there's no log, tell them why it might be missing (the hook isn't
    wired, or `HARNESS_USAGE_LOG` is off) and stop. Don't guess at their usage.
@@ -57,7 +61,13 @@ version and scope and no path.
    Leave out `--previous` if there isn't one. It lists the enabled plugins and
    mods and says which changed version, arrived or went since that report. If
    it can't read them it says so in a line, and the report carries that line.
-3. **Show them the summary,** then ask, one at a time:
+3. **Show them the summary.** If it has an `Unused two sprints running:` line
+   other than `none`, ask about each skill on it first, one at a time: drop it,
+   keep it, or test it. For "test it", name the evals in `skill-creator` if
+   that skill is installed, and otherwise say no eval skill is installed here.
+   Don't run an eval. Record each answer under `## Proposals` in their words.
+   If they skip, the line stays in the summary and nothing is recorded. Then
+   ask, one at a time:
    - What worked well enough that the team should use it?
    - Where did you work around the harness: a skill you skipped, a guard you
      kept saying yes to, a step you did by hand?
