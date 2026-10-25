@@ -1,0 +1,7 @@
+{
+  "agent": "reviewer",
+  "brief": "examples/proposal/agents/proposal-reviewer.md",
+  "must_find": [],
+  "must_not_flag": ["TBD"],
+  "max_findings": 3
+}

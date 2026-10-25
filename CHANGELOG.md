@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Golden-example eval for review agents
+
+[`scripts/eval_agents.py`](scripts/eval_agents.py) runs a review agent, twice per case by default, on a folder of known
+examples and says which it catches: each case is stable, flaky or failing, with the tokens and
+seconds it took. A case fails if the reply misses a planted defect, flags something it shouldn't,
+has too many findings, gives the wrong verdict, or if the agent changed the checkout. `--save`
+keeps a run as JSON and `--baseline` lists the cases whose status changed since. Ten cases for the
+proposal reviewer are in [`examples/proposal/evals/`](examples/proposal/evals/), with a README on when to run it and what it
+costs (twenty agent sessions). It isn't in the gate, because it starts real sessions.
+
+Files: [`scripts/eval_agents.py`](scripts/eval_agents.py), [`examples/proposal/evals/`](examples/proposal/evals/), [`tests/test_eval_agents.py`](tests/test_eval_agents.py), [`AGENTS.md`](AGENTS.md).
+
+**Do:** nothing. After you change [`agents/reviewer.md`](agents/reviewer.md), a brief or the reviewer's model, run
+`python3 scripts/eval_agents.py examples/proposal/evals`.
+
 ## 2026-10-24: Loop pane wraps on Desktop and VS Code
 
 In the Claude Desktop and VS Code panes, a job's title, time line and detail

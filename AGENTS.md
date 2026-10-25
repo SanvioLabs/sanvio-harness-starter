@@ -133,6 +133,10 @@ In Claude Code they run as the `reviewer`, `security-reviewer`, `ceo`, `cto`,
 In other tools, run each as a separate session with its file as its
 instructions.
 
+[`scripts/eval_agents.py`](scripts/eval_agents.py) runs a review agent on known examples and says which defects it still
+catches. Run it after changing an agent's file, a job's brief or the model. It starts real
+sessions, so it isn't part of the gate; [`examples/proposal/evals/`](examples/proposal/evals/) has the reviewer's cases.
+
 ## Examples
 
 [`examples/`](examples/) holds worked jobs to read and copy. Before working in one, read its
