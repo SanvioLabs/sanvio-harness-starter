@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Loop pane wraps on Desktop and VS Code
+
+In the Claude Desktop and VS Code panes, a job's title, time line and detail
+line, and a queued issue's title and `waiting on` note, now show in full and
+wrap instead of being cut at the pane's width. The terminal pane is unchanged.
+
+Files: [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx) and
+[`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts).
+
+**Do:** nothing
+
 ## 2026-10-24: Sprint report asks about skills unused twice
 
 [`scripts/usage_report.py`](scripts/usage_report.py) takes `--previous <last report>` and, when given,
@@ -40,7 +51,6 @@ Files: [`scripts/usage_report.py`](scripts/usage_report.py), [`tests/test_usage.
 [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md)
 
 **Do:** nothing
-
 
 ## 2026-10-24: Learn writes rules only from the person, through a PR
 
