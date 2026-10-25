@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Sprint report asks about skills unused twice
+
+[`scripts/usage_report.py`](scripts/usage_report.py) takes `--previous <last report>` and, when given,
+prints an `Unused two sprints running:` line naming the skills on both that
+report's and this period's `Never used here:` lines. The `harness-report`
+skill asks about each one: drop it, keep it, or test it (naming
+`skill-creator`'s evals where installed), and records the answer under
+`## Proposals`. The report itself removes and evaluates nothing.
+
+Files: [`scripts/usage_report.py`](scripts/usage_report.py), [`tests/test_usage.py`](tests/test_usage.py),
+[`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md)
+
+**Do:** nothing
+
+
 ## 2026-10-24: Learn writes rules only from the person, through a PR
 
 The `learn` skill now takes the mistake and the correct behaviour only from the

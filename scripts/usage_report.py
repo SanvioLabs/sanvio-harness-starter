@@ -3,6 +3,7 @@
 
     python3 scripts/usage_report.py                    # the last 14 days
     python3 scripts/usage_report.py --since 2026-10-01
+    python3 scripts/usage_report.py --previous reports/usage/<last report>.md
 
 Reads your own log, .harness/usage/<you>.jsonl, written by
 .claude/hooks/usage_log.py, and prints counts only: sessions, skills, agents,
@@ -13,6 +14,7 @@ skills/harness-report/ skill runs this and turns it into the report you share.
 import argparse
 import datetime
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -56,7 +58,19 @@ def count(lines, kind, key):
     return Counter(l.get(key, "") for l in lines if l.get("event") == kind)
 
 
-def report(lines, since, until, available):
+def earlier_unused(path):
+    """The skills on an earlier report's `Never used here:` line, or None if it can't be read or has none."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("Never used here:"):
+            return re.findall(r"`([^`]+)`", line)
+    return None
+
+
+def report(lines, since, until, available, previous_unused=None):
     skills = count(lines, "skill", "name")
     sessions = len({l.get("session") for l in lines if l.get("session")})
     asks = Counter(l.get("tool") or l.get("rule", "") for l in lines if l.get("event") == "guard_ask")
@@ -69,6 +83,9 @@ def report(lines, since, until, available):
            "Sessions: {}".format(sessions), "", "## Skills", ""]
     out += table(skills, "Skill")
     out += ["Never used here: {}".format(", ".join("`{}`".format(n) for n in unused) if unused else "none"), ""]
+    if previous_unused is not None:
+        again = [n for n in unused if n in previous_unused]
+        out += ["Unused two sprints running: {}".format(", ".join("`{}`".format(n) for n in again) if again else "none"), ""]
     out += ["## Agents", ""] + table(count(lines, "agent", "name"), "Agent")
     out += ["## Slash commands", ""] + table(count(lines, "command", "name"), "Command")
     out += ["## Guard refusals", ""] + table(count(lines, "guard_deny", "rule"), "Rule")
@@ -95,6 +112,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat(),
                         help="the first day to count, as YYYY-MM-DD (default: 14 days ago)")
+    parser.add_argument("--previous", help="your last report, to name the skills unused in both")
     parser.add_argument("--log", help="a log file other than your own")
     args = parser.parse_args(argv)
     path = Path(args.log) if args.log else log_path(ROOT)
@@ -102,7 +120,8 @@ def main(argv=None):
         print("No usage log at {}. Is the hook wired in .claude/settings.json, and "
               "HARNESS_USAGE_LOG not set to off?".format(path), file=sys.stderr)
         return 1
-    print(report(read(path, args.since), args.since, today.isoformat(), skills_here(ROOT)))
+    previous = earlier_unused(args.previous) if args.previous else None
+    print(report(read(path, args.since), args.since, today.isoformat(), skills_here(ROOT), previous))
     return 0
 
 
