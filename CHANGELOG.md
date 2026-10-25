@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Loop finds every ready issue
+
+The loop's `discover` now asks GitHub only for issues carrying the ready label,
+so a ready issue is found however many newer unlabelled ones there are. It used
+to read the newest 50 open issues and miss an older ready one. `run`'s help now
+says it keeps polling until stopped, and that `--for` bounds it.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py)
+
+**Do:** nothing
+
 ## 2026-10-24: review-skill quarantines outside the repo
 
 `review-skill` now copies an outside skill or plugin to `~/skill-quarantine/`,

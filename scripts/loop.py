@@ -1156,8 +1156,8 @@ class Loop:
     def discover(self, only=None, dry_run=False, busy=()):
         """The next issue to start, or None. busy is the issues a worker is already on: never picked again,
         and an issue that depends on one waits for it."""
-        code, out = self.gh("issue", "list", "--state", "open", "--limit", "50", "--json",
-                            "number,title,body,labels,assignees")
+        code, out = self.gh("issue", "list", "--state", "open", "--label", self.cfg["ready_label"],
+                            "--limit", "1000", "--json", "number,title,body,labels,assignees")
         if code != 0:
             self.log("ERROR", "could not list issues: " + out.strip()[:200])
             return None
@@ -1969,7 +1969,8 @@ class Loop:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    run = sub.add_parser("run", help="take ready issues until none are left, or stopped")
+    run_help = "take ready issues as they're labelled; keeps polling until stopped (bound it with --for)"
+    run = sub.add_parser("run", help=run_help, description=run_help)
     run.add_argument("--once", action="store_true", help="one issue, then exit")
     run.add_argument("--issue", type=int, help="only this issue number")
     run.add_argument("--dry-run", action="store_true", help="say which issue it would take, then exit")
