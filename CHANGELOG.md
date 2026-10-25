@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Harness reports stay out of the repo
+
+Reports in [`reports/usage/`](reports/usage/) are now gitignored, and only the folder's README is
+tracked. The `harness-report` skill writes the report there as before, then
+says to send it to the harness owner yourself, not to open a pull request. The
+owner reads them together and replies to each author about their proposals.
+
+Files: [`.gitignore`](.gitignore), [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md),
+[`reports/usage/README.md`](reports/usage/README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_usage.py`](tests/test_usage.py)
+
+**Do:** if a report is already committed, `git rm --cached` it. The file stays
+on your machine.
+
 ## 2026-10-24: Harness report shows the loop's cost
 
 `token_report.py`, and so the harness report, ends with a *Loop cost* table:

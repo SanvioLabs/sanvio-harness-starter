@@ -7,9 +7,10 @@ license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLab
 # Harness report
 
 Each person's usage log stays on their own machine. This turns it into the one
-thing that's shared: a short report, with the person's own proposals, opened
-as a pull request on the harness. The owner reads the sprint's reports together
-and decides what goes into the harness.
+thing that's shared: a short report, with the person's own proposals, that they
+send to the harness owner themselves. The report is gitignored and never
+committed. The owner reads the sprint's reports together and decides what goes
+into the harness.
 
 The log is written by [`.claude/hooks/usage_log.py`](../../.claude/hooks/usage_log.py). It holds names and counts,
 never prompts, paths or code. The token counts come from Claude Code's own
@@ -55,24 +56,19 @@ the loop's, comes from the estimate the loop records for each run.
    as printed, then a `## Tokens and loop cost` section with the token summary
    as printed, then a `## Proposals` section with their answers. Leave nothing
    unfilled.
-5. **Have them read it.** It's going to the team. They can cut anything.
-6. **Name the commands to share it,** and let them run them:
-
-   ```bash
-   git checkout -b report/<YYYY-MM-DD>-<user>
-   git add reports/usage/<YYYY-MM-DD>-<user>.md
-   git commit -m "Harness report, <YYYY-MM-DD>"
-   ```
-
-   Then a pull request to the harness's main branch.
+5. **Have them read it.** It's going to the owner. They can cut anything.
+6. **Say how to share it:** they send the file to the harness owner
+   themselves, the way the team passes documents around. It stays in
+   [`reports/usage/`](../../reports/usage/) on their machine, gitignored, where step 1 finds it next
+   sprint.
 
 ## For the owner
 
-Read the sprint's report PRs together, not one at a time. A pattern across
+Read the sprint's reports together, not one at a time. A pattern across
 people is the signal: the same skill never used, the same ask answered yes
-every time, the same workaround. Merge the reports as the record. For each
-proposal you take, make the change in its own PR with a [`CHANGELOG.md`](../../CHANGELOG.md) entry,
-so "what's new" tells everyone. For one you don't, say why on the report's PR.
+every time, the same workaround. For each proposal you take, make the change
+in its own PR with a [`CHANGELOG.md`](../../CHANGELOG.md) entry, so "what's new" tells everyone. For
+one you don't, tell its author why.
 
 ## Rules
 
@@ -81,7 +77,8 @@ so "what's new" tells everyone. For one you don't, say why on the report's PR.
 - Never add a prompt, a file path, a command or code to the report, even if
   they mention one. Describe it instead ("a deploy script", not the script).
 - Never commit anything under `.harness/`. The raw log stays local.
-- Never push or open the PR yourself. Name the commands.
+- Never commit a report, force-add it, or send it anywhere. It's gitignored,
+  and the author sends it.
 
 ## Output
 
