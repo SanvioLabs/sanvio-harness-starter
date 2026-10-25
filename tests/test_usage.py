@@ -88,6 +88,12 @@ class TheHook(unittest.TestCase):
     def test_the_log_is_gitignored(self):
         self.assertIn(".harness/", (ROOT / ".gitignore").read_text().splitlines())
 
+    def test_a_report_is_gitignored_and_the_folders_readme_is_not(self):
+        def ignored(path):
+            return subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", path], timeout=30).returncode == 0
+        self.assertTrue(ignored("reports/usage/2026-10-24-someone.md"))
+        self.assertFalse(ignored("reports/usage/README.md"))
+
     def test_it_is_wired_on_every_event_it_handles(self):
         hooks = json.loads((ROOT / ".claude" / "settings.json").read_text())["hooks"]
         for event in ("SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse"):

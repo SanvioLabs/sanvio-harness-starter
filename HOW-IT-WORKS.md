@@ -552,7 +552,8 @@ everyone's `/whats-new` shows it and says what to do to take it.
 The sprint report catches what nobody said out loud: a skill nobody uses, an
 ask that always gets a yes, a step everyone does by hand. Each person's log
 stays on their own machine, holding names and counts, never prompts or code.
-Only the report they've read reaches the team ([`reports/usage/`](reports/usage/)).
+Only the report they've read reaches the owner, and they send it themselves:
+it's gitignored in [`reports/usage/`](reports/usage/), never committed.
 
 Nobody edits a shared rule in their own copy. A local edit is a quiet fork,
 and the next update collides with it. A rule only one project needs goes in
