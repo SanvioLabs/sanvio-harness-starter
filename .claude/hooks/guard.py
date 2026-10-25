@@ -17,6 +17,11 @@ Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
    code someone else may have written, and that code can carry text meant to
    steer it. A command on the audit list runs without a prompt; any other is
    refused.
+4. A run bin/harness started (HARNESS_HEADLESS=1) reads a pull request or an
+   issue by number and nothing else. Nobody is watching it, and what it reads
+   was written by someone else. Its shell runs only `gh pr view <n>`,
+   `gh pr diff <n>` and `gh issue view <n>`, with `--comments` on a view, and
+   no connector runs at all.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -209,10 +214,39 @@ def audit_tool_allowed(tool, args):
     return False
 
 
+HEADLESS_READS = {("pr", "view"), ("pr", "diff"), ("issue", "view")}
+
+
+def headless_refusal(command):
+    """Why a headless run may not run this command, or None when it's an exact read by number.
+
+    Only the issue or pull request number may follow, and --comments on a view: -R, a URL, --web,
+    --jq and --template each let the command choose a host, open a browser or read the environment.
+    """
+    listed = ("A headless run's shell reads a pull request or issue by number and nothing else: "
+              "gh pr view <n>, gh pr diff <n> or gh issue view <n>, with --comments on a view. "
+              "Say in the report that you couldn't run anything else.")
+    if SHELL_MAGIC.search(command):
+        return listed
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return listed
+    if len(words) < 4 or words[0] != "gh" or tuple(words[1:3]) not in HEADLESS_READS:
+        return listed
+    rest = words[4:]
+    if not re.fullmatch(r"[0-9]+", words[3]) or rest not in ([], ["--comments"]):
+        return listed
+    if rest and words[2] != "view":
+        return listed
+    return None
+
+
 def decide(event):
     """(decision, reason) for one tool call, or None to let it through untouched."""
     tool = event.get("tool_name", "")
     data = event.get("tool_input") or {}
+    headless = os.environ.get("HARNESS_HEADLESS") == "1"
 
     if tool in ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = data.get("file_path") or data.get("notebook_path") or ""
@@ -231,8 +265,15 @@ def decide(event):
             if why:
                 return ("deny", why)
             return ("allow", "a read-only audit on the security reviewer's list")
+        if headless:
+            why = headless_refusal(command)
+            if why:
+                return ("deny", why)
 
     if tool.startswith("mcp__"):
+        if headless:
+            return ("deny", "A headless run uses no connector: nobody is there to say what it may "
+                    "read or send. Run it in a session instead.")
         # create_draft, notion-create-pages and createIssue all read as create_...
         action = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", tool.split("__")[-1]).replace("-", "_")
         if WRITE_VERBS.search(action) or not READ_VERBS.search(action):

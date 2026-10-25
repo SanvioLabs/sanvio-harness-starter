@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: review-pr runs headless
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) now holds a run [`bin/harness`](bin/harness) started to reading a pull
+request or issue by number: `gh pr view <n>`, `gh pr diff <n>` and
+`gh issue view <n>`, with `--comments` on a view. Every other command and every
+connector is refused, and ordinary sessions are unchanged. With that in place
+`review-pr` is marked headless, so `harness review-pr 42` works from any
+folder. [`bin/harness`](bin/harness) also loads no MCP servers. The usage log counts these
+refusals under a `headless` rule, not as credential reads.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`tests/test_usage.py`](tests/test_usage.py), [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools),
+[`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_harness_cli.py`](tests/test_harness_cli.py), [`README.md`](README.md)
+
+**Do:** nothing.
+
 ## 2026-10-25: Local export
 
 [`scripts/export.py`](scripts/export.py) bundles your loop runs and usage counts for a period into one JSON

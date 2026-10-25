@@ -66,13 +66,15 @@ class HarnessCli(unittest.TestCase):
         cwd, headless, *argv = self.recorded()
         self.assertEqual(cwd, str(self.root))
         self.assertEqual(headless, "1")
-        self.assertEqual(argv, ["-p", "/x a b", "--permission-mode", "default", "--tools", "Read,Grep,Bash",
+        self.assertEqual(argv, ["-p", "/x a b", "--permission-mode", "default", "--strict-mcp-config", "--tools",
+                                "Read,Grep,Bash",
                                 "--allowedTools", PASSED])
 
     def test_json_asks_for_json_output(self):
         result = self.run_harness("--json", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.recorded()[2:], ["-p", "/x", "--output-format", "json", "--permission-mode", "default",
+                                               "--strict-mcp-config",
                                                "--tools", "Read,Grep,Bash", "--allowedTools", PASSED])
 
     def assert_refused(self, *args):

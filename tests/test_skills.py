@@ -198,10 +198,12 @@ class Skills(unittest.TestCase):
             self.assertTrue(entries, "{}: headless with no allowed-tools".format(name))
             for entry in entries:
                 self.assertIn(entry, approved, name)
+        self.assertIn("review-pr", headless)
 
     def test_every_approved_headless_tool_only_reads(self):
         # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.
-        read_only = re.compile(r"Read|Grep|Glob")
+        # The Bash forms are the three guard.py holds a headless run to; anything else changes both.
+        read_only = re.compile(r"Read|Grep|Glob|Bash\(gh (pr view|pr diff|issue view):\*\)")
         for line in (ROOT / "bin" / "harness-tools").read_text().splitlines():
             if line and not line.startswith("#"):
                 self.assertTrue(read_only.fullmatch(line), line)

@@ -68,12 +68,15 @@ if [ $# -gt 0 ]; then
   prompt="$prompt $*"
 fi
 
-# The mode and the tools are set here, so nothing in a person's own settings widens a run nobody watches.
+# The mode, the tools and no MCP servers are set here, so a person's own settings add no tool to a run
+# nobody watches. Their Bash allow rules still apply, which is why guard.py holds a headless shell to
+# exact gh reads.
 # --allowedTools takes a list, so it goes last, where nothing after it can be read as one of its tools.
 if [ -n "$json" ]; then
-  set -- -p "$prompt" --output-format json --permission-mode default --tools "$names" --allowedTools "$checked"
+  set -- -p "$prompt" --output-format json --permission-mode default --strict-mcp-config --tools "$names" \
+    --allowedTools "$checked"
 else
-  set -- -p "$prompt" --permission-mode default --tools "$names" --allowedTools "$checked"
+  set -- -p "$prompt" --permission-mode default --strict-mcp-config --tools "$names" --allowedTools "$checked"
 fi
 HARNESS_HEADLESS=1
 export HARNESS_HEADLESS
