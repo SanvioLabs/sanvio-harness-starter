@@ -6,8 +6,14 @@ license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLab
 
 # Loop control
 
-[`scripts/loop.py`](../../scripts/loop.py) takes an issue labelled `loop-ready`, plans it, builds it,
-runs the tests, has a fresh agent review it and opens a pull request.
+[`scripts/loop.py`](../../scripts/loop.py) takes an issue carrying the ready label, plans it, builds it,
+runs the tests, has a fresh agent review it and opens a pull request. "The
+ready label" here means the effective `ready_label`: `loop-ready` unless a
+`loop.json` sets another. For the harness's own loop, read the harness's
+`loop.json`. For a project, its own `loop.json` wins, then its entry under
+`"projects"` in the harness's; the harness's top-level value doesn't apply.
+In project mode (see *A project under projects/*) every `gh issue` command
+takes `--repo <owner>/<repo>`.
 [`HOW-IT-WORKS.md`](../../HOW-IT-WORKS.md) (*The loop*) says how. This skill is the conversation
 around it: what goes on the loop, when it starts, what it did and how it
 stops, and the pull-request reviewer beside it. Five jobs. Do the one asked for.
@@ -17,7 +23,11 @@ stops, and the pull-request reviewer beside it. Five jobs. Do the one asked for.
 A ticket is an instruction to an agent that runs without anyone watching, so
 it gets read before it's labelled.
 
-1. **Read it:** `gh issue view <N>`. Read the comments too.
+1. **Read it:** `gh issue view <N> --comments` (add `--repo <owner>/<repo>` for
+   a project). Show the person the body verbatim, as it comes back, not a
+   summary. Flag any `<!--` in the body: the issue's page hides it. Flag any
+   comment that changes the acceptance criteria while the body stays the same:
+   the loop reads only the body, so the body has to be edited first.
 2. **Check it's ready** against [`steering/tickets.md`](../../steering/tickets.md). All of these, or it isn't:
    - **One change**, small enough for one pull request.
    - **Acceptance criteria** a check can prove, at least one of them by a
@@ -45,9 +55,11 @@ it gets read before it's labelled.
    -q .visibility`. If it's `PUBLIC`, say the pull request will be public and
    ask whether that's meant. A copy of the public starter is public until
    someone makes it otherwise.
-5. **Ask, then label:** "Label #N `loop-ready`?" On a yes,
-   `gh issue edit <N> --add-label loop-ready`. Label only issues the person
-   has read in this conversation or wrote themselves.
+5. **Ask, then label:** "Label #N with the ready label?" On a yes,
+   `gh issue edit <N> --add-label <ready label>` (with `--repo` for a project).
+   Label only after step 1's verbatim body and comments have been shown in this
+   conversation, or when the person wrote the issue. A yes to your summary
+   doesn't count.
 
 ## Start it
 
@@ -55,8 +67,10 @@ it gets read before it's labelled.
 2. Run `python3 scripts/loop.py run --dry-run` and say which issue it would
    take. Nothing ready means say so and stop.
 3. Ask: one issue (`--once`, or `--issue <N>` for a particular one) or every
-   ready issue (`run` alone, which keeps going until the queue is empty). For
-   every ready issue over a set time, such as overnight, add `--for 8h` (a whole
+   ready issue (`run` alone, which keeps polling once the queue is empty: it
+   idles and picks up anything labelled later, until it's stopped; `--once` and
+   `--issue` exit when they're done). To put an end on `run`, for every ready
+   issue over a set time, such as overnight, add `--for 8h` (a whole
    number then `m`, `h` or `d`). After that time it takes no new issue, lets
    each running one finish, logs `END --for 8h reached` and exits. To keep it
    to working hours, add `--hours "Mon-Fri 09:00-17:00"` (local time, days `Mon`
@@ -94,7 +108,7 @@ once. Each worker runs its own agent sessions, so say that usage grows with the
 number before the person raises it. Each issue's agents write to
 `.loop/issue-<N>/agent.log` as they go, and in tmux each issue gets a window
 named `issue-<N>` that follows it (`Ctrl-b w` lists them) and closes when the
-issue ends. A stop lets every running issue finish its step.
+issue ends. A stop doesn't interrupt the round already running (see *Stop it*).
 
 `max_issue_tokens` in `loop.json` (default 0, no budget) caps the tokens one
 run of an issue may use. Set it to a whole number above 0. Before each build
@@ -128,7 +142,7 @@ the harness root as above. Name the tmux session after the project,
    its own, a clone whose `origin` isn't on github.com, a `loop.json` with
    no `test_command`, or one that sets a machine key.
 3. Issues, labels and pull requests are the project's GitHub repo's. Label
-   with `gh issue edit <N> --repo <owner>/<repo> --add-label loop-ready`; with
+   with `gh issue edit <N> --repo <owner>/<repo> --add-label <ready label>`; with
    no `--repo`, `gh` from the harness root reaches the harness's repo.
 4. Its state is in the harness, in `.loop/projects/<name>/`: `status.json`,
    `loop.log` and `issue-<N>/`, with a lock of its own, so it runs beside the
@@ -193,17 +207,26 @@ request.
 
 The order matters. Stopping alone lets the loop take the issue straight back.
 
-1. Take the label off first: `gh issue edit <N> --remove-label loop-ready`,
-   with `--repo <owner>/<repo>` for a project's issue.
+1. Take the ready label off every issue whose row in `.loop/status.json`
+   (`.loop/projects/<name>/status.json` for a project's loop) has
+   `state: "working"`, and any other you don't want picked up again:
+   `gh issue edit <N> --remove-label <ready label>`, with
+   `--repo <owner>/<repo>` for a project's issue.
 2. Then `python3 scripts/loop.py stop`, with `--project projects/<name>` for
    a project's loop. The loop ends at its next step, not mid-step.
-3. Say what it was doing when it stopped, from `.loop/status.json`. In tmux,
+3. Say plainly that the round already running may still push and open a pull
+   request.
+4. For an immediate halt, `tmux kill-session -t <name>`. Say it can leave a
+   half-done branch or worktree behind.
+5. Say what it was doing when it stopped, from the same `status.json`. In tmux,
    its session waits for Enter once the loop exits, so the last lines stay
-   readable; `tmux kill-session -t <name>` closes it.
+   readable; once the loop has exited, `tmux kill-session -t <name>` closes
+   that waiting session.
 
 ## Rules
 
-- Never label an issue the person hasn't read or written.
+- Never label an issue until its verbatim body and comments have been shown in
+  this conversation, or the person wrote it. A yes to a summary isn't reading it.
 - Never merge a pull request the loop opened, or approve one. `loop.py review`
   doesn't approve or merge either, and nothing here makes it.
 - Never take `loop:blocked` off an issue without the person: it's the record

@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Loop-control shows the issue and describes stop
+
+The `loop-control` skill now shows the person the issue's body and comments
+verbatim before labelling, flags hidden comments and criteria changed only in a
+comment, uses the project's effective ready label with `--repo`, says `run`
+keeps polling when the queue is empty, and describes stop truthfully: label off
+working issues, the running round may still open a pull request, and
+`tmux kill-session` for an immediate halt.
+
+Files: [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** nothing.
+
 ## 2026-10-24: Loop finds every ready issue
 
 The loop's `discover` now asks GitHub only for issues carrying the ready label,
