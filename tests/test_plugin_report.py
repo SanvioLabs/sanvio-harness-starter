@@ -33,7 +33,7 @@ def run(args=(), stdout=None, path=None):
         bin_dir.mkdir()
         if stdout is not None:
             fake = bin_dir / "claude"
-            fake.write_text("#!/bin/sh\ncat <<'EOF'\n{}\nEOF\n".format(stdout))
+            fake.write_text("#!{}\nimport sys\nsys.stdout.write({!r})\n".format(sys.executable, stdout))
             fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
         env = dict(os.environ, PATH=path if path is not None else str(bin_dir))
         return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True,
@@ -90,13 +90,13 @@ class PluginReportTest(unittest.TestCase):
     def test_claude_prints_something_that_is_not_json(self):
         result = run(stdout="not json at all")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(result.stdout.splitlines()), 1)
-        self.assertTrue(result.stdout.startswith("Couldn't read plugin versions: "))
+        self.assertEqual(result.stdout.splitlines(), ["Couldn't read plugin versions: claude's answer wasn't JSON."])
 
     def test_no_install_or_project_path_in_the_output(self):
         with tempfile.TemporaryDirectory() as folder:
             old = previous(folder, [("gone@market", "1.0", "user")])
             result = run(["--previous", old], stdout=json.dumps(FIXTURE))
+        self.assertIn("| stelliad@sanvio-harness-starter | 1.3 | project |", result.stdout)
         for value in (INSTALL, OTHER, str(ROOT), "installPath", "projectPath"):
             self.assertNotIn(value, result.stdout)
 

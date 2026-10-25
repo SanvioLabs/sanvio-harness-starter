@@ -31,10 +31,10 @@ fine).
 
 The `harness-report` skill now runs [`scripts/plugin_report.py`](scripts/plugin_report.py), which lists the
 enabled Claude Code plugins and mods by id, version and scope, and says which
-changed, arrived or went since the person's last report. It shows no path. If
-the person owns the harness, the skill then asks once and runs `review-skill`
-on each changed or new plugin's installed folder, with the findings under
-`## Changed plugins`.
+changed, arrived or went since the person's last report. It shows no path. The
+skill asks once whether the person owns the harness, and on a yes runs
+`review-skill` on each changed or new plugin's installed folder, with the
+findings under `## Changed plugins`.
 
 Files: [`scripts/plugin_report.py`](scripts/plugin_report.py), [`tests/test_plugin_report.py`](tests/test_plugin_report.py),
 [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md), [`reports/usage/README.md`](reports/usage/README.md)
