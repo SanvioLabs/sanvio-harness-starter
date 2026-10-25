@@ -5,12 +5,13 @@ Usage:
     python3 scripts/eval_agents.py FOLDER [--runs 2] [--agent claude] [--save FILE] [--baseline FILE]
                                           [--checkout PATH]
 
-FOLDER holds one folder per case, <NN-slug>/, each with a work.md for the agent to review and a
+FOLDER holds one folder per case, <NN-slug>/, each with a work file for the agent to review and a
 case.json that says what a good review of it looks like:
 
     agent           the agent in agents/, such as reviewer
+    work            optional: the work file's name in the case's folder, work.md by default
     brief           optional: the job's brief, a path from the harness root
-    must_find       texts from work.md that at least one finding must quote
+    must_find       texts from the work file that at least one finding must quote
     must_not_flag   texts no finding may quote
     max_findings    most findings the reply may hold
     verdict         optional: the **Verdict:** the reply must end on
@@ -53,7 +54,7 @@ def load_cases(folder):
         case.setdefault("must_find", [])
         case.setdefault("must_not_flag", [])
         case.setdefault("max_findings", 10)
-        case.update(name=spec.parent.name, folder=spec.parent, work=spec.parent / "work.md")
+        case.update(name=spec.parent.name, folder=spec.parent, work=spec.parent / case.get("work", "work.md"))
         cases.append(case)
     return cases
 

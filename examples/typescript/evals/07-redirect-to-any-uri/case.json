@@ -1,0 +1,8 @@
+{
+  "agent": "security-reviewer",
+  "work": "work.ts",
+  "must_find": ["issueAuthCode"],
+  "must_not_flag": [],
+  "max_findings": 10,
+  "verdict": "NOT-READY"
+}

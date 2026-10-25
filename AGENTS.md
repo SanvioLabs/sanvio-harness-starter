@@ -135,7 +135,7 @@ instructions.
 
 [`scripts/eval_agents.py`](scripts/eval_agents.py) runs a review agent on known examples and says which defects it still
 catches. Run it after changing an agent's file, a job's brief or the model. It starts real
-sessions, so it isn't part of the gate; [`examples/proposal/evals/`](examples/proposal/evals/) has the reviewer's cases.
+sessions, so it isn't part of the gate; [`examples/proposal/evals/`](examples/proposal/evals/) has the reviewer's cases, and [`examples/typescript/evals/`](examples/typescript/evals/) the security reviewer's.
 
 ## Examples
 
