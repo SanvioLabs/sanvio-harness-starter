@@ -1,4 +1,5 @@
 """Run with: python3 -m unittest discover -s tests"""
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +110,34 @@ class Skills(unittest.TestCase):
     def test_standup_reads_email_the_way_inbox_says(self):
         text = (ROOT / "skills" / "standup" / "SKILL.md").read_text()
         self.assertTrue("skills/inbox/" in text or "../inbox/" in text)
+
+    def loop_control(self):
+        return (ROOT / "skills" / "loop-control" / "SKILL.md").read_text()
+
+    def section(self, text, heading):
+        start = text.index("## " + heading)
+        end = text.find("\n## ", start + 1)
+        return text[start:end if end != -1 else len(text)]
+
+    def test_loop_control_says_run_keeps_polling(self):
+        text = self.loop_control()
+        self.assertNotIn("keeps going until the queue is empty", text)
+        self.assertIn("--for", self.section(text, "Start it"))
+
+    def test_loop_control_shows_the_issue_before_labelling(self):
+        put = self.section(self.loop_control(), "Put an issue on the loop")
+        self.assertIn("gh issue view <N> --comments", put)
+        self.assertIn("<!--", put)
+
+    def test_loop_control_stop_describes_what_it_does(self):
+        stop = " ".join(self.section(self.loop_control(), "Stop it").split())
+        for word in ("working", "pull request", "tmux kill-session"):
+            self.assertIn(word, stop)
+
+    def test_loop_control_project_gh_commands_name_the_repo(self):
+        project = self.section(self.loop_control(), "A project under projects/")
+        for command in re.findall(r"gh issue[^`]*", " ".join(project.split())):
+            self.assertIn("--repo", command)
 
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
