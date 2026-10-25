@@ -434,6 +434,40 @@ class HeadlessPrivate(unittest.TestCase):
     def test_outside_a_headless_run_they_read_as_before(self):
         self.assertIsNone(call("Read", file_path=os.path.join(guard.ROOT, ".claude", "settings.local.json")))
         self.assertIsNone(call("Read", file_path=os.path.join(guard.ROOT, "company", "COMPANY.md")))
+        self.assertIsNone(call("Read", file_path=os.path.join(guard.ROOT, ".inbox", "ideas.md")))
+        self.assertIsNone(call("Read", file_path="projects/mirror.git/config"))
+
+    def test_a_leftover_inbox_is_private(self):
+        denied = ("deny", guard.HEADLESS_PRIVATE)
+        self.assertEqual(headless("Read", file_path=".inbox/ideas.md"), denied)
+        self.assertEqual(headless("Grep", pattern="x", path=".inbox"), denied)
+        self.assertEqual(headless("Grep", pattern="x", glob="{.inbox,*.md}"), denied)
+        self.assertEqual(headless("Glob", pattern=".inbox/*"), denied)
+        self.assertEqual(headless("Glob", pattern="**/.inbox/*"), denied)
+
+    def test_a_bare_repo_is_private_like_a_git_folder(self):
+        denied = ("deny", guard.HEADLESS_PRIVATE)
+        for path in ("projects/mirror.git/config", "projects/mirror.git/packed-refs", "projects/app/vendor/lib.git/config"):
+            self.assertEqual(headless("Read", file_path=path), denied, path)
+        self.assertEqual(headless("Grep", pattern="x", path="projects/mirror.git"), denied)
+        for path in ("projects/app/src/widget.gitignore.md", "projects/app/.gitignore", "projects/app/.gitattributes"):
+            self.assertIsNone(headless("Read", file_path=path), path)
+
+    def test_a_glob_that_names_a_bare_repo_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            (root / "mirror.git").mkdir(parents=True)
+            (root / "projects" / "app" / "lib.git").mkdir(parents=True)
+            (root / "projects" / "backup.git").mkdir(parents=True)
+            with mock.patch.object(guard, "ROOT", os.path.realpath(root)):
+                for glob in ("{mirror.git,*.md}", "{mirror.gi?,*.md}", "**/mirror.git/*", "{lib.git,*.ts}",
+                             "{other.git,*.md}", "{backup.gi?,**/backup.gi?/c*}", "{lib.gi?,*.ts}"):
+                    self.assertEqual(headless("Grep", _cwd=str(root), pattern="x", glob=glob),
+                                     ("deny", guard.HEADLESS_PRIVATE), glob)
+                self.assertIsNone(headless("Grep", _cwd=str(root), pattern="x", glob="*.md"))
+
+    def test_the_root_ignores_bare_repos(self):
+        self.assertIn("*.git/", (ROOT / ".gitignore").read_text().splitlines())
 
 
 class SessionStart(unittest.TestCase):

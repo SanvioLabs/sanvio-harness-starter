@@ -32,7 +32,9 @@ Wired in .claude/settings.json as a PreToolUse hook. Four jobs:
    connector runs at all, and its file tools (Read, Grep and Glob among them)
    reach only paths inside the harness root, after `..` and links resolve.
    Inside the root, they don't reach the files that hold tokens or company
-   data: .claude/settings.local.json, any .git folder, company/ and local-data/.
+   data: .claude/settings.local.json, any .git folder or bare repo (*.git),
+   company/, local-data/ and a leftover .inbox/. A Grep over a project that
+   holds a bare repo deeper than its top folder still searches it.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -289,17 +291,18 @@ ORDINARY_NAMES = ("readme.md", "app.py", "index.ts", "main.go", "package.json", 
 # Inside the root, what a headless run doesn't reach: a token in the local settings' env block or
 # in a remote URL in git's config, and the company's own record and exports.
 PRIVATE_FILES = (".claude/settings.local.json",)
-PRIVATE_FOLDERS = ("company", "local-data")
+PRIVATE_FOLDERS = ("company", "local-data", ".inbox")
 # What a headless glob must not match. A ripgrep glob that matches an ignored or hidden folder or
 # file brings it back into the search ({company,*.md} lists company/, measured 2026-10-25), and
 # ripgrep tests a glob without a / against each name and one with a / against each path.
 # company/** alone didn't get in when measured; a path below each folder refuses it anyway.
 PRIVATE_ENTRIES = ("company", "local-data", ".claude", ".git", ".claude/settings.local.json", ".git/config",
-                   "company/x", "local-data/x")
+                   "company/x", "local-data/x", ".inbox", ".inbox/x")
 # The names a headless Glob pattern may not carry in a later part: the private places themselves.
-PRIVATE_NAMES = {"company", "local-data", ".claude", ".git", "settings.local.json"}
+PRIVATE_NAMES = {"company", "local-data", ".inbox", ".claude", ".git", "settings.local.json"}
 HEADLESS_PRIVATE = ("A headless run doesn't read the files inside the root that hold tokens or company "
-                    "data: .claude/settings.local.json, any .git folder, company/ and local-data/. Say in "
+                    "data: .claude/settings.local.json, any .git folder or bare repo, company/, local-data/ "
+                    "and .inbox/. Say in "
                     "the report what you couldn't read.")
 # ripgrep's file types that take in a credential name: sh lists .env and *.env (rg --type-list, 2026-10-25).
 CREDENTIAL_TYPES = {"sh"}
@@ -366,19 +369,47 @@ def glob_reaches(glob, names):
     return pieces is None or any(glob_matches(piece, names) for piece in pieces)
 
 
+def bare_repos():
+    """The bare repos at the root and one folder into each project, as paths from the root, lowercased.
+
+    A glob that names one brings it back into a search (a glob matching an ignored folder's name
+    does), so the glob check tests against the real names, not only a stand-in, and mirror.gi? is
+    caught as well as mirror.git. Deeper than that isn't looked for: a walk would outlast the hook.
+    """
+    found = []
+    projects = os.path.join(ROOT, "projects")
+    for folder in [ROOT, projects] + sorted(os.path.join(projects, name) for name in listing(projects)):
+        for name in listing(folder):
+            if name.lower().endswith(".git") and name != ".git" and os.path.isdir(os.path.join(folder, name)):
+                found.append(os.path.relpath(os.path.join(folder, name), ROOT).lower())
+    return found
+
+
+def listing(folder):
+    """A folder's names, or none when it can't be read."""
+    try:
+        return os.listdir(folder)
+    except OSError:
+        return []
+
+
 def glob_unlocks_private(glob):
     """Whether a glob matches one of the root's private folders or files, as ripgrep would test it."""
     pieces = glob_pieces(glob)
     if pieces is None:
         return True
+    repos = ["x.git"] + bare_repos()
+    entries = PRIVATE_ENTRIES + tuple(repos) + tuple(repo + "/config" for repo in repos)
     for piece in pieces:
         piece = piece.lstrip("!/").rstrip("/")
         if not piece:
             continue
+        if any(part.endswith(".git") for part in piece.split("/")):
+            return True  # names a bare repo outright, wherever it sits
         if "/" in piece:
-            targets = PRIVATE_ENTRIES + tuple("sub/" + entry for entry in PRIVATE_ENTRIES)
+            targets = entries + tuple("sub/" + entry for entry in entries)
         else:
-            targets = tuple(entry.rsplit("/", 1)[-1] for entry in PRIVATE_ENTRIES)
+            targets = tuple(entry.rsplit("/", 1)[-1] for entry in entries)
         if any(fnmatch.fnmatchcase(target, piece) for target in targets):
             return True
     return False
@@ -400,7 +431,9 @@ def private_path(full):
     if not full.startswith(ROOT + os.sep):
         return False
     parts = os.path.relpath(full, ROOT).lower().split(os.sep)
-    return "/".join(parts) in PRIVATE_FILES or parts[0] in PRIVATE_FOLDERS or ".git" in parts
+    # A bare repo, or a --separate-git-dir clone, keeps git's config in a folder like mirror.git/.
+    return "/".join(parts) in PRIVATE_FILES or parts[0] in PRIVATE_FOLDERS or any(
+        part.endswith(".git") for part in parts)
 
 
 def glob_prefixes(pattern, base):

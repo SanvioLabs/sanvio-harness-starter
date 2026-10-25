@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Headless runs skip .inbox and bare repos
+
+A run [`bin/harness`](bin/harness) started now also can't read a leftover `.inbox/` (where the old inbox
+sweep kept ideas taken from email) or a bare git repo's files under the root, such as
+`projects/mirror.git/config`, which can hold a token in a remote URL. [`.gitignore`](.gitignore) now lists `*.git/`, so a
+search over the root leaves a bare repo there out. One deeper inside a project is still searched.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`README.md`](README.md)
+
+**Do:** nothing.
+
 ## 2026-10-25: Review evals grade the finding that names the flaw
 
 [`scripts/eval_agents.py`](scripts/eval_agents.py) has new edges for a finding. It now takes in its title and severity
