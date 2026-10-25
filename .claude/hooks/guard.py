@@ -6,11 +6,15 @@ From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-
 Wired in .claude/settings.json as a PreToolUse hook. Four jobs:
 
 1. Credentials stay unread. A Read, Edit or Write on a credential file, a Grep
-   whose path or glob names one (or a .ssh or .aws folder) or whose glob can
-   only match one, or a shell command that names one, is refused. A path is
-   checked as written and once resolved, in any case, so a link to one counts. Glob lists names without reading them, so it
-   isn't, and nor is a Grep over a folder that happens to hold one: the guard
-   sees the call's arguments, not the files the search opens.
+   whose path or glob names one (or a .ssh, .aws, .gnupg or .kube folder) or
+   whose glob can only match one, or a shell command that names one, is
+   refused. Env files, .pem and .key files, keystores (.p12, .pfx, .jks,
+   .keystore), SSH and GnuPG keys, cloud and Kubernetes config, service-account
+   files, .htpasswd and Docker's login file all count. A path is checked as
+   written and once resolved, in any case, so a link to one counts. Glob lists
+   names without reading them, so it isn't, and nor is a Grep over a folder
+   that happens to hold one: the guard sees the call's arguments, not the files
+   the search opens.
 2. A connector call that isn't a plain read asks first. An MCP tool runs
    unasked only when its name says it gets, lists, searches, reads, finds,
    queries, fetches or views, and nothing in it says it sends, creates, edits,
@@ -27,6 +31,8 @@ Wired in .claude/settings.json as a PreToolUse hook. Four jobs:
    `gh pr diff <n>` and `gh issue view <n>`, with `--comments` on a view, no
    connector runs at all, and its file tools (Read, Grep and Glob among them)
    reach only paths inside the harness root, after `..` and links resolve.
+   Inside the root, they don't reach the files that hold tokens or company
+   data: .claude/settings.local.json, any .git folder, company/ and local-data/.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -47,11 +53,14 @@ CREDENTIAL = re.compile(
     r"\.env(\.(?!example\b|sample\b|template\b)[\w.-]+)?"  # .env, .env.local, not .env.example
     r"|[\w.-]*\.pem|[\w.-]*\.key|id_(rsa|ed25519|ecdsa)[\w.-]*"
     r"|\.aws/credentials|\.ssh/[\w.-]+|\.netrc|\.npmrc|\.pypirc"
+    r"|[\w.-]*\.(p12|pfx|jks|keystore)|\.kube/config|service-account[\w.-]*\.json"
+    r"|\.htpasswd|\.docker/config\.json|\.gnupg/[\w.-]+"
     r")(?=$|[\s'\";|&>)])"
 )
 SECRET_COMMANDS = re.compile(
     r"\bsecretsmanager\s+get-secret-value\b|\bssm\s+get-parameters?\b.*--with-decryption"
-    r"|\bgh\s+auth\s+token\b|\bprintenv\b|^\s*env\s*($|[|>])"
+    r"|\bgh\s+auth\s+token\b|\bprintenv\b|^\s*env\s*($|[|>])",
+    re.I,  # the Mac's disk finds an upper-case name as the lower-case command
 )
 # `test -e .env`, `[ -f .env ]`: whether a file exists, which is the check the
 # steering asks for. It's taken out before the credential match, so the rest of
@@ -264,16 +273,34 @@ CHECKED_TOOLS = FILE_TOOLS + ("Grep", "Glob", "Bash")
 GLOB_MAGIC = re.compile(r"[*?\[{]")
 BRACES = re.compile(r"\{([^{}]*)\}")
 ESCAPE = re.compile(r"\\(.)")
+NEGATED_CLASS = re.compile(r"\[\^")
 # More {a,b} alternatives than this and the guard refuses rather than check some of them.
 MAX_ALTERNATIVES = 64
 # A folder that holds credentials and little else, so searching it reads them.
-CREDENTIAL_DIR = re.compile(r"(^|/)(\.ssh|\.aws)$")
+CREDENTIAL_DIR = re.compile(r"(^|/)(\.ssh|\.aws|\.gnupg|\.kube)$")
 # Names only a credential file has, and names any project has. A glob that matches one of the
 # first and none of the second can only be after credentials: .en?, id_*, .e[n]v.
 CREDENTIAL_NAMES = (".env", ".env.local", ".env.production", "server.pem", "server.key", "id_rsa",
-                    "id_ed25519", "id_ecdsa", ".netrc", ".npmrc", ".pypirc", ".ssh/config", ".aws/credentials")
-ORDINARY_NAMES = ("readme.md", "app.py", "index.ts", "main.go", "package.json", "notes.txt", "keys.py",
-                  "env.py", "config.yaml", "makefile")
+                    "id_ed25519", "id_ecdsa", ".netrc", ".npmrc", ".pypirc", ".ssh/config", ".aws/credentials",
+                    "store.p12", "cert.pfx", "keystore.jks", "release.keystore", ".kube/config",
+                    "service-account.json", ".htpasswd", ".docker/config.json", ".gnupg/pubring.kbx")
+ORDINARY_NAMES = ("readme.md", "app.py", "index.ts", "main.go", "package.json", "tsconfig.json", "config.json",
+                  "notes.txt", "keys.py", "env.py", "config.yaml", "makefile")
+# Inside the root, what a headless run doesn't reach: a token in the local settings' env block or
+# in a remote URL in git's config, and the company's own record and exports.
+PRIVATE_FILES = (".claude/settings.local.json",)
+PRIVATE_FOLDERS = ("company", "local-data")
+# What a headless glob must not match. A ripgrep glob that matches an ignored or hidden folder or
+# file brings it back into the search ({company,*.md} lists company/, measured 2026-10-25), and
+# ripgrep tests a glob without a / against each name and one with a / against each path.
+# company/** alone didn't get in when measured; a path below each folder refuses it anyway.
+PRIVATE_ENTRIES = ("company", "local-data", ".claude", ".git", ".claude/settings.local.json", ".git/config",
+                   "company/x", "local-data/x")
+# The names a headless Glob pattern may not carry in a later part: the private places themselves.
+PRIVATE_NAMES = {"company", "local-data", ".claude", ".git", "settings.local.json"}
+HEADLESS_PRIVATE = ("A headless run doesn't read the files inside the root that hold tokens or company "
+                    "data: .claude/settings.local.json, any .git folder, company/ and local-data/. Say in "
+                    "the report what you couldn't read.")
 # ripgrep's file types that take in a credential name: sh lists .env and *.env (rg --type-list, 2026-10-25).
 CREDENTIAL_TYPES = {"sh"}
 
@@ -309,47 +336,84 @@ def glob_matches(glob, names):
     return any(fnmatch.fnmatchcase(name, glob) or fnmatch.fnmatchcase("sub/" + name, glob) for name in names)
 
 
-def glob_names_credential(glob):
-    """Whether a Grep glob names a credential file, or can only match credential files."""
+def glob_pieces(glob):
+    """The globs a Grep glob comes to, ready for fnmatch, or None when there are more than the guard checks.
+
+    Each {a,b} alternative, split on commas or spaces, with \\ escapes undone and lowercased. ripgrep
+    reads [^x] as any character but x and fnmatch reads it as ^ or x, so it's written [!x], which
+    both read the same way (.en[^_] matches .env in ripgrep, measured 2026-10-25).
+    """
     spelled = alternatives(glob)
     if spelled is None:
+        return None
+    return [NEGATED_CLASS.sub("[!", piece) for one in spelled
+            for piece in re.split(r"[\s,]+", ESCAPE.sub(r"\1", one).lower()) if piece]
+
+
+def glob_names_credential(glob):
+    """Whether a Grep glob names a credential file, or can only match credential files."""
+    pieces = glob_pieces(glob)
+    if pieces is None:
         return True
-    for one in spelled:
-        # A glob can carry several, split on commas or spaces, and a \ escapes the next character.
-        for piece in re.split(r"[\s,]+", ESCAPE.sub(r"\1", one).lower()):
-            if not piece:
-                continue
-            if CREDENTIAL.search(" " + re.sub(r"[*?]", "", piece)):
-                return True
-            if glob_matches(piece, CREDENTIAL_NAMES) and not glob_matches(piece, ORDINARY_NAMES):
-                return True
+    return any(CREDENTIAL.search(" " + re.sub(r"[*?]", "", piece))
+               or glob_matches(piece, CREDENTIAL_NAMES) and not glob_matches(piece, ORDINARY_NAMES)
+               for piece in pieces)
+
+
+def glob_reaches(glob, names):
+    """Whether a Grep glob can match any of these names at all, however much else it matches."""
+    pieces = glob_pieces(glob)
+    return pieces is None or any(glob_matches(piece, names) for piece in pieces)
+
+
+def glob_unlocks_private(glob):
+    """Whether a glob matches one of the root's private folders or files, as ripgrep would test it."""
+    pieces = glob_pieces(glob)
+    if pieces is None:
+        return True
+    for piece in pieces:
+        piece = piece.lstrip("!/").rstrip("/")
+        if not piece:
+            continue
+        if "/" in piece:
+            targets = PRIVATE_ENTRIES + tuple("sub/" + entry for entry in PRIVATE_ENTRIES)
+        else:
+            targets = tuple(entry.rsplit("/", 1)[-1] for entry in PRIVATE_ENTRIES)
+        if any(fnmatch.fnmatchcase(target, piece) for target in targets):
+            return True
     return False
 
 
-def glob_reaches_credential(glob):
-    """Whether a Grep glob can match a credential file at all, however much else it matches."""
-    spelled = alternatives(glob)
-    if spelled is None:
-        return True
-    return any(glob_matches(piece, CREDENTIAL_NAMES)
-               for one in spelled for piece in re.split(r"[\s,]+", ESCAPE.sub(r"\1", one).lower()) if piece)
+def resolved(path, cwd):
+    """A path read from cwd, with ~, .. and links resolved."""
+    return os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
 
 
 def outside_root(path, cwd):
     """Whether a path, read from cwd with ~, .. and links resolved, lands outside the harness root."""
-    full = os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
+    full = resolved(path, cwd)
     return full != ROOT and not full.startswith(ROOT + os.sep)
 
 
-def glob_outside(pattern, base, cwd):
-    """Whether a Glob pattern, each {a,b} alternative and \\ escape undone, climbs out of the root.
+def private_path(full):
+    """Whether a resolved path is, or is inside, a place in the root a headless run doesn't reach."""
+    if not full.startswith(ROOT + os.sep):
+        return False
+    parts = os.path.relpath(full, ROOT).lower().split(os.sep)
+    return "/".join(parts) in PRIVATE_FILES or parts[0] in PRIVATE_FOLDERS or ".git" in parts
+
+
+def glob_prefixes(pattern, base):
+    """For each {a,b} alternative of a Glob pattern, \\ escapes undone, the folder its fixed parts name
+    and the parts after them. None when there are more alternatives than the guard checks.
 
     The pattern can carry the folder itself: ../other/** or /etc/*. Its parts up to the first
     wildcard are a path, and a .. after a wildcard climbs from wherever that matched.
     """
     spelled = alternatives(pattern)
     if spelled is None:
-        return True
+        return None
+    found = []
     for one in spelled:
         parts = ESCAPE.sub(r"\1", one).split("/")
         fixed = []
@@ -357,9 +421,14 @@ def glob_outside(pattern, base, cwd):
             if GLOB_MAGIC.search(part):
                 break
             fixed.append(part)
-        if ".." in parts[len(fixed):] or outside_root(os.path.join(base, "/".join(fixed)), cwd):
-            return True
-    return False
+        found.append((os.path.join(base, "/".join(fixed)), parts[len(fixed):]))
+    return found
+
+
+def glob_outside(pattern, base, cwd):
+    """Whether a Glob pattern climbs out of the root."""
+    prefixes = glob_prefixes(pattern, base)
+    return prefixes is None or any(".." in rest or outside_root(folder, cwd) for folder, rest in prefixes)
 
 
 def headless_outside(tool, data, cwd):
@@ -370,6 +439,28 @@ def headless_outside(tool, data, cwd):
     if tool == "Grep":
         return outside_root(data.get("path") or "", cwd)
     return outside_root(data.get("file_path") or data.get("notebook_path") or "", cwd)
+
+
+def headless_private(tool, data, cwd):
+    """Whether a headless file tool's call reaches a place in the root that holds tokens or company data.
+
+    A Grep over the root leaves them out: .gitignore lists them, and Claude Code's Grep passes
+    --glob '!.git' (with --hidden, so hidden protects nothing; Claude Code 2.1.310, measured
+    2026-10-25). So the guard checks the path it names, and refuses a glob that would bring one back in. Glob
+    lists names and reads nothing, so a pattern is refused when the folder its fixed parts name is
+    private, or a later part names a private folder or file outright (**/company/*); c*/** can
+    still list the names under company/.
+    """
+    if tool == "Glob":
+        base = data.get("path") or ""
+        prefixes = glob_prefixes(data.get("pattern") or "", base)
+        return prefixes is None or private_path(resolved(base, cwd)) or any(
+            private_path(resolved(folder, cwd)) or PRIVATE_NAMES & {part.lower() for part in rest}
+            for folder, rest in prefixes)
+    if tool == "Grep":
+        glob = data.get("glob") or ""
+        return private_path(resolved(data.get("path") or "", cwd)) or bool(glob) and glob_unlocks_private(glob)
+    return private_path(resolved(data.get("file_path") or data.get("notebook_path") or "", cwd))
 
 
 def decide(event):
@@ -395,7 +486,7 @@ def decide(event):
         # Ordinary sessions keep broad globs (*env*) and type sh for shell scripts; a headless run has
         # nobody to notice what else they took in, so there any glob that can match a credential is refused.
         if headless and tool == "Grep":
-            if glob and glob_reaches_credential(glob):
+            if glob and glob_reaches(glob, CREDENTIAL_NAMES):
                 return ("deny", "{} can match a credential file, and a headless run searches none. Name the "
                         "files more narrowly, or leave the glob out.".format(glob))
             types = data.get("type") or []
@@ -407,11 +498,13 @@ def decide(event):
     if headless and (tool in FILE_TOOLS or tool in ("Grep", "Glob")):
         if headless_outside(tool, data, cwd):
             return ("deny", HEADLESS_OUTSIDE)
+        if headless_private(tool, data, cwd):
+            return ("deny", HEADLESS_PRIVATE)
 
     if tool == "Bash":
         command = data.get("command", "")
         named = EXISTENCE_CHECK.sub(" ", command)
-        if CREDENTIAL.search(" " + named) or SECRET_COMMANDS.search(command):
+        if CREDENTIAL.search(" " + named.lower()) or SECRET_COMMANDS.search(command):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
         # Before the auditor's list: a headless run is held to its reads whichever agent asks.

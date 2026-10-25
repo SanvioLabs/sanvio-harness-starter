@@ -33,7 +33,7 @@ SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 def rule(tool, reason=""):
     """Which of the guard's rules a verdict on this tool came from, given the guard's reason for it."""
-    if reason in (guard.HEADLESS_SHELL, guard.HEADLESS_CONNECTOR, guard.HEADLESS_OUTSIDE):
+    if reason in (guard.HEADLESS_SHELL, guard.HEADLESS_CONNECTOR, guard.HEADLESS_OUTSIDE, guard.HEADLESS_PRIVATE):
         return "headless"
     if tool in FILE_TOOLS:
         return "credential-file"
