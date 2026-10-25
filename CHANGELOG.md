@@ -29,16 +29,16 @@ fine).
 
 ## 2026-10-25: Run a skill headless with bin/harness
 
-[`bin/harness`](bin/harness) runs a skill from any folder without opening a session, such as
-`harness review-pr 42`, or `harness --json review-pr 42` for JSON output. It
+[`bin/harness`](bin/harness) runs a skill from any folder without opening a session:
+`harness <skill> [arguments]`, or `harness --json <skill>` for JSON output. It
 starts `claude -p` at the harness root and runs only skills marked
-`headless: true`, and the tools their `allowed-tools` line names run without
-asking. Every entry has to be in [`bin/harness-tools`](bin/harness-tools), the one list of
-approved tools, and the wrapper pins the permission mode and tools so your own
-settings can't widen a run. Only `review-pr` is marked. The usage log marks a
-session it started as `headless`.
+`headless: true`, with only the tools their `allowed-tools` line names, each of
+which has to be in [`bin/harness-tools`](bin/harness-tools). It pins the permission mode and the
+tools. No skill is marked yet: every Bash command checked could run a program,
+write a file or reach another host, so marking `review-pr` waits on a guard
+rule for headless runs. The usage log marks a session it started as `headless`.
 
-Files: [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py),
+Files: [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py),
 [`README.md`](README.md), [`tests/test_harness_cli.py`](tests/test_harness_cli.py), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_usage.py`](tests/test_usage.py)
 
 **Do:** to use it, add `alias harness=~/path/to/my-harness/bin/harness` to your
