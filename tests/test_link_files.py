@@ -101,5 +101,14 @@ class TheScript(unittest.TestCase):
         self.assertEqual(self.readme.read_bytes(), self.before)
 
 
+class ThisRepo(unittest.TestCase):
+    """CI runs the same check. Here too, so the loop's test command catches a missing link before CI does."""
+
+    def test_every_file_name_in_the_markdown_is_a_link(self):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "link_files.py"), "--check"],
+                                cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
