@@ -3,7 +3,7 @@ name: review-pr
 description: Review a pull request against this harness's rules and the project's own standards, and return findings ranked by cost with a verdict. Reports only, never approves, merges or posts. Use when asked to review a PR, a branch or a diff, "look at PR 42", "is this ready to merge", or "what would you flag in this change".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 headless: true
-allowed-tools: Read Grep Glob Bash(gh pr view:*) Bash(gh pr diff:*) Bash(gh issue view:*) Bash(git fetch:*) Bash(git diff:*)
+allowed-tools: Read, Grep, Glob, Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh issue view:*)
 ---
 
 # Review a pull request

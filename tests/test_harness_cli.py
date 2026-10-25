@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "bin" / "harness"
-TOOLS = "Read Grep Bash(git remote get-url:*)"
+APPROVED = "# approved\nRead\nGrep\nBash(gh pr view:*)\n"
+TOOLS = "Read, Grep, Bash(gh pr view:*)"
 
 # Stands in for claude: writes where it ran, $HARNESS_HEADLESS and its argv, one per line.
 FAKE_CLAUDE = """#!/bin/sh
@@ -32,6 +33,7 @@ class HarnessCli(unittest.TestCase):
         (self.root / "bin").mkdir(parents=True)
         shutil.copy2(SCRIPT, self.root / "bin" / "harness")
         (self.root / "bin" / "harness").chmod(0o755)  # test_the_script_is_executable checks the real file's bit
+        (self.root / "bin" / "harness-tools").write_text(APPROVED)
         skill(self.root, "x", "headless: true\nallowed-tools: {}\n".format(TOOLS))
         skill(self.root, "plain", "allowed-tools: Read\n")
         fake = tmp / "fakebin"
@@ -57,18 +59,19 @@ class HarnessCli(unittest.TestCase):
     def test_the_script_is_executable(self):
         self.assertTrue(os.access(SCRIPT, os.X_OK), "chmod +x bin/harness")
 
-    def test_a_headless_skill_runs_from_the_root_with_its_tools(self):
+    def test_a_headless_skill_runs_from_the_root_with_only_its_tools(self):
         result = self.run_harness("x", "a", "b")
         self.assertEqual(result.returncode, 0, result.stderr)
         cwd, headless, *argv = self.recorded()
         self.assertEqual(cwd, str(self.root))
         self.assertEqual(headless, "1")
-        self.assertEqual(argv, ["-p", "/x a b", "--allowedTools", TOOLS])
+        self.assertEqual(argv, ["-p", "/x a b", "--permission-mode", "default", "--tools", "Read,Grep,Bash",
+                                "--allowedTools", TOOLS])
 
     def test_json_asks_for_json_output(self):
         result = self.run_harness("--json", "x")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.recorded()[2:], ["-p", "/x", "--output-format", "json", "--allowedTools", TOOLS])
+        self.assertEqual(self.recorded()[2:5], ["-p", "/x", "--output-format"])
 
     def assert_refused(self, *args):
         result = self.run_harness(*args)
@@ -85,8 +88,26 @@ class HarnessCli(unittest.TestCase):
     def test_a_path_is_refused(self):
         self.assert_refused("../x")
 
+    def test_a_name_with_a_newline_is_refused(self):
+        self.assert_refused("x\nx")
+
+    def test_a_flag_for_a_name_is_refused(self):
+        self.assert_refused("-p")
+
     def test_no_skill_is_refused(self):
         self.assert_refused()
+
+    def test_a_tool_the_approved_list_lacks_is_refused(self):
+        skill(self.root, "wide", "headless: true\nallowed-tools: Read, Bash(git diff:*)\n")
+        self.assert_refused("wide")
+
+    def test_a_second_allowed_tools_line_is_refused(self):
+        skill(self.root, "twice", "headless: true\nallowed-tools: Read\nallowed-tools: Read, Bash(rm:*)\n")
+        self.assert_refused("twice")
+
+    def test_a_folded_allowed_tools_value_is_refused(self):
+        skill(self.root, "folded", "headless: true\nallowed-tools: >-\n  Read\n")
+        self.assert_refused("folded")
 
 
 if __name__ == "__main__":

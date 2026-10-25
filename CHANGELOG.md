@@ -33,10 +33,12 @@ fine).
 `harness review-pr 42`, or `harness --json review-pr 42` for JSON output. It
 starts `claude -p` at the harness root and runs only skills marked
 `headless: true`, and the tools their `allowed-tools` line names run without
-asking. Only `review-pr` is marked; a test keeps any marked skill's list to
-commands that read. The usage log marks a session it started as `headless`.
+asking. Every entry has to be in [`bin/harness-tools`](bin/harness-tools), the one list of
+approved tools, and the wrapper pins the permission mode and tools so your own
+settings can't widen a run. Only `review-pr` is marked. The usage log marks a
+session it started as `headless`.
 
-Files: [`bin/harness`](bin/harness), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py),
+Files: [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools), [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py),
 [`README.md`](README.md), [`tests/test_harness_cli.py`](tests/test_harness_cli.py), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_usage.py`](tests/test_usage.py)
 
 **Do:** to use it, add `alias harness=~/path/to/my-harness/bin/harness` to your

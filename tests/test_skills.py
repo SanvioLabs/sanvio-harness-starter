@@ -185,7 +185,8 @@ class Skills(unittest.TestCase):
             self.assertIn(words, texts["standup"])
         self.assertIn("unread threads capped at 50", texts["inbox"])
 
-    def test_headless_skills_name_their_tools_and_none_that_write(self):
+    def test_headless_skills_list_only_approved_tools(self):
+        approved = [l for l in (ROOT / "bin" / "harness-tools").read_text().splitlines() if l and not l.startswith("#")]
         headless = set()
         for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
             fields = frontmatter(skill.read_text())
@@ -193,19 +194,18 @@ class Skills(unittest.TestCase):
                 continue
             name = skill.parent.name
             headless.add(name)
-            tokens = re.findall(r"[^\s,(]+\([^)]*\)|[^\s,]+", fields.get("allowed-tools", ""))
-            self.assertTrue(tokens, "{}: headless with no allowed-tools".format(name))
-            for token in tokens:
-                self.assertNotIn(token, ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"), name)
-                command = re.match(r"Bash\((.*)\)$", token)
-                if command:
-                    # Nothing that runs code it's handed, or changes or deletes anything.
-                    self.assertNotIn(command.group(1).split()[0],
-                                     ("awk", "sed", "sh", "bash", "zsh", "env", "xargs", "find", "python", "python3",
-                                      "node", "npm", "npx", "perl", "ruby", "rm", "mv", "cp", "chmod"), name)
-                    for word in ("reset", "push", "clean", "checkout", "worktree", "clone", "commit", "merge"):
-                        self.assertNotIn(word, command.group(1).split(), name)
+            entries = [e.strip() for e in fields.get("allowed-tools", "").split(",") if e.strip()]
+            self.assertTrue(entries, "{}: headless with no allowed-tools".format(name))
+            for entry in entries:
+                self.assertIn(entry, approved, name)
         self.assertIn("review-pr", headless)
+
+    def test_every_approved_headless_tool_only_reads(self):
+        # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.
+        read_only = re.compile(r"(Read|Grep|Glob|Bash\(gh (pr|issue) (view|diff):\*\))$")
+        for line in (ROOT / "bin" / "harness-tools").read_text().splitlines():
+            if line and not line.startswith("#"):
+                self.assertRegex(line, read_only)
 
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])

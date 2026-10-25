@@ -112,10 +112,14 @@ harness --json review-pr 42    # Claude Code's JSON output, for a script to read
 
 It runs only a skill whose frontmatter says `headless: true`, and passes the
 tools its `allowed-tools` line names to `--allowedTools`, so those run without
-asking. One is marked: `review-pr`, whose list only reads. Any other name stops
-with exit code 2 before Claude starts. A skill's `allowed-tools` also applies in
-an ordinary session, so a skill is marked only when everything on its list
-reads and nothing runs code it's handed; [`tests/test_skills.py`](tests/test_skills.py) checks that.
+asking. Every entry on that list has to be in [`bin/harness-tools`](bin/harness-tools), or the
+skill doesn't start, and the wrapper sets the permission mode and the tools
+itself, so nothing in your own settings widens a run. One skill is marked:
+`review-pr`, which may read pull requests and issues with `gh`. Any other name
+stops with exit code 2 before Claude starts. A skill's `allowed-tools` also
+applies in an ordinary session, so an entry goes in [`bin/harness-tools`](bin/harness-tools) only
+if no flag after it can run a program, write a file or reach another host.
+`git fetch` and `git diff` fail that test (`--upload-pack`, `--output`).
 `whats-new` and `check-starter` stay unmarked: their steps use shell variables,
 which Claude Code refuses headless, and `check-starter` resets a scratch clone.
 `review-tests` stays unmarked because it runs the code under review.

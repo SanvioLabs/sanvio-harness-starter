@@ -1,0 +1,12 @@
+# The only tools a skill marked headless: true may list in allowed-tools, one per line.
+# bin/harness refuses a skill whose list names anything else, and tests/test_skills.py
+# checks every entry here only reads. A skill's allowed-tools also applies in an ordinary
+# session while the skill runs, so an entry belongs here only if it can't run a program,
+# write a file or reach a host of its own choosing, whatever flags follow it.
+# Adding one is a reviewed change to this file.
+Read
+Grep
+Glob
+Bash(gh pr view:*)
+Bash(gh pr diff:*)
+Bash(gh issue view:*)
