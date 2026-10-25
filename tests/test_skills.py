@@ -185,6 +185,28 @@ class Skills(unittest.TestCase):
             self.assertIn(words, texts["standup"])
         self.assertIn("unread threads capped at 50", texts["inbox"])
 
+    def test_headless_skills_name_their_tools_and_none_that_write(self):
+        headless = set()
+        for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            fields = frontmatter(skill.read_text())
+            if fields.get("headless") != "true":
+                continue
+            name = skill.parent.name
+            headless.add(name)
+            tokens = re.findall(r"[^\s,(]+\([^)]*\)|[^\s,]+", fields.get("allowed-tools", ""))
+            self.assertTrue(tokens, "{}: headless with no allowed-tools".format(name))
+            for token in tokens:
+                self.assertNotIn(token, ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"), name)
+                command = re.match(r"Bash\((.*)\)$", token)
+                if command:
+                    # Nothing that runs code it's handed, or changes or deletes anything.
+                    self.assertNotIn(command.group(1).split()[0],
+                                     ("awk", "sed", "sh", "bash", "zsh", "env", "xargs", "find", "python", "python3",
+                                      "node", "npm", "npx", "perl", "ruby", "rm", "mv", "cp", "chmod"), name)
+                    for word in ("reset", "push", "clean", "checkout", "worktree", "clone", "commit", "merge"):
+                        self.assertNotIn(word, command.group(1).split(), name)
+        self.assertIn("review-pr", headless)
+
     def test_a_registered_skill_passes(self):
         self.assertEqual(self.problems(GOOD), [])
 

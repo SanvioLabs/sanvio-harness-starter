@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / ".claude" / "hooks" / "usage_log.py"
@@ -55,6 +56,13 @@ class Entries(unittest.TestCase):
     def test_sessions_are_logged(self):
         self.assertEqual(usage_log.entry("SessionStart", {"source": "startup"})["event"], "session_start")
         self.assertEqual(usage_log.entry("SessionEnd", {"reason": "exit"})["event"], "session_end")
+
+    def test_a_session_bin_harness_started_says_it_was_headless(self):
+        with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+            self.assertIs(usage_log.entry("SessionStart", {"source": "startup"})["headless"], True)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("HARNESS_HEADLESS", None)
+            self.assertNotIn("headless", usage_log.entry("SessionStart", {"source": "startup"}))
 
 
 class TheHook(unittest.TestCase):

@@ -98,6 +98,36 @@ marketplace is registered under one name for the whole machine, so the mods
 load from whichever clone registered it first. `claude plugin list` says which
 folder they're read from.
 
+### Run a skill from anywhere
+
+[`bin/harness`](bin/harness) runs a skill without opening a session, from any folder. It starts
+`claude -p` at the harness root, so the rules, skills and guards load as they
+would in the terminal. Add an alias to your shell's startup file:
+
+```bash
+alias harness=~/path/to/my-harness/bin/harness
+harness review-pr 42
+harness --json review-pr 42    # Claude Code's JSON output, for a script to read
+```
+
+It runs only a skill whose frontmatter says `headless: true`, and passes the
+tools its `allowed-tools` line names to `--allowedTools`, so those run without
+asking. One is marked: `review-pr`, whose list only reads. Any other name stops
+with exit code 2 before Claude starts. A skill's `allowed-tools` also applies in
+an ordinary session, so a skill is marked only when everything on its list
+reads and nothing runs code it's handed; [`tests/test_skills.py`](tests/test_skills.py) checks that.
+`whats-new` and `check-starter` stay unmarked: their steps use shell variables,
+which Claude Code refuses headless, and `check-starter` resets a scratch clone.
+`review-tests` stays unmarked because it runs the code under review.
+
+A headless run has nobody to ask. When the guard would ask you before a
+connector call, the call is refused. Any other tool or command needs a yes
+nobody is there to give, unless your own Claude Code settings already allow
+it, and the skill reports without it. A skill that needs to ask you a
+question, such as which pull request you mean, can't wait for the answer, so
+give it everything in the arguments. The arguments reach the skill joined by
+spaces, so quoting inside one argument is lost.
+
 ## Where things live
 
 The harness holds the method. Everything else is reached where it lives.

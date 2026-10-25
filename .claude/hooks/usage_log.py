@@ -46,7 +46,10 @@ def entry(hook, event):
     data = event.get("tool_input") or {}
 
     if hook == "SessionStart":
-        return {"event": "session_start", "source": event.get("source", "")}
+        line = {"event": "session_start", "source": event.get("source", "")}
+        if os.environ.get("HARNESS_HEADLESS") == "1":
+            line["headless"] = True  # started by bin/harness, so a report can tell a script from a person
+        return line
     if hook == "SessionEnd":
         return {"event": "session_end", "reason": event.get("reason", "")}
     if hook == "UserPromptSubmit":

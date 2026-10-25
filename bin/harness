@@ -1,0 +1,60 @@
+#!/bin/sh
+# Runs one of this harness's skills headless, from any folder:
+#   harness [--json] <skill> [arguments...]
+# Only a skill marked `headless: true` in its frontmatter runs, with only the
+# tools its `allowed-tools` line names. The session starts at the harness root,
+# so the rules, skills and guards load as they do in a normal session.
+# From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
+
+root=$(cd "$(dirname "$0")/.." && pwd) || exit 2
+cd "$root" || exit 2
+
+json=
+if [ "$1" = "--json" ]; then
+  json=1
+  shift
+fi
+
+name=$1
+usage="usage: harness [--json] <skill> [arguments...]"
+if [ -z "$name" ]; then
+  echo "$usage" >&2
+  exit 2
+fi
+if ! printf '%s\n' "$name" | grep -Eqx '[a-z0-9-]+'; then
+  echo "harness: '$name' isn't a skill name: lowercase letters, digits and dashes only" >&2
+  exit 2
+fi
+skill="skills/$name/SKILL.md"
+if [ ! -f "$skill" ]; then
+  echo "harness: no skill called '$name' in $root/skills" >&2
+  exit 2
+fi
+shift
+
+# The frontmatter: the lines between the first two ---, if the file opens with one.
+front=$(awk 'NR == 1 { if ($0 != "---") exit; next } $0 == "---" { exit } { print }' "$skill")
+if ! printf '%s\n' "$front" | grep -Eqx 'headless:[[:space:]]*true[[:space:]]*'; then
+  echo "harness: $name isn't marked headless: true, so it only runs in a session" >&2
+  exit 2
+fi
+tools=$(printf '%s\n' "$front" | sed -n 's/^allowed-tools:[[:space:]]*//p' | head -1)
+if [ -z "$tools" ]; then
+  echo "harness: $name is headless but names no allowed-tools" >&2
+  exit 2
+fi
+
+prompt="/$name"
+if [ $# -gt 0 ]; then
+  prompt="$prompt $*"
+fi
+
+# --allowedTools takes a list, so it goes last, where nothing after it can be read as one of its tools.
+if [ -n "$json" ]; then
+  set -- -p "$prompt" --output-format json --allowedTools "$tools"
+else
+  set -- -p "$prompt" --allowedTools "$tools"
+fi
+HARNESS_HEADLESS=1
+export HARNESS_HEADLESS
+exec claude "$@"
