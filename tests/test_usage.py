@@ -73,6 +73,8 @@ class Entries(unittest.TestCase):
             self.assertEqual(pre("Read", file_path="A headless run/.env")["rule"], "credential-file")
             self.assertEqual(pre("Read", file_path="/etc/hosts"), {"event": "guard_deny", "rule": "headless"})
             self.assertEqual(pre("Glob", pattern="../**")["rule"], "headless")
+            company = os.path.join(usage_log.guard.ROOT, "company", "COMPANY.md")
+            self.assertEqual(pre("Read", file_path=company), {"event": "guard_deny", "rule": "headless"})
 
     def test_a_refused_search_is_logged_as_a_credential_file(self):
         self.assertEqual(pre("Grep", pattern="KEY", path="/home/me/project/.env"),

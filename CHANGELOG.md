@@ -27,6 +27,25 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: More credential files, and the root's private files
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) now treats keystores (`*.p12`, `*.pfx`, `*.jks`, `*.keystore`),
+`.kube/config`, `service-account*.json`, `.htpasswd`, `.docker/config.json` and anything under
+`.gnupg/` as credentials, in every session and in any case, shell commands included. A run
+[`bin/harness`](bin/harness) started also doesn't reach `.claude/settings.local.json`, any `.git` folder,
+`company/` or `local-data/`, which can hold a token or company data. Ordinary sessions still read
+those, since `/orientation` and permission changes need them. `credentials.json` stays readable:
+the name is too common to refuse.
+
+Two refusals that ran before: a shell command is now matched in any case, so a `jq` filter on a
+field named `.Key` or `.Env` after a space or a quote is refused (write `.["Key"]`); and a headless
+`Grep` glob of `*.json` is refused, since it can match a cloud key file.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`tests/test_usage.py`](tests/test_usage.py),
+[`README.md`](README.md)
+
+**Do:** nothing. The hook reads the new rules on its next call.
+
 ## 2026-10-25: The guard checks searches
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) now sees `Grep` and `Glob`. In every session, a `Grep` whose
