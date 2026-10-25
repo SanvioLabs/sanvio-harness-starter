@@ -71,6 +71,14 @@ class Entries(unittest.TestCase):
             self.assertEqual(pre("Bash", command="cat .env")["rule"], "credential-command")
             # A path can't pass itself off as a headless refusal: the reason has to match exactly.
             self.assertEqual(pre("Read", file_path="A headless run/.env")["rule"], "credential-file")
+            self.assertEqual(pre("Read", file_path="/etc/hosts"), {"event": "guard_deny", "rule": "headless"})
+            self.assertEqual(pre("Glob", pattern="../**")["rule"], "headless")
+
+    def test_a_refused_search_is_logged_as_a_credential_file(self):
+        self.assertEqual(pre("Grep", pattern="KEY", path="/home/me/project/.env"),
+                         {"event": "guard_deny", "rule": "credential-file"})
+        self.assertEqual(pre("Grep", pattern="KEY", glob="*.pem")["rule"], "credential-file")
+        self.assertIsNone(pre("Grep", pattern="KEY"))
 
 
 class TheHook(unittest.TestCase):

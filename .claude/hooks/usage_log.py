@@ -26,14 +26,14 @@ HOOKS = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOOKS))
 import guard  # noqa: E402 (the guard's own verdict, so there's one copy of the rules)
 
-FILE_TOOLS = ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit")
+FILE_TOOLS = guard.FILE_TOOLS + ("Grep", "Glob")
 COMMAND = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9:_-]*)(\s|$)")
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def rule(tool, reason=""):
     """Which of the guard's rules a verdict on this tool came from, given the guard's reason for it."""
-    if reason in (guard.HEADLESS_SHELL, guard.HEADLESS_CONNECTOR):
+    if reason in (guard.HEADLESS_SHELL, guard.HEADLESS_CONNECTOR, guard.HEADLESS_OUTSIDE):
         return "headless"
     if tool in FILE_TOOLS:
         return "credential-file"

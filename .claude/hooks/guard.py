@@ -3,10 +3,14 @@
 
 From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 
-Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
+Wired in .claude/settings.json as a PreToolUse hook. Four jobs:
 
-1. Credentials stay unread. A Read, Edit or Write on a credential file, or a
-   shell command that names one, is refused.
+1. Credentials stay unread. A Read, Edit or Write on a credential file, a Grep
+   whose path or glob names one (or a .ssh or .aws folder) or whose glob can
+   only match one, or a shell command that names one, is refused. A path is
+   checked as written and once resolved, in any case, so a link to one counts. Glob lists names without reading them, so it
+   isn't, and nor is a Grep over a folder that happens to hold one: the guard
+   sees the call's arguments, not the files the search opens.
 2. A connector call that isn't a plain read asks first. An MCP tool runs
    unasked only when its name says it gets, lists, searches, reads, finds,
    queries, fetches or views, and nothing in it says it sends, creates, edits,
@@ -20,8 +24,9 @@ Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
 4. A run bin/harness started (HARNESS_HEADLESS=1) reads a pull request or an
    issue by number and nothing else. Nobody is watching it, and what it reads
    was written by someone else. Its shell runs only `gh pr view <n>`,
-   `gh pr diff <n>` and `gh issue view <n>`, with `--comments` on a view, and
-   no connector runs at all.
+   `gh pr diff <n>` and `gh issue view <n>`, with `--comments` on a view, no
+   connector runs at all, and its file tools (Read, Grep and Glob among them)
+   reach only paths inside the harness root, after `..` and links resolve.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -29,6 +34,7 @@ command built to dodge it can.
 
 Claude Code only. The git hook in .githooks/ is the check every tool shares.
 """
+import fnmatch
 import json
 import os
 import re
@@ -248,17 +254,159 @@ def headless_refusal(command):
     return None
 
 
+# The harness root, two folders up from this file, whatever folder the session reports.
+ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+HEADLESS_OUTSIDE = ("A headless run reads, searches and lists files inside the harness root and nowhere "
+                    "else. Say in the report what you couldn't read.")
+FILE_TOOLS = ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit")
+# Every tool decide() has a rule for. tests/ holds .claude/settings.json's matcher to this list.
+CHECKED_TOOLS = FILE_TOOLS + ("Grep", "Glob", "Bash")
+GLOB_MAGIC = re.compile(r"[*?\[{]")
+BRACES = re.compile(r"\{([^{}]*)\}")
+ESCAPE = re.compile(r"\\(.)")
+# More {a,b} alternatives than this and the guard refuses rather than check some of them.
+MAX_ALTERNATIVES = 64
+# A folder that holds credentials and little else, so searching it reads them.
+CREDENTIAL_DIR = re.compile(r"(^|/)(\.ssh|\.aws)$")
+# Names only a credential file has, and names any project has. A glob that matches one of the
+# first and none of the second can only be after credentials: .en?, id_*, .e[n]v.
+CREDENTIAL_NAMES = (".env", ".env.local", ".env.production", "server.pem", "server.key", "id_rsa",
+                    "id_ed25519", "id_ecdsa", ".netrc", ".npmrc", ".pypirc", ".ssh/config", ".aws/credentials")
+ORDINARY_NAMES = ("readme.md", "app.py", "index.ts", "main.go", "package.json", "notes.txt", "keys.py",
+                  "env.py", "config.yaml", "makefile")
+# ripgrep's file types that take in a credential name: sh lists .env and *.env (rg --type-list, 2026-10-25).
+CREDENTIAL_TYPES = {"sh"}
+
+
+def alternatives(glob):
+    """Each glob a {a,b} pattern spells out, or None when there are more than the guard checks."""
+    pending, spelled = [glob], []
+    while pending:
+        if len(pending) + len(spelled) > MAX_ALTERNATIVES:
+            return None
+        one = pending.pop()
+        brace = BRACES.search(one)
+        if brace:
+            pending += [one[:brace.start()] + part + one[brace.end():] for part in brace.group(1).split(",")]
+        else:
+            spelled.append(one)
+    return spelled
+
+
+def path_names_credential(path, cwd):
+    """Whether a path names a credential file or a folder of them, as written or once resolved.
+
+    Resolved means ~, // and .. collapsed and links followed, so docs/setup.md linked to ../.env
+    counts. Case is ignored, as the Mac's disk ignores it: .ENV opens .env.
+    """
+    plain = os.path.expanduser(path)
+    forms = (path, os.path.normpath(plain), os.path.realpath(os.path.join(cwd, plain)))
+    return any(CREDENTIAL.search(" " + form.lower()) or CREDENTIAL_DIR.search(form.lower()) for form in forms)
+
+
+def glob_matches(glob, names):
+    """Whether a glob matches any of these names, at the top of a tree or below it."""
+    return any(fnmatch.fnmatchcase(name, glob) or fnmatch.fnmatchcase("sub/" + name, glob) for name in names)
+
+
+def glob_names_credential(glob):
+    """Whether a Grep glob names a credential file, or can only match credential files."""
+    spelled = alternatives(glob)
+    if spelled is None:
+        return True
+    for one in spelled:
+        # A glob can carry several, split on commas or spaces, and a \ escapes the next character.
+        for piece in re.split(r"[\s,]+", ESCAPE.sub(r"\1", one).lower()):
+            if not piece:
+                continue
+            if CREDENTIAL.search(" " + re.sub(r"[*?]", "", piece)):
+                return True
+            if glob_matches(piece, CREDENTIAL_NAMES) and not glob_matches(piece, ORDINARY_NAMES):
+                return True
+    return False
+
+
+def glob_reaches_credential(glob):
+    """Whether a Grep glob can match a credential file at all, however much else it matches."""
+    spelled = alternatives(glob)
+    if spelled is None:
+        return True
+    return any(glob_matches(piece, CREDENTIAL_NAMES)
+               for one in spelled for piece in re.split(r"[\s,]+", ESCAPE.sub(r"\1", one).lower()) if piece)
+
+
+def outside_root(path, cwd):
+    """Whether a path, read from cwd with ~, .. and links resolved, lands outside the harness root."""
+    full = os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
+    return full != ROOT and not full.startswith(ROOT + os.sep)
+
+
+def glob_outside(pattern, base, cwd):
+    """Whether a Glob pattern, each {a,b} alternative and \\ escape undone, climbs out of the root.
+
+    The pattern can carry the folder itself: ../other/** or /etc/*. Its parts up to the first
+    wildcard are a path, and a .. after a wildcard climbs from wherever that matched.
+    """
+    spelled = alternatives(pattern)
+    if spelled is None:
+        return True
+    for one in spelled:
+        parts = ESCAPE.sub(r"\1", one).split("/")
+        fixed = []
+        for part in parts:
+            if GLOB_MAGIC.search(part):
+                break
+            fixed.append(part)
+        if ".." in parts[len(fixed):] or outside_root(os.path.join(base, "/".join(fixed)), cwd):
+            return True
+    return False
+
+
+def headless_outside(tool, data, cwd):
+    """Whether a headless file tool's call reaches outside the harness root."""
+    if tool == "Glob":
+        base = data.get("path") or ""
+        return outside_root(base, cwd) or glob_outside(data.get("pattern") or "", base, cwd)
+    if tool == "Grep":
+        return outside_root(data.get("path") or "", cwd)
+    return outside_root(data.get("file_path") or data.get("notebook_path") or "", cwd)
+
+
 def decide(event):
     """(decision, reason) for one tool call, or None to let it through untouched."""
     tool = event.get("tool_name", "")
     data = event.get("tool_input") or {}
     headless = os.environ.get("HARNESS_HEADLESS") == "1"
+    cwd = event.get("cwd") or os.getcwd()
 
-    if tool in ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit"):
-        path = data.get("file_path") or data.get("notebook_path") or ""
-        if CREDENTIAL.search(" " + path):
+    if tool in FILE_TOOLS or tool == "Grep":
+        if tool == "Grep":
+            path, glob = data.get("path") or "", data.get("glob") or ""
+        else:
+            path, glob = data.get("file_path") or data.get("notebook_path") or "", ""
+        named = ""
+        if path and path_names_credential(path, cwd):
+            named = path
+        elif glob and glob_names_credential(glob):
+            named = glob
+        if named:
             return ("deny", "{} looks like a credential file. Agents never read or write those. "
-                    "Reference the secret by name and let the runtime load it.".format(path))
+                    "Reference the secret by name and let the runtime load it.".format(named))
+        # Ordinary sessions keep broad globs (*env*) and type sh for shell scripts; a headless run has
+        # nobody to notice what else they took in, so there any glob that can match a credential is refused.
+        if headless and tool == "Grep":
+            if glob and glob_reaches_credential(glob):
+                return ("deny", "{} can match a credential file, and a headless run searches none. Name the "
+                        "files more narrowly, or leave the glob out.".format(glob))
+            types = data.get("type") or []
+            for kind in types if isinstance(types, list) else [types]:
+                if str(kind).lower() in CREDENTIAL_TYPES:
+                    return ("deny", "ripgrep's {} type takes in credential files. Name the files with a glob "
+                            "instead.".format(kind))
+
+    if headless and (tool in FILE_TOOLS or tool in ("Grep", "Glob")):
+        if headless_outside(tool, data, cwd):
+            return ("deny", HEADLESS_OUTSIDE)
 
     if tool == "Bash":
         command = data.get("command", "")

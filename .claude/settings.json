@@ -19,7 +19,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__.*",
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|Bash|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -29,7 +29,7 @@
         ]
       },
       {
-        "matcher": "Skill|Agent|Task|Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__.*",
+        "matcher": "Skill|Agent|Task|Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob|Bash|mcp__.*",
         "hooks": [
           {
             "type": "command",

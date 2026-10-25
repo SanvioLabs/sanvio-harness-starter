@@ -127,9 +127,17 @@ is a call the guard fails on while checking it, and the wrapper loads no MCP
 servers. The guard has to start for any of that: with no `python3` on the path,
 or a guard that times out, only the `gh` prefixes hold, and those don't stop
 `-R`.
-A headless review doesn't run the tests, and says so in its report. It can still
-read and search files: the guard doesn't see `Grep` or `Glob` yet, so treat its
-report as you would a session's before passing it on.
+Its file tools reach only the harness root: a `Read`, `Grep` or `Glob` whose path
+or pattern lands outside it, after `..` and links resolve, is refused, so a
+review reads the code cloned under [`projects/`](projects/) and not the rest of your machine.
+A headless `Grep` whose glob could match a credential file at all, however broad,
+is refused too.
+In every session, a `Grep` that names a credential file in its path or glob, or
+whose glob can only match one, is refused as a `Read` of it is, and so is a link
+that lands on one. What the guard can't see is which files a search
+opens: a `Grep` over a folder that holds a credential file isn't stopped, and a
+link a search meets inside the folder it walks isn't checked. A headless review doesn't run the
+tests, and says so in its report.
 
 A headless run has nobody to ask. When the guard would ask you before a
 connector call, the call is refused. A skill that needs to ask you a question
@@ -265,7 +273,7 @@ every day.
 |---|---|---|
 | Steering | [`steering/`](steering/) | Standing guidance, one topic per file: how the agent operates and replies, what data may go to which tool, writing, new-project setup, building and testing, deploying, gates, and model choice. Three load every session; the rest when their moment comes. Light versions of what a working harness runs on, to edit into yours |
 | A company record | `company/` | Who the agent works for: what you sell, how you sound, what you won't do, and where your data lives. `/orientation` interviews you for it. Gitignored, so it never reaches a public repo by accident |
-| Guards inside the agent | [`.claude/settings.json`](.claude/settings.json), [`.claude/hooks/`](.claude/hooks/) | Claude Code runs `guard.py` before every tool call: it refuses credential files, asks you before any connector tool whose name doesn't say it's a plain read, and holds the security reviewer's shell to read-only audits. A session-start check says out loud when the git hook is off |
+| Guards inside the agent | [`.claude/settings.json`](.claude/settings.json), [`.claude/hooks/`](.claude/hooks/) | Claude Code runs `guard.py` before every tool call: it refuses credential files to reads and searches, asks you before any connector tool whose name doesn't say it's a plain read, and holds the security reviewer's shell to read-only audits. A session-start check says out loud when the git hook is off |
 | Your repos, inside it | [`projects/`](projects/) | Clone your code repos here and start the agent from the harness root, so every repo works under the same rules, skills and guards. [`projects/README.md`](projects/README.md) has the catch we measured: start inside a project and the hooks and skills don't load |
 | Review skills | [`skills/review-pr/`](skills/review-pr/), [`skills/review-tests/`](skills/review-tests/) | A PR review that runs the tests and ranks findings by cost, and a test review that breaks the code on purpose, in a scratch copy, to see which tests notice |
 | Specs and tickets | The Stelliad plugin, switched on in [`.claude/settings.json`](.claude/settings.json) | `stelliad:create-spec`, `stelliad:plan-spec`, `stelliad:implement-spec` and `stelliad:review-spec` take a feature from idea to spec, to plan, to code one tested task at a time, then review it. `stelliad:create-ticket` and `stelliad:review-ticket` write and grade issues, and [`skills/loop-control/`](skills/loop-control/) puts a ready one on the loop. It's pinned to one Stelliad commit in [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). `claude plugin disable stelliad@sanvio-harness-starter --scope local` switches it off for you; `"stelliad@sanvio-harness-starter": false` there switches it off for everyone |

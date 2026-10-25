@@ -27,6 +27,24 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: The guard checks searches
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) now sees `Grep` and `Glob`. In every session, a `Grep` whose
+path or glob names a credential file, or a `.ssh` or `.aws` folder, is refused as a `Read` of it
+is. That holds for a glob that can only match one (`*.pem`, `id_*`, a wildcard or class mid-name), in
+any case, and for a link that lands on one. `Glob` only lists names, so it isn't checked for them.
+In a run [`bin/harness`](bin/harness) started, `Read`, `Grep` and `Glob` reach only the harness root, after
+`..`, braces and links resolve, a `Glob` pattern that climbs out included, and a `Grep` by
+ripgrep's `sh` type, which takes in env files, is refused, as is any `Grep` glob that can match a
+credential file, however broad (`*env*`). The usage log counts those
+refusals as `headless` and a refused search as `credential-file`. A `Grep` over a folder that
+happens to hold a credential file still isn't stopped: the guard sees the call, not the files.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`.claude/settings.json`](.claude/settings.json), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py),
+[`tests/test_usage.py`](tests/test_usage.py), [`bin/harness-tools`](bin/harness-tools), [`README.md`](README.md)
+
+**Do:** start a new session, so Claude Code reads the new matchers in [`.claude/settings.json`](.claude/settings.json).
+
 ## 2026-10-25: review-pr runs headless
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) now holds a run [`bin/harness`](bin/harness) started to reading a pull
