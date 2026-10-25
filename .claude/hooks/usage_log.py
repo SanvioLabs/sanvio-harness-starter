@@ -31,8 +31,10 @@ COMMAND = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9:_-]*)(\s|$)")
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 
-def rule(tool):
-    """Which of the guard's rules a verdict on this tool came from."""
+def rule(tool, reason=""):
+    """Which of the guard's rules a verdict on this tool came from, given the guard's reason for it."""
+    if reason in (guard.HEADLESS_SHELL, guard.HEADLESS_CONNECTOR):
+        return "headless"
     if tool in FILE_TOOLS:
         return "credential-file"
     if tool == "Bash":
@@ -63,7 +65,7 @@ def entry(hook, event):
             return {"event": "agent", "name": str(data.get("subagent_type") or "general-purpose")}
         verdict = guard.decide(event)
         if verdict:
-            line = {"event": "guard_" + verdict[0], "rule": rule(tool)}
+            line = {"event": "guard_" + verdict[0], "rule": rule(tool, verdict[1])}
             if tool.startswith("mcp__"):
                 line["tool"] = tool
             return line

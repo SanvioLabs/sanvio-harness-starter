@@ -194,14 +194,25 @@ class Skills(unittest.TestCase):
                 continue
             name = skill.parent.name
             headless.add(name)
-            entries = [e.strip() for e in fields.get("allowed-tools", "").split(",") if e.strip()]
-            self.assertTrue(entries, "{}: headless with no allowed-tools".format(name))
+            entries = [e.strip() for e in fields.get("headless-tools", "").split(",") if e.strip()]
+            self.assertTrue(entries, "{}: headless with no headless-tools".format(name))
             for entry in entries:
                 self.assertIn(entry, approved, name)
+        self.assertIn("review-pr", headless)
+
+    def test_no_skill_grants_a_shell_command_in_every_session(self):
+        # Claude Code applies allowed-tools in any session the skill is active in, guard or no guard.
+        # Read raw, not through frontmatter(): YAML takes `allowed-tools :` and a continued line too.
+        for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            text = skill.read_text()
+            head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+            grants = re.findall(r"^\s*allowed-tools\s*:(.*(?:\n[ \t].*)*)", head, re.M)
+            self.assertFalse(any("Bash" in g for g in grants), skill.parent.name)
 
     def test_every_approved_headless_tool_only_reads(self):
         # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.
-        read_only = re.compile(r"Read|Grep|Glob")
+        # The Bash forms are the three guard.py holds a headless run to; anything else changes both.
+        read_only = re.compile(r"Read|Grep|Glob|Bash\(gh (pr view|pr diff|issue view):\*\)")
         for line in (ROOT / "bin" / "harness-tools").read_text().splitlines():
             if line and not line.startswith("#"):
                 self.assertTrue(read_only.fullmatch(line), line)

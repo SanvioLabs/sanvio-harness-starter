@@ -64,6 +64,14 @@ class Entries(unittest.TestCase):
             os.environ.pop("HARNESS_HEADLESS", None)
             self.assertNotIn("headless", usage_log.entry("SessionStart", {"source": "startup"}))
 
+    def test_a_headless_refusal_is_logged_as_headless_not_as_a_credential(self):
+        with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+            self.assertEqual(pre("Bash", command="npm test"), {"event": "guard_deny", "rule": "headless"})
+            self.assertEqual(pre("mcp__claude_ai_Gmail__search_threads", query="x")["rule"], "headless")
+            self.assertEqual(pre("Bash", command="cat .env")["rule"], "credential-command")
+            # A path can't pass itself off as a headless refusal: the reason has to match exactly.
+            self.assertEqual(pre("Read", file_path="A headless run/.env")["rule"], "credential-file")
+
 
 class TheHook(unittest.TestCase):
     def run_hook(self, event, **env):

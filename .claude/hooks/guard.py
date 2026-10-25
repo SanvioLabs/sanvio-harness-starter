@@ -17,6 +17,11 @@ Wired in .claude/settings.json as a PreToolUse hook. Three jobs:
    code someone else may have written, and that code can carry text meant to
    steer it. A command on the audit list runs without a prompt; any other is
    refused.
+4. A run bin/harness started (HARNESS_HEADLESS=1) reads a pull request or an
+   issue by number and nothing else. Nobody is watching it, and what it reads
+   was written by someone else. Its shell runs only `gh pr view <n>`,
+   `gh pr diff <n>` and `gh issue view <n>`, with `--comments` on a view, and
+   no connector runs at all.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -29,6 +34,7 @@ import os
 import re
 import shlex
 import sys
+import traceback
 
 CREDENTIAL = re.compile(
     r"(^|[\s/'\"=<:])("  # : as well, for git show HEAD:.env
@@ -209,10 +215,44 @@ def audit_tool_allowed(tool, args):
     return False
 
 
+HEADLESS_READS = {("pr", "view"), ("pr", "diff"), ("issue", "view")}
+# The reasons a headless refusal gives. usage_log.py compares against these, so its rule is exact.
+HEADLESS_SHELL = ("A headless run's shell reads a pull request or issue by number and nothing else: "
+                  "gh pr view <n>, gh pr diff <n> or gh issue view <n>, with --comments on a view. "
+                  "Say in the report that you couldn't run anything else.")
+HEADLESS_CONNECTOR = ("A headless run uses no connector: nobody is there to say what it may read or "
+                      "send. Run it in a session instead.")
+HEADLESS_UNCHECKED = "A headless run's tool call couldn't be checked, so it's refused."
+
+
+def headless_refusal(command):
+    """Why a headless run may not run this command, or None when it's an exact read by number.
+
+    Only the issue or pull request number may follow, and --comments on a view: -R, a URL, --web,
+    --jq and --template each let the command choose a host, open a browser or read the environment.
+    """
+    listed = HEADLESS_SHELL
+    if SHELL_MAGIC.search(command):
+        return listed
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return listed
+    if len(words) < 4 or words[0] != "gh" or tuple(words[1:3]) not in HEADLESS_READS:
+        return listed
+    rest = words[4:]
+    if not re.fullmatch(r"[0-9]+", words[3]) or rest not in ([], ["--comments"]):
+        return listed
+    if rest and words[2] != "view":
+        return listed
+    return None
+
+
 def decide(event):
     """(decision, reason) for one tool call, or None to let it through untouched."""
     tool = event.get("tool_name", "")
     data = event.get("tool_input") or {}
+    headless = os.environ.get("HARNESS_HEADLESS") == "1"
 
     if tool in ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit"):
         path = data.get("file_path") or data.get("notebook_path") or ""
@@ -226,6 +266,11 @@ def decide(event):
         if CREDENTIAL.search(" " + named) or SECRET_COMMANDS.search(command):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
+        # Before the auditor's list: a headless run is held to its reads whichever agent asks.
+        if headless:
+            why = headless_refusal(command)
+            if why:
+                return ("deny", why)
         if event.get("agent_type") == AUDITOR:
             why = audit_refusal(command, event.get("cwd"))
             if why:
@@ -233,6 +278,8 @@ def decide(event):
             return ("allow", "a read-only audit on the security reviewer's list")
 
     if tool.startswith("mcp__"):
+        if headless:
+            return ("deny", HEADLESS_CONNECTOR)
         # create_draft, notion-create-pages and createIssue all read as create_...
         action = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", tool.split("__")[-1]).replace("-", "_")
         if WRITE_VERBS.search(action) or not READ_VERBS.search(action):
@@ -243,13 +290,19 @@ def decide(event):
 
 
 def main():
+    headless = os.environ.get("HARNESS_HEADLESS") == "1"
     try:
         event = json.load(sys.stdin)
-    except ValueError:
-        # Unreadable input: let the call through and say so, rather than block every tool.
-        print(json.dumps({"systemMessage": "[guard] couldn't read the tool call, so it wasn't checked"}))
-        return 0
-    verdict = decide(event)
+        verdict = decide(event)
+    except Exception:
+        if not headless:
+            # Unreadable input, or a bug here: let the call through and say so, rather than block every
+            # tool, and leave the traceback on stderr so a guard bug doesn't fail quietly.
+            traceback.print_exc()
+            print(json.dumps({"systemMessage": "[guard] couldn't check the tool call, so it wasn't checked"}))
+            return 0
+        # Nobody is watching a headless run, so a call the guard couldn't check doesn't run.
+        verdict = ("deny", HEADLESS_UNCHECKED)
     if verdict:
         decision, reason = verdict
         print(json.dumps({"hookSpecificOutput": {

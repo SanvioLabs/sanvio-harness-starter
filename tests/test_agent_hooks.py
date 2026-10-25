@@ -1,10 +1,12 @@
 """Run with: python3 -m unittest discover -s tests"""
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOKS = ROOT / ".claude" / "hooks"
@@ -176,6 +178,62 @@ class SecurityReviewerShell(unittest.TestCase):
         self.assertIsNone(call("Bash", command="npm install"))
         self.assertIsNone(guard.decide({"tool_name": "Bash", "tool_input": {"command": "npm install"},
                                         "agent_type": "reviewer"}))
+
+
+def headless(tool, **tool_input):
+    with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+        return guard.decide({"tool_name": tool, "tool_input": tool_input})
+
+
+class HeadlessRun(unittest.TestCase):
+    """A session bin/harness started: nobody watches, and what it reads was written by someone else."""
+
+    def test_an_exact_read_of_a_pull_request_or_issue_passes(self):
+        for command in ("gh pr view 12", "gh pr view 12 --comments", "gh pr diff 12", "gh issue view 7",
+                        "gh issue view 7 --comments", "gh pr view '12'"):
+            self.assertIsNone(headless("Bash", command=command), command)
+
+    def test_every_other_command_is_refused(self):
+        for command in ("gh pr view -R example.invalid/o/r 1", "gh pr view --repo=o/r 1",
+                        "gh pr view https://example.invalid/x/y/pull/1", "gh pr view 1 --web", "gh pr view 1 -w",
+                        "gh pr view 1 --jq .", "gh pr view 1 -q .", "gh pr view 1 --json body --jq .body",
+                        "gh pr view 1 --template x", "gh pr view 1; ls", "gh pr view 1 && ls", "gh pr view $(id)",
+                        "gh pr diff 1 --comments", "gh pr view", "gh pr view main", "gh pr list", "gh pr merge 1",
+                        "GH_HOST=example.invalid gh pr view 1", "git fetch", "git diff --output=x", "npm test",
+                        "ls", "cat README.md", ""):
+            verdict = headless("Bash", command=command)
+            self.assertIsNotNone(verdict, command)
+            self.assertEqual(verdict[0], "deny", command)
+            self.assertIn("headless", verdict[1], command)
+
+    def test_the_security_reviewers_audit_list_doesnt_open_a_headless_run(self):
+        with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+            verdict = guard.decide({"tool_name": "Bash", "tool_input": {"command": "osv-scanner scan source -r ."},
+                                    "agent_type": "security-reviewer"})
+        self.assertEqual(verdict, ("deny", guard.HEADLESS_SHELL))
+
+    def test_a_call_the_guard_cant_read_is_refused_headless_and_let_through_otherwise(self):
+        hook = [sys.executable, str(HOOKS / "guard.py")]
+        env = dict(os.environ, HARNESS_HEADLESS="1")
+        result = subprocess.run(hook, input="not json", capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        env.pop("HARNESS_HEADLESS")
+        result = subprocess.run(hook, input="not json", capture_output=True, text=True, env=env, timeout=30)
+        self.assertIn("wasn't checked", json.loads(result.stdout)["systemMessage"])
+
+    def test_a_connector_is_refused_even_when_named_as_a_read(self):
+        self.assertEqual(headless("mcp__claude_ai_Gmail__search_threads", query="x")[0], "deny")
+
+    def test_reading_files_still_passes_and_credentials_are_still_refused(self):
+        self.assertIsNone(headless("Read", file_path="README.md"))
+        self.assertEqual(headless("Read", file_path="/repo/.env")[0], "deny")
+
+    def test_outside_a_headless_run_nothing_changes(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("HARNESS_HEADLESS", None)
+            self.assertIsNone(call("Bash", command="npm test"))
+            self.assertIsNone(call("Bash", command="gh pr view -R example.invalid/o/r 1"))
+            self.assertIsNone(call("mcp__claude_ai_Gmail__search_threads", query="x"))
 
 
 class SessionStart(unittest.TestCase):
