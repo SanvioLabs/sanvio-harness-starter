@@ -127,6 +127,20 @@ file is in `.loop/projects/<name>/issue-N/`. A `claude` command in `loop.json`
 that sets its own `--output-format` keeps it, and its usage is read only when
 that's `json`.
 
+**A history of runs.** Each run of an issue that ends (`pr`, `blocked`,
+`stopped` or `skipped`) adds one line to `.loop/history.jsonl`, under
+`--project` `.loop/projects/<name>/history.jsonl`. The line is JSON with
+numbers and labels only: `v` (1), `run` (the issue and when the run started),
+`issue`, `project` (`null` for the harness), `started`, `ended`, `outcome`,
+`rounds`, `tests` and `verdicts` (one per round that reached its review), the
+run's `tokens` and `cost_usd` (`null` when not reported), and the `agent` and
+`reviewer` command names, never a path. No title, note, link or review text
+goes in it. Lines are only ever added, never changed, so a relabelled issue's
+second run is a second line. A worker that fails is recorded as `blocked`. A
+run cut short by a Ctrl-C, or by the loop itself being killed, leaves none.
+It stays on this machine, because `.loop/` is gitignored. If the line can't be
+written, `loop.log` gets an `ERROR` line and the run ends as it would have.
+
 **A token budget.** Set `max_issue_tokens` in `loop.json` to a whole number and
 the loop counts the tokens one run of an issue has used, over its plan, builds
 and reviews. Before each build and before each review it checks: over the

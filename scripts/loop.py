@@ -431,6 +431,16 @@ def named(value):
     return (name, model.strip()) if name in AGENT_NAMES else (None, "")
 
 
+def command_name(value):
+    """The tool a command setting runs, for a record: its name, or the last part of a command line's
+    first word, so no path is written. None when it's empty."""
+    name = named(value)[0]
+    if name:
+        return name
+    words = shlex.split(value or "")
+    return os.path.basename(words[0]) if words else None
+
+
 def command(cfg, which):
     """(argv, None) for the agent cfg[which] names, or (None, why) when it can't do that job.
 
@@ -772,6 +782,7 @@ class Loop:
         self.finished = set()
         self.session = None  # the tmux session this run is in, once locked() has asked
         self.windows = {}  # issue number -> the tmux window following its agent.log
+        self.rounds = {}  # issue number -> {"tests": [...], "verdicts": [...]}, a round each, for its history line
         self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
         self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
         self.deadline = None  # with --for, the time.time() after which nothing new starts
@@ -841,6 +852,8 @@ class Loop:
                        "tests": None, "review": None, "pr": None, "note": ""}
             else:
                 rows.remove(row)
+            # A run this process started, ending now: process() put it in self.rounds, and the line pops it.
+            ended = fields.get("state") in ("pr", "blocked", "stopped", "skipped") and number in self.rounds
             row.update(fields)
             row["updated"] = datetime.now().isoformat(timespec="seconds")
             rows.insert(0, row)
@@ -848,6 +861,32 @@ class Loop:
                 # Off the queue the moment it ends, as its label is: the next look at GitHub agrees.
                 self.status["queue"] = [q for q in self.status["queue"] if q["number"] != number]
             self.save_status()
+            if ended and row.get("started"):
+                self.record_run(row)
+
+    def record_run(self, row):
+        """Append one line to .loop/history.jsonl for the run that just ended: numbers and labels only.
+
+        The line is built from these fields alone, so the title, the note, the pull request and the
+        review never reach it. A failed write is logged by its type alone, since its message holds
+        the path, and the run's outcome stands.
+        """
+        number, started = row["number"], row["started"]
+        rounds = self.rounds.pop(number, {"tests": [], "verdicts": []})
+        with self.write_lock:
+            try:
+                tokens, cost = usage_totals([e for e in self.usage(number) if e.get("run_started") == started])
+                line = {"v": 1, "run": "{}-{}".format(number, started), "issue": number,
+                        "project": self.project.name if self.project else None,
+                        "started": started, "ended": datetime.now().isoformat(timespec="seconds"),
+                        "outcome": row["state"], "rounds": row.get("round", 0),
+                        "tests": rounds["tests"], "verdicts": rounds["verdicts"], "tokens": tokens, "cost_usd": cost,
+                        "agent": command_name(self.cfg.get("agent")),
+                        "reviewer": command_name(self.cfg.get(self.reviewer()))}
+                with open(self.dir / "history.jsonl", "a") as handle:
+                    handle.write(json.dumps(line) + "\n")
+            except (OSError, ValueError) as err:
+                self.log("ERROR", "could not write history.jsonl: {}".format(type(err).__name__), number)
 
     def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None):
         """(exit code, combined output, or stdout alone with stderr=False).
@@ -1366,6 +1405,7 @@ class Loop:
         self.log("DISCOVER", 'picked "{}"'.format(issue["title"]), number)
         # started: when this run of the issue began, for the pane's clock. A relabelled issue starts again.
         # window: the tmux window following its agent.log, None outside tmux.
+        self.rounds[number] = {"tests": [], "verdicts": []}
         self.mark(number, title=issue["title"], step="SHAPE", state="working", round=0,
                   tests=None, review=None, pr=None, note="", max_rounds=self.cfg["max_rounds"],
                   started=datetime.now().isoformat(timespec="seconds"), window=self.windows.get(number))
@@ -1462,6 +1502,8 @@ class Loop:
             passed = tcode == 0 and verdict == "PASS"
             self.log("VALIDATE", "round {} tests {} review {}".format(
                 round_no, "passed" if tcode == 0 else "failed ({})".format(tcode), verdict), number)
+            self.rounds[number]["tests"].append("passed" if tcode == 0 else "failed")
+            self.rounds[number]["verdicts"].append(verdict)
             self.mark(number, tests="passed" if tcode == 0 else "failed ({})".format(tcode), review=verdict)
             if passed:
                 return self.scale(issue, branch, round_no, problems)
