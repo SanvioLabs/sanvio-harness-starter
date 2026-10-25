@@ -120,6 +120,15 @@ class TestPureParts(unittest.TestCase):
         runner.review.assert_called_once_with(once=False, until=("90m", 90 * 60))
         runner.run.assert_called_with(once=False, only=None, dry_run=False, until=None)
 
+    def test_run_help_says_it_polls_until_stopped_and_names_for(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as exited:
+            loop.main(["run", "--help"])
+        self.assertEqual(exited.exception.code, 0)
+        text = " ".join(out.getvalue().split())
+        self.assertIn("keeps polling until stopped", text)
+        self.assertIn("--for", text)
+
     def test_hours_take_days_ranges_and_lists_and_a_window_past_midnight(self):
         self.assertEqual(loop.parse_hours("Mon-Fri 09:00-17:00"), (frozenset({0, 1, 2, 3, 4}), 540, 1020))
         self.assertEqual(loop.parse_hours("Sat,Sun 10:00-12:00"), (frozenset({5, 6}), 600, 720))
@@ -476,7 +485,14 @@ elif args[0] == "api" and args[1].startswith("repos/{owner}/{repo}/issues/"):
         sys.exit(1)
     print(json.dumps(found))
 elif args[:2] == ["issue", "list"]:
-    print(open(os.path.join(state, "issues.json")).read())
+    # As GitHub lists them: only those carrying --label, if given, and the newest --limit (30 when not given).
+    import json
+    listed = json.load(open(os.path.join(state, "issues.json")))
+    if "--label" in args:
+        label = args[args.index("--label") + 1]
+        listed = [i for i in listed if label in [l["name"] for l in i["labels"]]]
+    limit = int(args[args.index("--limit") + 1]) if "--limit" in args else 30
+    print(json.dumps(sorted(listed, key=lambda i: -i["number"])[:limit]))
 elif args[:2] == ["issue", "edit"] and "--remove-label" in args and os.path.exists(os.path.join(state, "labels-follow")):
     # Off the listed issue too, as on GitHub, so a loop that keeps polling doesn't take it again.
     # Only when a test sets labels-follow. Locked and replaced whole: two workers can edit at once
@@ -1473,6 +1489,13 @@ class TestAPass(unittest.TestCase):
         self.assertEqual(len(self.lines()), 1)
         self.assertIn("would pick", self.lines()[0])
         self.assertFalse((self.work / ".loop" / "issue-12").exists())
+
+    def test_an_old_ready_issue_is_found_among_many_newer_unlabelled_ones(self):
+        (self.state / "issues.json").write_text(json.dumps(
+            [issue(1)] + [issue(n, labels=()) for n in range(2, 61)]))
+        self.go(dry_run=True)
+        self.assertRegex(self.lines()[0], r" #1 DISCOVER would pick ")
+        self.assertTrue(any(c.startswith("issue list") and "--label loop-ready" in c for c in self.calls()))
 
     def test_inside_tmux_the_log_and_status_name_the_session(self):
         os.environ.update(TMUX="/tmp/tmux-501/default,1,0", TMUX_PANE="%3")
