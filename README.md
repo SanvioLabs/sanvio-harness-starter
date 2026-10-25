@@ -111,8 +111,10 @@ harness --json review-pr 42    # Claude Code's JSON output, for a script to read
 ```
 
 It runs only a skill whose frontmatter says `headless: true`, and passes the
-tools its `allowed-tools` line names to `--allowedTools`, so those run without
-asking. Every entry on that list has to be in [`bin/harness-tools`](bin/harness-tools), or the
+tools its `headless-tools` line names to `--allowedTools`, so those run without
+asking. That's a key of the harness's own: Claude Code's `allowed-tools` would
+grant the same tools in every session the skill runs in, where the guard below
+doesn't apply. Every entry on that list has to be in [`bin/harness-tools`](bin/harness-tools), or the
 skill doesn't start, and the wrapper sets the permission mode and the tools
 itself. Any other name stops with exit code 2 before Claude starts.
 
@@ -120,9 +122,11 @@ One skill is marked: `review-pr`. No Bash allow rule is safe on its own, since
 `gh pr view -R <host>/...` reaches any host and your own Bash allow rules apply
 to a headless run too, so [`.claude/hooks/guard.py`](.claude/hooks/guard.py) holds a run [`bin/harness`](bin/harness)
 started to `gh pr view <n>`, `gh pr diff <n>` and `gh issue view <n>`, with
-`--comments` on a view. Every other command and every connector is refused, and
-the wrapper loads no MCP servers. So a headless review reads the pull request
-and the issue it closes, and doesn't run the tests: it says so in its report.
+`--comments` on a view. Every other command and every connector is refused, a
+call the guard can't check is refused too, and the wrapper loads no MCP servers.
+A headless review doesn't run the tests, and says so in its report. It can still
+read and search files: the guard doesn't see `Grep` or `Glob` yet, so treat its
+report as you would a session's before passing it on.
 
 A headless run has nobody to ask. When the guard would ask you before a
 connector call, the call is refused. A skill that needs to ask you a question

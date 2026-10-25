@@ -215,6 +215,13 @@ def audit_tool_allowed(tool, args):
 
 
 HEADLESS_READS = {("pr", "view"), ("pr", "diff"), ("issue", "view")}
+# The reasons a headless refusal gives. usage_log.py compares against these, so its rule is exact.
+HEADLESS_SHELL = ("A headless run's shell reads a pull request or issue by number and nothing else: "
+                  "gh pr view <n>, gh pr diff <n> or gh issue view <n>, with --comments on a view. "
+                  "Say in the report that you couldn't run anything else.")
+HEADLESS_CONNECTOR = ("A headless run uses no connector: nobody is there to say what it may read or "
+                      "send. Run it in a session instead.")
+HEADLESS_UNCHECKED = "A headless run's tool call couldn't be checked, so it's refused."
 
 
 def headless_refusal(command):
@@ -223,9 +230,7 @@ def headless_refusal(command):
     Only the issue or pull request number may follow, and --comments on a view: -R, a URL, --web,
     --jq and --template each let the command choose a host, open a browser or read the environment.
     """
-    listed = ("A headless run's shell reads a pull request or issue by number and nothing else: "
-              "gh pr view <n>, gh pr diff <n> or gh issue view <n>, with --comments on a view. "
-              "Say in the report that you couldn't run anything else.")
+    listed = HEADLESS_SHELL
     if SHELL_MAGIC.search(command):
         return listed
     try:
@@ -260,20 +265,20 @@ def decide(event):
         if CREDENTIAL.search(" " + named) or SECRET_COMMANDS.search(command):
             return ("deny", "That command reads a credential or prints secrets. Agents never do "
                     "that. Check the secret exists without showing its value, or ask a human.")
+        # Before the auditor's list: a headless run is held to its reads whichever agent asks.
+        if headless:
+            why = headless_refusal(command)
+            if why:
+                return ("deny", why)
         if event.get("agent_type") == AUDITOR:
             why = audit_refusal(command, event.get("cwd"))
             if why:
                 return ("deny", why)
             return ("allow", "a read-only audit on the security reviewer's list")
-        if headless:
-            why = headless_refusal(command)
-            if why:
-                return ("deny", why)
 
     if tool.startswith("mcp__"):
         if headless:
-            return ("deny", "A headless run uses no connector: nobody is there to say what it may "
-                    "read or send. Run it in a session instead.")
+            return ("deny", HEADLESS_CONNECTOR)
         # create_draft, notion-create-pages and createIssue all read as create_...
         action = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", tool.split("__")[-1]).replace("-", "_")
         if WRITE_VERBS.search(action) or not READ_VERBS.search(action):
@@ -284,13 +289,17 @@ def decide(event):
 
 
 def main():
+    headless = os.environ.get("HARNESS_HEADLESS") == "1"
     try:
         event = json.load(sys.stdin)
-    except ValueError:
-        # Unreadable input: let the call through and say so, rather than block every tool.
-        print(json.dumps({"systemMessage": "[guard] couldn't read the tool call, so it wasn't checked"}))
-        return 0
-    verdict = decide(event)
+        verdict = decide(event)
+    except Exception:
+        if not headless:
+            # Unreadable input: let the call through and say so, rather than block every tool.
+            print(json.dumps({"systemMessage": "[guard] couldn't read the tool call, so it wasn't checked"}))
+            return 0
+        # Nobody is watching a headless run, so a call the guard couldn't check doesn't run.
+        verdict = ("deny", HEADLESS_UNCHECKED)
     if verdict:
         decision, reason = verdict
         print(json.dumps({"hookSpecificOutput": {

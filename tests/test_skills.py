@@ -194,11 +194,16 @@ class Skills(unittest.TestCase):
                 continue
             name = skill.parent.name
             headless.add(name)
-            entries = [e.strip() for e in fields.get("allowed-tools", "").split(",") if e.strip()]
-            self.assertTrue(entries, "{}: headless with no allowed-tools".format(name))
+            entries = [e.strip() for e in fields.get("headless-tools", "").split(",") if e.strip()]
+            self.assertTrue(entries, "{}: headless with no headless-tools".format(name))
             for entry in entries:
                 self.assertIn(entry, approved, name)
         self.assertIn("review-pr", headless)
+
+    def test_no_skill_grants_a_shell_command_in_every_session(self):
+        # Claude Code applies allowed-tools in any session the skill is active in, guard or no guard.
+        for skill in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            self.assertNotIn("Bash", frontmatter(skill.read_text()).get("allowed-tools", ""), skill.parent.name)
 
     def test_every_approved_headless_tool_only_reads(self):
         # An allowlist, not a denylist: a new entry has to be one of these shapes, or this test changes too.

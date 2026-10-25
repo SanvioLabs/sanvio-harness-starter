@@ -35,8 +35,8 @@ class HarnessCli(unittest.TestCase):
         shutil.copy2(SCRIPT, self.root / "bin" / "harness")
         (self.root / "bin" / "harness").chmod(0o755)  # test_the_script_is_executable checks the real file's bit
         (self.root / "bin" / "harness-tools").write_text(APPROVED)
-        skill(self.root, "x", "headless: true\nallowed-tools: {}\n".format(TOOLS))
-        skill(self.root, "plain", "allowed-tools: Read\n")
+        skill(self.root, "x", "headless: true\nheadless-tools: {}\n".format(TOOLS))
+        skill(self.root, "plain", "headless-tools: Read\n")
         fake = tmp / "fakebin"
         fake.mkdir()
         (fake / "claude").write_text(FAKE_CLAUDE)
@@ -102,30 +102,30 @@ class HarnessCli(unittest.TestCase):
         self.assert_refused()
 
     def test_a_tool_the_approved_list_lacks_is_refused(self):
-        skill(self.root, "wide", "headless: true\nallowed-tools: Read, Bash(git diff:*)\n")
+        skill(self.root, "wide", "headless: true\nheadless-tools: Read, Bash(git diff:*)\n")
         self.assert_refused("wide")
 
     def test_a_second_allowed_tools_line_is_refused(self):
-        skill(self.root, "twice", "headless: true\nallowed-tools: Read\nallowed-tools: Read, Bash(rm:*)\n")
+        skill(self.root, "twice", "headless: true\nheadless-tools: Read\nheadless-tools: Read, Bash(rm:*)\n")
         self.assert_refused("twice")
 
     def test_a_key_spelled_with_a_space_still_counts_as_a_second_line(self):
-        skill(self.root, "spaced", "headless: true\nallowed-tools: Read\nallowed-tools : Read, Bash(rm:*)\n")
+        skill(self.root, "spaced", "headless: true\nheadless-tools: Read\nheadless-tools : Read, Bash(rm:*)\n")
         self.assert_refused("spaced")
 
     def test_an_indented_frontmatter_line_is_refused(self):
-        skill(self.root, "indented", "headless: true\nallowed-tools: Read,\n  Bash(rm:*)\n")
+        skill(self.root, "indented", "headless: true\nheadless-tools: Read,\n  Bash(rm:*)\n")
         self.assert_refused("indented")
 
     def test_an_entry_that_matches_a_file_name_is_still_checked_as_written(self):
         (self.root / "Bash(gh pr view:x)").write_text("")
-        skill(self.root, "glob", "headless: true\nallowed-tools: Read, Bash(gh pr view:*)\n")
+        skill(self.root, "glob", "headless: true\nheadless-tools: Read, Bash(gh pr view:*)\n")
         result = self.run_harness("glob")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.recorded()[-1], "Read,Bash(gh pr view:*)")
 
     def test_a_folded_allowed_tools_value_is_refused(self):
-        skill(self.root, "folded", "headless: true\nallowed-tools: >-\n  Read\n")
+        skill(self.root, "folded", "headless: true\nheadless-tools: >-\n  Read\n")
         self.assert_refused("folded")
 
 

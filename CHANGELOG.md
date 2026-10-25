@@ -32,10 +32,13 @@ fine).
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) now holds a run [`bin/harness`](bin/harness) started to reading a pull
 request or issue by number: `gh pr view <n>`, `gh pr diff <n>` and
 `gh issue view <n>`, with `--comments` on a view. Every other command and every
-connector is refused, and ordinary sessions are unchanged. With that in place
+connector is refused, and so is a call the guard can't check. With that in place
 `review-pr` is marked headless, so `harness review-pr 42` works from any
-folder. [`bin/harness`](bin/harness) also loads no MCP servers. The usage log counts these
-refusals under a `headless` rule, not as credential reads.
+folder. A skill now names its headless tools under `headless-tools`, which only
+[`bin/harness`](bin/harness) reads: Claude Code's `allowed-tools` would grant them in ordinary
+sessions too, where nothing narrows them. The guard is unchanged outside a
+headless run. [`bin/harness`](bin/harness) also loads no MCP servers, and the usage log counts
+these refusals under a `headless` rule, not as credential reads.
 
 Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`.claude/hooks/usage_log.py`](.claude/hooks/usage_log.py), [`tests/test_usage.py`](tests/test_usage.py), [`bin/harness`](bin/harness), [`bin/harness-tools`](bin/harness-tools),
 [`skills/review-pr/SKILL.md`](skills/review-pr/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_harness_cli.py`](tests/test_harness_cli.py), [`README.md`](README.md)

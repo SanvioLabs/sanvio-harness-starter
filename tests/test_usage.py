@@ -69,6 +69,8 @@ class Entries(unittest.TestCase):
             self.assertEqual(pre("Bash", command="npm test"), {"event": "guard_deny", "rule": "headless"})
             self.assertEqual(pre("mcp__claude_ai_Gmail__search_threads", query="x")["rule"], "headless")
             self.assertEqual(pre("Bash", command="cat .env")["rule"], "credential-command")
+            # A path can't pass itself off as a headless refusal: the reason has to match exactly.
+            self.assertEqual(pre("Read", file_path="A headless run/.env")["rule"], "credential-file")
 
 
 class TheHook(unittest.TestCase):

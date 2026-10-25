@@ -206,6 +206,21 @@ class HeadlessRun(unittest.TestCase):
             self.assertEqual(verdict[0], "deny", command)
             self.assertIn("headless", verdict[1], command)
 
+    def test_the_security_reviewers_audit_list_doesnt_open_a_headless_run(self):
+        with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+            verdict = guard.decide({"tool_name": "Bash", "tool_input": {"command": "osv-scanner scan source -r ."},
+                                    "agent_type": "security-reviewer"})
+        self.assertEqual(verdict, ("deny", guard.HEADLESS_SHELL))
+
+    def test_a_call_the_guard_cant_read_is_refused_headless_and_let_through_otherwise(self):
+        hook = [sys.executable, str(HOOKS / "guard.py")]
+        env = dict(os.environ, HARNESS_HEADLESS="1")
+        result = subprocess.run(hook, input="not json", capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        env.pop("HARNESS_HEADLESS")
+        result = subprocess.run(hook, input="not json", capture_output=True, text=True, env=env, timeout=30)
+        self.assertIn("wasn't checked", json.loads(result.stdout)["systemMessage"])
+
     def test_a_connector_is_refused_even_when_named_as_a_read(self):
         self.assertEqual(headless("mcp__claude_ai_Gmail__search_threads", query="x")[0], "deny")
 
