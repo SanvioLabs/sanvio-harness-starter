@@ -318,4 +318,35 @@ group('on Claude Desktop', () => {
     expect(JSON.stringify(header?.children)).not.toMatch(/"\s{3,}"/)
     await ui.unmount()
   })
+  for (const surface of ['desktop', 'vscode'] as const) {
+    test(`on ${surface} long titles and lines show whole, not cut`, async ($, on) => {
+      const title = 'A title that is much longer than the sixty columns the pane body has to draw it in'
+      const queued = 'A queued title that is also much longer than the sixty columns the body has'
+      const note = 'a long note that runs on well past two rows of the sixty columns the pane body has to show it in'
+      seed(on, {
+        ...working,
+        status: {
+          ...working.status!,
+          queue: [{ number: 31, title: queued, waiting_on: [12] }],
+          issues: [{ ...working.status!.issues[0], title, note }],
+        },
+      })
+      const ui = await $.ui.mount({ ...DESKTOP, surface })
+      const drawn = JSON.stringify(await ui.drawn())
+      expect(drawn).toContain(`#12 ${title}`)
+      expect(drawn).toContain(note)
+      expect(drawn).not.toContain('…')
+      expect((await ui.find({ key: 'issue-12' }))?.props.height).toBeUndefined()
+      const detail = await ui.find({ key: 'detail-12' })
+      expect(detail?.props.height).toBeUndefined()
+      expect(detail?.props.overflow).toBeUndefined()
+      await ui.press({ key: 'tab-queue' })
+      await drain()
+      const queue = JSON.stringify(await ui.drawn())
+      expect(queue).toContain(`#31 ${queued}`)
+      expect(queue).toContain('waiting on #12')
+      expect(queue).not.toContain('…')
+      await ui.unmount()
+    })
+  }
 })

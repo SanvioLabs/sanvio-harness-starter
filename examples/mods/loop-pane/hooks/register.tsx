@@ -176,6 +176,9 @@ export const register: Register = on => {
     // A job's lines sit under its title, past the dot.
     const inner = width - 2
     const now = Date.now()
+    // Claude Desktop and VS Code wrap text, so there a long line shows whole instead of being cut.
+    const wraps = e.surface === 'desktop' || e.surface === 'vscode'
+    const fit = (s: string, n: number) => (wraps ? s : clip(s, n))
 
     if (!seen) return <Text dimColor>Looking for the loop…</Text>
 
@@ -196,29 +199,30 @@ export const register: Register = on => {
     const { above, below } = jobs ?? queue
     const isEmpty = (jobs ?? queue).shown.length === 0
 
-    // Every job takes the same rows, and the list always takes three jobs' worth, so nothing below it
-    // moves as jobs scroll by or gain a result.
+    // On the terminal every job takes the same rows, and the list always takes three jobs' worth, so
+    // nothing below it moves as jobs scroll by or gain a result. Desktop and VS Code wrap instead, so
+    // a job takes the rows its text needs.
     const job = (row: Row) => {
       const { head: state, detail } = describe(row, seen.isLocked)
       const mark = dot(row, seen.isLocked)
       const time = clock(row, seen.isLocked, now)
-      const stateText = clip(state.text, inner)
+      const stateText = fit(state.text, inner)
       const jobCommand = jobAttach(seen, row)
       // Every job has a dot, in the same column, so a title never moves as its job starts or ends.
       return (
-        <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={JOB_ROWS}>
+        <Box key={`issue-${row.number}`} flexDirection="column" marginTop={1} height={wraps ? undefined : JOB_ROWS}>
           <Box flexDirection="row" columnGap={1}>
             <Text {...(mark.isPulsing ? PULSE[beat ? 'bright' : 'dim'] : COLORS[mark.tone])}>●</Text>
-            <Text bold>{clip(`#${row.number} ${row.title}`, inner)}</Text>
+            <Text bold>{fit(`#${row.number} ${row.title}`, inner)}</Text>
           </Box>
           <Box flexDirection="column" marginLeft={2}>
             {/* Blank for a job from a loop.py that writes no start, so every job takes the same rows. */}
             <Box key={`clock-${row.number}`}>
-              <Text dimColor>{time ? clip(time, inner) : ' '}</Text>
+              <Text dimColor>{time ? fit(time, inner) : ' '}</Text>
             </Box>
             <Text {...COLORS[state.tone]}>{stateText}</Text>
-            <Box height={2} overflow="hidden">
-              <Text dimColor>{detail ? clip(detail, inner * 2) : ' '}</Text>
+            <Box key={`detail-${row.number}`} height={wraps ? undefined : 2} overflow={wraps ? undefined : 'hidden'}>
+              <Text dimColor>{detail ? fit(detail, inner * 2) : ' '}</Text>
             </Box>
             {jobCommand || row.pr ? (
               <Box flexDirection="row" columnGap={1}>
@@ -234,7 +238,7 @@ export const register: Register = on => {
                 {row.pr ? (
                   <Button
                     key={`pr-${row.number}`}
-                    label={clip('Copy pull request link', inner)}
+                    label={fit('Copy pull request link', inner)}
                     onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
                   />
                 ) : null}
@@ -307,11 +311,12 @@ export const register: Register = on => {
               // The title gives way to what it waits on, down to a short stub.
               const note = waitingOn(q)
               const tag = note ? ` · ${note}` : ''
-              const title = clip(`#${q.number} ${q.title}`, Math.max(width - tag.length, Math.min(width, 16)))
+              const full = `#${q.number} ${q.title}`
+              const title = wraps ? full : clip(full, Math.max(width - tag.length, Math.min(width, 16)))
               return (
                 <Box key={`queue-${q.number}`} flexDirection="row">
                   <Text>{title}</Text>
-                  {tag ? <Text dimColor>{clip(tag, width - title.length)}</Text> : null}
+                  {tag ? <Text dimColor>{fit(tag, width - title.length)}</Text> : null}
                 </Box>
               )
             })}
