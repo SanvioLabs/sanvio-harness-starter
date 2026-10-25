@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-25: Local export
+
+[`scripts/export.py`](scripts/export.py) bundles your loop runs and usage counts for a period into one JSON
+file on your machine: the harness loop's lines from `.loop/history.jsonl`, keys it writes only and
+no project's runs, and the counts your harness report uses. Nothing sends it, and its shape is
+the only one a later sender may send.
+
+Files: [`scripts/export.py`](scripts/export.py), [`tests/test_export.py`](tests/test_export.py), [`reports/usage/README.md`](reports/usage/README.md).
+
+**Do:** nothing. Run `python3 scripts/export.py` to see your own.
+
 ## 2026-10-25: Run a skill headless with bin/harness
 
 [`bin/harness`](bin/harness) runs a skill from any folder without opening a session:

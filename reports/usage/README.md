@@ -14,6 +14,25 @@ reviews the ones that changed before the next sprint.
 Counts and proposals only. The raw logs stay in `.harness/usage/` on each
 person's machine, and that folder is gitignored.
 
+## The export
+
+```
+python3 scripts/export.py --since 2026-10-01 --out reports/usage/export.json
+```
+
+That path is gitignored, like the reports.
+
+[`scripts/export.py`](../../scripts/export.py) bundles your numbers into one JSON file. Without `--since`
+it counts the last 14 days, and without `--out` it prints the bundle. It holds
+your user name as your usage log's filename has it, the harness loop's runs
+from `.loop/history.jsonl` (outcome, rounds, test results, verdicts, tokens,
+cost, agent and reviewer, and never a project's runs), and the counts from your
+usage log: sessions, skills, agents, slash commands, guard refusals, guard asks
+and the asks you said yes to.
+
+Nothing sends it. It stays where you write it. Its shape is the only shape any
+later sender may send: anything not in it stays on your machine.
+
 ## Telling your team
 
 The log is on by default, so tell people before their first session. This is
