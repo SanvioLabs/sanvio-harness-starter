@@ -44,6 +44,33 @@ description: Write the weekly status update. Use when asked for this week's stat
 """
 
 
+class LearnSkillTest(unittest.TestCase):
+    def setUp(self):
+        self.text = (ROOT / "skills" / "learn" / "SKILL.md").read_text()
+        self.flat = " ".join(self.text.split())
+
+    def test_the_rule_comes_from_the_person_in_the_session(self):
+        self.assertIn("come from the person in this session", self.flat)
+
+    def test_a_conflicting_rule_writes_nothing(self):
+        self.assertIn("write nothing", self.flat)
+
+    def test_a_rule_can_go_to_one_project_or_one_person(self):
+        self.assertIn("in the last two rows below, whatever it's about", self.flat)
+        self.assertIn("That project's own `AGENTS.md` in `projects/<name>/`", self.flat)
+        self.assertIn("Their own memory or local settings, not a tracked file", self.flat)
+
+    def test_a_shared_rule_goes_in_as_a_pull_request_with_a_changelog_entry(self):
+        self.assertIn("as a pull request, never a local-only edit", self.flat)
+        self.assertIn("includes a [`CHANGELOG.md`](../../CHANGELOG.md) entry", self.flat)
+        self.assertIn("a branch of its own", self.flat)
+
+    def test_the_description_does_not_promise_to_remember_or_write_down(self):
+        description = frontmatter(self.text).get("description", "")
+        for phrase in ("remember this", "write that down"):
+            self.assertNotIn(phrase, description)
+
+
 class Skills(unittest.TestCase):
     def problems(self, text, agents_text="| `skills/weekly-status/SKILL.md` | Asked for a status |"):
         with tempfile.TemporaryDirectory() as tmp:

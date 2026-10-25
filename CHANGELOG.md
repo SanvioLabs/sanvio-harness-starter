@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-24: Learn writes rules only from the person, through a PR
+
+The `learn` skill now takes the mistake and the correct behaviour only from the
+person in the session, and quotes a `.loop/lessons.md` entry to them instead of
+working from it. It asks who a rule applies to (everyone, one project, or only
+them), writes nothing when an existing rule conflicts and asks which governs,
+and puts a shared rule in as a pull request with a `CHANGELOG.md` entry. "Remember
+this" and "write that down" no longer trigger it.
+
+Files: [`skills/learn/SKILL.md`](skills/learn/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py)
+
+**Do:** nothing.
+
+
 ## 2026-10-24: Loop-control shows the issue and describes stop
 
 The `loop-control` skill now shows the person the issue's body and comments
