@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { STARTER, alwaysSteering, bandSegments, countSessions, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, reviewSegment, scopeFiles, scopeText, skillFromPath, startRun, steeringName } from './logic'
+import { STARTER, alwaysSteering, bandSegments, countSessions, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, reviewSegment, scopeFiles, scopeText, settleRuns, skillFromPath, startRun, steeringName } from './logic'
 
 const ROOT = '/h/my-harness'
 
@@ -161,6 +161,42 @@ describe('reviewers while they run', () => {
     expect(startRun(lens, 'x', 'Explore', AGENTS, NOW).runs).toEqual([])
     const one = started('reviewer')
     expect(endRun(one, 'other', true, NOW)).toBe(one)
+  })
+  test('a run the lens missed ending is settled from the agent list: completed ✓, failed or killed ✗', () => {
+    expect(reviewSegment(settleRuns(started('reviewer'), [{ id: 'a0', status: 'completed' }], NOW), NOW)).toEqual({ label: 'review', text: '✓ reviewer', tone: 'pass' })
+    for (const status of ['failed', 'killed']) {
+      expect(reviewSegment(settleRuns(started('reviewer'), [{ id: 'a0', status }], NOW), NOW)).toEqual({ label: 'review', text: '✗ reviewer', tone: 'fail' })
+    }
+  })
+  test('a run gone from the agent list ends with its outcome unknown', () => {
+    const gone = settleRuns(started('reviewer'), [], NOW)
+    expect(gone.runs[0]).toEqual({ id: 'a0', name: 'reviewer', started: NOW - 80_000, ended: NOW, turn: 3 })
+    expect(reviewSegment(gone, NOW)).toEqual({ label: 'review', text: '? reviewer', tone: 'quiet' })
+  })
+  test('a run the agent list says is still working stays open, and nothing is written', () => {
+    for (const status of ['pending', 'running', 'waiting', 'idle']) {
+      const one = started('reviewer')
+      const after = settleRuns(one, [{ id: 'a0', status }], NOW)
+      expect(after).toBe(one)
+      expect(reviewSegment(after, NOW).text).toBe('▶ reviewer 1:20')
+    }
+  })
+  test('a run already ended keeps how it ended, whatever the agent list says', () => {
+    const ended = endRun(started('reviewer'), 'a0', false, NOW - 5_000)
+    const after = settleRuns(ended, [{ id: 'a0', status: 'completed' }], NOW)
+    expect(after).toBe(ended)
+    expect([after.runs[0]?.ended, after.runs[0]?.ok]).toEqual([NOW - 5_000, false])
+  })
+  test('one call settles only the runs whose row says they ended', () => {
+    const four = started('reviewer', 'security-reviewer', 'cto', 'gc')
+    const after = settleRuns(four, [{ id: 'a0', status: 'completed' }, { id: 'a1', status: 'running' }, { id: 'a3', status: 'killed' }], NOW)
+    expect(after.runs.map(run => [run.name, run.ended, run.ok])).toEqual([
+      ['reviewer', NOW, true],
+      ['security-reviewer', undefined, undefined],
+      ['cto', NOW, undefined],
+      ['gc', NOW, false],
+    ])
+    expect(reviewSegment(after, NOW).text).toBe('▶ security-reviewer 1:20')
   })
   test('/lens lists what is running now, and says nothing when none is', () => {
     expect(lensReport(started('reviewer', 'cto'), false, NOW)).toContain('  Running now:\n    reviewer 1:20\n    cto 1:20')

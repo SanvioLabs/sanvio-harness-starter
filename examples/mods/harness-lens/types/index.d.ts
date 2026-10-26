@@ -8,7 +8,8 @@ export type GateHit = Hit & { ok: boolean }
 export type Scope = { kind: string; name: string }
 
 // One of the harness's agents the main session sent to work, by the subagent id its spawn answered.
-// `started` and `ended` are milliseconds; `ok` is false when it ended in an error, a refusal or a stop.
+// `started` and `ended` are milliseconds; `ok` is false when it ended in an error, a refusal or a stop,
+// and unset when it ended without the lens seeing how, as during a reload.
 // `turn` is the main session's turn it ended in, so its ✓ or ✗ stands out only that turn.
 export type Run = { id: string; name: string; started: number; ended?: number; ok?: boolean; turn?: number }
 
