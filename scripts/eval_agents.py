@@ -13,7 +13,9 @@ case.json that says what a good review of it looks like:
     brief           optional: the job's brief, a path from the harness root
     must_find       texts from the work file that at least one finding must quote. An entry can be a
                     list of alternatives, and any one of them in a finding is enough
-    must_mention    optional: texts the reply must hold anywhere, findings or not
+    must_cover      optional: lines of the work file, each a number or "first-last", that at least one
+                    finding's **Where:** line must name, as :N or :N-M overlapping it
+    must_mention   optional: texts the reply must hold anywhere, findings or not
     must_not_flag   texts no finding may quote
     max_findings    most findings the reply may hold
     verdict         optional: the **Verdict:** the reply must end on
@@ -52,6 +54,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TIMEOUT = 900  # seconds one agent session may take
 WHERE = re.compile(r"^\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*Where:\*\*", re.M)
 CLOSING = re.compile(r"^(?:#+ |\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*(?:Recommendations|Not checked|Summary):\*\*)", re.M)
+LINES = re.compile(r":(\d+)(?:-(\d+))?")
 VERDICT = re.compile(r"\*\*Verdict:\*\*\s*([A-Za-z][A-Za-z-]*)")
 TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 
@@ -62,6 +65,7 @@ def load_cases(folder):
     for spec in sorted(Path(folder).glob("*/case.json")):
         case = json.loads(spec.read_text())
         case.setdefault("must_find", [])
+        case.setdefault("must_cover", [])
         case.setdefault("must_mention", [])
         case.setdefault("must_not_flag", [])
         case.setdefault("max_findings", 10)
@@ -105,6 +109,22 @@ def findings(reply):
     return found
 
 
+def covered(finding):
+    """The (first, last) line ranges a finding's **Where:** line names: each :N or :N-M on it, so
+    `work.ts:33-40` and `/full/path/work.ts:31, then :39` both count. Nothing else in the finding does."""
+    where = WHERE.search(finding)
+    if not where:
+        return []
+    line = finding[where.end():].split("\n", 1)[0]
+    return [(int(first), int(last or first)) for first, last in LINES.findall(line)]
+
+
+def span(entry):
+    """A must_cover entry, 37 or "30-37", as (first, last)."""
+    first, _, last = str(entry).partition("-")
+    return int(first), int(last or first)
+
+
 def grade(case, reply, changed=()):
     """(passed, reasons) for one reply to case. changed is what the agent altered in the checkout."""
     found = findings(reply)
@@ -114,6 +134,11 @@ def grade(case, reply, changed=()):
         options = anchor if isinstance(anchor, list) else [anchor]
         if not any(option.lower() in text for option in options):
             reasons.append("missed: " + " | ".join(options))
+    ranges = [r for finding in found for r in covered(finding)]
+    for entry in case["must_cover"]:
+        first, last = span(entry)
+        if not any(start <= last and first <= end for start, end in ranges):
+            reasons.append("not covered: line {}".format(entry))
     for anchor in case["must_mention"]:
         if anchor.lower() not in reply.lower():
             reasons.append("not mentioned: " + anchor)

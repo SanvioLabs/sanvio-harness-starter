@@ -45,6 +45,20 @@ Files: [`examples/proposal/evals/08-clean-bakery/work.md`](examples/proposal/eva
 **Do:** to compare reviewer runs, save a new baseline with
 `python3 scripts/eval_agents.py examples/proposal/evals --save <file>`.
 
+## 2026-10-26: Security eval cases graded on the flawed line
+
+[`scripts/eval_agents.py`](scripts/eval_agents.py) takes a new `must_cover` field in a case: lines of the work file, each a
+number or `"first-last"`, that some finding's `**Where:**` line must name as `:N` or `:N-M`. Only the
+`**Where:**` line counts, and a miss prints as `not covered: line 37`. The security cases `01` to `07`
+now use it in place of `must_find`, each naming the line that does the harm, so a finding that cites
+the right line without quoting it passes. Results saved with `--save` before this change can't be
+compared with `--baseline` for `01` to `07`.
+
+Files: [`scripts/eval_agents.py`](scripts/eval_agents.py), [`examples/typescript/evals/`](examples/typescript/evals/) (`01` to `07`'s `case.json`),
+[`examples/proposal/evals/README.md`](examples/proposal/evals/README.md), [`tests/test_eval_agents.py`](tests/test_eval_agents.py)
+
+**Do:** re-run `python3 scripts/eval_agents.py examples/typescript/evals --save FILE` for a new baseline.
+
 ## 2026-10-26: Headless searches skip bare repos at any depth
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) now passes each headless `Grep` on with `!*.git`, in any case, added to its glob,
