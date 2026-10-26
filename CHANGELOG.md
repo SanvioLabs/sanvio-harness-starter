@@ -33,8 +33,9 @@ The reviewer's cases [`08-clean-bakery`](examples/proposal/evals/08-clean-bakery
 things a client's finance lead would ask about: days and limits, changes and refunds, when
 invoices are due, when the page launches and what pushes it back, and fees after launch. So a
 reviewer that flagged them was right, and the cases failed it. Both proposals now say these things,
-and the reviewer finds nothing in four runs. [`10-placeholder-the-gate-catches`](examples/proposal/evals/10-placeholder-the-gate-catches/) is the new 08 plus one
-`TBD`, and it still fails. The reviewer leaves the `TBD` out as it should, then reports 8 to 10 points
+and the reviewer passes both cases with no findings,
+two runs each on the final text. [`10-placeholder-the-gate-catches`](examples/proposal/evals/10-placeholder-the-gate-catches/) is the new 08 plus one
+`TBD`, and it still fails. The reviewer leaves the `TBD` out as it should, then reports 7 to 10 points
 on text it otherwise passes, so that's a fix for the reviewer, not the case. A reviewer result saved
 before this change can't be compared with one saved after it.
 
