@@ -23,7 +23,8 @@ GOOD = '**Where:** Scope, "unlimited revisions"\n**Why it matters:** a promise.\
 NOTHING = "Nothing that matters."
 # A fake security reviewer: finds the work.ts path in its prompt and, only if that file exists, replies
 # in the security reviewer's shape with what the case.json beside it asks for: the first alternative of
-# each must_find entry in a finding, and each must_mention text under Recommendations.
+# each must_find entry in a finding, a finding on the first line of each must_cover entry, and each
+# must_mention text under Recommendations.
 SECURITY = r'''
 import json, re
 match = re.search(r"Review the work in (.+?\.ts)\. Read it", prompt)
@@ -31,10 +32,13 @@ work = match.group(1) if match else ""
 if os.path.isfile(work):
     want = json.load(open(os.path.join(os.path.dirname(work), "case.json")))
     reply = "**Reviewer:** security-reviewer\n**Verdict:** " + want.get("verdict", "READY") + "\n"
-    for anchor in want["must_find"]:
+    for anchor in want.get("must_find", []):
         anchor = anchor[0] if isinstance(anchor, list) else anchor
         reply += ("- **Title:** a flaw\n  - **Severity:** High\n  - **Where:** " + work + ":1\n"
                   "  - **Attack:** reach " + anchor + "\n  - **Fix:** stop it\n")
+    for entry in want.get("must_cover", []):
+        reply += ("- **Title:** a flaw\n  - **Severity:** High\n  - **Where:** " + work + ":"
+                  + str(entry).split("-")[0] + "\n  - **Attack:** reach it\n  - **Fix:** stop it\n")
     for text in want.get("must_mention", []):
         reply += "- **Recommendations:** the file says " + json.dumps(text) + "\n"
 '''
@@ -55,8 +59,8 @@ REPORT = """**Reviewer:** security-reviewer
 
 
 def case(**fields):
-    base = {"name": "x", "agent": "reviewer", "must_find": [], "must_mention": [], "must_not_flag": [],
-            "max_findings": 10}
+    base = {"name": "x", "agent": "reviewer", "must_find": [], "must_cover": [], "must_mention": [],
+            "must_not_flag": [], "max_findings": 10}
     base.update(fields)
     return base
 
@@ -124,6 +128,18 @@ class SecurityCases(unittest.TestCase):
             found = [a for entry in c["must_find"] for a in (entry if isinstance(entry, list) else [entry])]
             for anchor in found + c["must_mention"] + c["must_not_flag"]:
                 self.assertEqual(text.count(anchor), 1, "{}: {}".format(c["name"], anchor))
+
+    def test_each_flawed_case_covers_the_line_its_old_anchor_is_on(self):
+        anchors = {"01": "${title}", "02": "path.join(UPLOADS", "03": "delete from projects", "04": "ilike",
+                   "05": "fetch(target", "06": "new Function", "07": "new URL(redirect_uri)"}
+        for c in eval_agents.load_cases(TS_EVALS):
+            if c["name"][:2] not in anchors:
+                continue
+            self.assertEqual(c["must_find"], [], c["name"])
+            self.assertEqual(len(c["must_cover"]), 1, c["name"])
+            lines = c["work"].read_text().splitlines()
+            first, last = eval_agents.span(c["must_cover"][0])
+            self.assertIn(anchors[c["name"][:2]], "\n".join(lines[first - 1:last]), c["name"])
 
     def test_the_note_is_a_mention_not_a_finding(self):
         note = next(c for c in eval_agents.load_cases(TS_EVALS) if c["name"].startswith("08"))
@@ -213,6 +229,30 @@ class Grading(unittest.TestCase):
         passed, reasons = eval_agents.grade(case(must_find=[["execSync", "spawn"]]), REPORT)
         self.assertFalse(passed)
         self.assertEqual(reasons, ["missed: execSync | spawn"])
+
+    def test_a_range_on_the_where_line_covers_a_line_inside_it(self):
+        reply = "**Where:** `work.ts:33-40`\n**Attack:** x\n"
+        self.assertEqual(eval_agents.grade(case(must_cover=[37]), reply), (True, []))
+
+    def test_a_full_path_and_a_follow_on_line_both_count(self):
+        reply = "**Where:** `/home/x/evals/01/work.ts:31`, then `:39`\n**Attack:** x\n"
+        self.assertEqual(eval_agents.grade(case(must_cover=[39]), reply), (True, []))
+        self.assertEqual(eval_agents.grade(case(must_cover=[31]), reply), (True, []))
+
+    def test_a_short_range_covers_a_string_line_and_an_overlapping_range(self):
+        reply = "**Where:** `work.ts:36-37`\n**Attack:** x\n"
+        self.assertEqual(eval_agents.grade(case(must_cover=["37"]), reply), (True, []))
+        self.assertEqual(eval_agents.grade(case(must_cover=["30-37"]), reply), (True, []))
+
+    def test_another_line_does_not_cover(self):
+        passed, reasons = eval_agents.grade(case(must_cover=[37]), "**Where:** `work.ts:12`\n**Attack:** x\n")
+        self.assertFalse(passed)
+        self.assertEqual(reasons, ["not covered: line 37"])
+
+    def test_a_line_only_under_recommendations_does_not_cover(self):
+        reply = REPORT.replace("the report-render binary", "`work.ts:37`: the report-render binary")
+        self.assertEqual(eval_agents.grade(case(must_cover=[39]), reply), (True, []))
+        self.assertEqual(eval_agents.grade(case(must_cover=[37]), reply)[1], ["not covered: line 37"])
 
     def test_a_mention_passes_anywhere_and_fails_when_absent(self):
         self.assertEqual(eval_agents.grade(case(must_mention=["REPORT-RENDER binary"]), REPORT), (True, []))
