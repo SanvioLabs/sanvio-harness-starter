@@ -588,16 +588,55 @@ def result_line(line):
     return text, (usage if any(value is not None for value in usage.values()) else None)
 
 
-def reports_usage(cmd):
-    """Whether stream() can read this command's usage: claude, asking for no format of its own or for json."""
-    if not cmd or Path(cmd[0]).name != "claude":
-        return False
+def progress_line(line):
+    """The text agent.log shows for one line of claude's stream-json, else None.
+
+    A tool call shows as its name and what it acts on, and a text block as it was said. Nothing else
+    is shown: not a tool's other input, not what it returned, not the session's own events.
+    """
+    if not line.lstrip().startswith("{"):
+        return None
+    try:
+        found = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(found, dict) or found.get("type") != "assistant":
+        return None
+    message = found.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    shown = []
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            shown.append(block["text"])
+        elif block.get("type") == "tool_use":
+            given = block.get("input") if isinstance(block.get("input"), dict) else {}
+            target = next((given[key] for key in ("file_path", "path", "pattern", "url")
+                           if isinstance(given.get(key), str)), None)
+            if target is None and isinstance(given.get("command"), str):
+                target = " ".join(given["command"].splitlines())
+            name = block.get("name") if isinstance(block.get("name"), str) else "tool"
+            # One line, cut to 80 characters: a long command would otherwise fill the window.
+            shown.append(" ".join(["→", name] + ([target] if target else []))[:80])
+    return "\n".join(shown) if shown else None
+
+
+def output_format(cmd):
+    """The --output-format a command names, or None when it names none."""
     for at, word in enumerate(cmd):
         if word == "--output-format":
-            return cmd[at + 1:at + 2] == ["json"]
+            return cmd[at + 1] if at + 1 < len(cmd) else ""
         if word.startswith("--output-format="):
-            return word.split("=", 1)[1] == "json"
-    return True
+            return word.split("=", 1)[1]
+    return None
+
+
+def reports_usage(cmd):
+    """Whether stream() can read this command's usage: claude, asking for no format of its own, json or stream-json."""
+    if not cmd or Path(cmd[0]).name != "claude":
+        return False
+    return output_format(cmd) in (None, "json", "stream-json")
 
 
 def usage_totals(entries):
@@ -1064,15 +1103,18 @@ class Loop:
     def stream(self, cmd, cwd, prompt, path, which, stderr=True, number=None, step="", round_no=0):
         """sh() for an agent, with each line it says appended to path as it arrives, for its window to show.
 
-        A claude command is asked for --output-format json, which prints its reply once, at the end,
-        as it does in text. That line is replaced by the reply's text, so the log, the return value
-        and everything built from it read as plain text, and its usage is recorded for number.
+        A claude command is asked for --output-format stream-json --verbose, which prints each event as
+        it happens and its reply once, at the end, in a result event. Each tool call and each text block
+        goes to the log as plain text (progress_line), and nothing else that streams does. The result
+        is replaced by the reply's text, which goes to the log too and is all the return value holds,
+        so everything built from it reads as plain text, and its usage is recorded for number.
         """
         timeout = self.cfg["agent_timeout"]
-        # Unless the command already chose a format: that's kept, and usage is read only if it's json.
-        if Path(cmd[0]).name == "claude" and not any(w == "--output-format" or w.startswith("--output-format=")
-                                                     for w in cmd):
-            cmd = cmd + ["--output-format", "json"]
+        # Unless the command already chose a format: that's kept as written, and usage is read only if
+        # it's json or stream-json.
+        if Path(cmd[0]).name == "claude" and output_format(cmd) is None:
+            cmd = cmd + ["--output-format", "stream-json", "--verbose"]
+        streaming = Path(cmd[0]).name == "claude" and output_format(cmd) == "stream-json"
         try:
             # A session of its own: a timeout kills whatever it started too, which would otherwise hold
             # its output open, and a Ctrl-C meant for the loop's terminal doesn't reach it.
@@ -1122,6 +1164,14 @@ class Loop:
                         if found:
                             line, usage = found
                             line = line if line.endswith("\n") else line + "\n"
+                        elif streaming:
+                            # Progress goes to the log only, and a line it doesn't show is dropped.
+                            line = progress_line(line)
+                            if line is None:
+                                continue
+                            handle.write(line if line.endswith("\n") else line + "\n")
+                            handle.flush()
+                            continue
                         said.append(line)
                         handle.write(line)
                         handle.flush()

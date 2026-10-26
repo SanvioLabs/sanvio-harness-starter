@@ -160,7 +160,9 @@ on disk under it, it logs one `STALE` line on an idle poll and carries on, and
 **More than one at once.** Set `max_workers` in `loop.json` and it works up to
 that many ready issues side by side, each in its own worktree. One that depends
 on an issue still being worked waits for it. Each issue's agents write what
-they say to `.loop/issue-N/agent.log` as they say it. Run inside tmux, each
+they say to `.loop/issue-N/agent.log` as they say it. A `claude` agent's
+window also shows each tool call it makes by its name and target, such as
+`→ Read scripts/loop.py`. Run inside tmux, each
 issue also gets a window named `issue-N` that follows that file and closes
 when the issue ends, and while it's open the issue's row in `status.json`
 names it as `window`. On a Mac the run also writes `.loop/issue-N/watch.command`
