@@ -17,7 +17,10 @@ anything yourself.
 - Words that mean nothing to the client: jargon, internal names, acronyms
 - A problem statement that describes the solution instead of the problem
 
-The gate already checks placeholders, sections and arithmetic. Don't repeat it.
+The gate already checks placeholders, sections and arithmetic. Don't repeat it,
+and don't let a placeholder it catches change how you read the rest of the
+proposal. Report what you would report if the placeholder weren't there, and
+nothing more.
 
 ## Report
 

@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The reviewer reads past a placeholder the gate catches
+
+[`agents/reviewer.md`](agents/reviewer.md) and the proposal brief now say that a failure the gate catches, a
+placeholder say, doesn't change how the reviewer reads the rest. Before, one `TBD` in an otherwise
+clean proposal drew 7 to 10 findings where the same proposal without it drew none. Case 10 now
+passes, and all ten reviewer cases pass both runs. A reviewer result saved before this change
+can't be compared with one saved after it.
+
+Files: [`agents/reviewer.md`](agents/reviewer.md), [`examples/proposal/agents/proposal-reviewer.md`](examples/proposal/agents/proposal-reviewer.md)
+
+**Do:** to compare reviewer runs, save a new baseline with
+`python3 scripts/eval_agents.py examples/proposal/evals --save <file>`.
+
 ## 2026-10-26: The clean proposal cases are clean
 
 The reviewer's cases [`08-clean-bakery`](examples/proposal/evals/08-clean-bakery/) and [`09-clean-cycles`](examples/proposal/evals/09-clean-cycles/) were missing
