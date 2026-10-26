@@ -33,8 +33,8 @@ Wired in .claude/settings.json as a PreToolUse hook. Four jobs:
    reach only paths inside the harness root, after `..` and links resolve.
    Inside the root, they don't reach the files that hold tokens or company
    data: .claude/settings.local.json, any .git folder or bare repo (*.git),
-   company/, local-data/ and a leftover .inbox/. A Grep over a project that
-   holds a bare repo deeper than its top folder still searches it.
+   company/, local-data/ and a leftover .inbox/. Each headless Grep is passed
+   on with !*.git added to its glob, so it leaves out bare repos at any depth.
 
 AGENTS.md says the same thing as a rule. This is the part that holds when the
 agent decides otherwise. It's a backstop for honest mistakes, not a sandbox: a
@@ -298,6 +298,9 @@ PRIVATE_FOLDERS = ("company", "local-data", ".inbox")
 # company/** alone didn't get in when measured; a path below each folder refuses it anyway.
 PRIVATE_ENTRIES = ("company", "local-data", ".claude", ".git", ".claude/settings.local.json", ".git/config",
                    "company/x", "local-data/x", ".inbox", ".inbox/x")
+# Added to every headless Grep's glob: ripgrep leaves out a bare repo at any depth. ripgrep's
+# globs match case, and the Mac's disk doesn't, so Lib.GIT counts (measured 2026-10-26).
+EXCLUDE_BARE_REPOS = "!*.[gG][iI][tT]"
 # The names a headless Glob pattern may not carry in a later part: the private places themselves.
 PRIVATE_NAMES = {"company", "local-data", ".inbox", ".claude", ".git", "settings.local.json"}
 HEADLESS_PRIVATE = ("A headless run doesn't read the files inside the root that hold tokens or company "
@@ -374,7 +377,8 @@ def bare_repos():
 
     A glob that names one brings it back into a search (a glob matching an ignored folder's name
     does), so the glob check tests against the real names, not only a stand-in, and mirror.gi? is
-    caught as well as mirror.git. Deeper than that isn't looked for: a walk would outlast the hook.
+    caught as well as mirror.git. A headless Grep also gets !*.git, which leaves out every bare repo
+    at any depth; this is what still holds if that rewrite ever stops applying.
     """
     found = []
     projects = os.path.join(ROOT, "projects")
@@ -563,11 +567,29 @@ def decide(event):
     return None
 
 
+def headless_rewrite(event):
+    """The input a headless Grep the guard let through goes on with, or None to leave it as it is.
+
+    Claude Code's Grep leaves out folders named exactly .git, and ripgrep stops applying the root's
+    .gitignore at a project's own repo, so a bare repo deeper inside a project (vendor/lib.git) would
+    be searched. A trailing !*.git wins over any glob before it, and Claude Code passes each
+    space-separated part as its own --glob (Claude Code 2.1.310 and ripgrep 15.2.0, measured
+    2026-10-26), so every headless search gets one. decide() still refuses a glob that names a bare
+    repo, in case the rewrite ever stops applying.
+    """
+    if os.environ.get("HARNESS_HEADLESS") != "1" or event.get("tool_name") != "Grep":
+        return None
+    data = event.get("tool_input") or {}
+    return dict(data, glob=((data.get("glob") or "") + " " + EXCLUDE_BARE_REPOS).strip())
+
+
 def main():
     headless = os.environ.get("HARNESS_HEADLESS") == "1"
     try:
         event = json.load(sys.stdin)
         verdict = decide(event)
+        if verdict is None and headless_rewrite(event) is not None:
+            verdict = ("update", headless_rewrite(event))
     except Exception:
         if not headless:
             # Unreadable input, or a bug here: let the call through and say so, rather than block every
@@ -577,7 +599,10 @@ def main():
             return 0
         # Nobody is watching a headless run, so a call the guard couldn't check doesn't run.
         verdict = ("deny", HEADLESS_UNCHECKED)
-    if verdict:
+    if verdict and verdict[0] == "update":
+        # No decision with it: the call goes on to the usual permission check, with this input.
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": verdict[1]}}))
+    elif verdict:
         decision, reason = verdict
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
