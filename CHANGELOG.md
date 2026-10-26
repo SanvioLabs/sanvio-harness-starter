@@ -36,7 +36,7 @@ shows `? reviewer`, dim, because the lens didn't see how it ended. One still lis
 its `▶`. If the list can't be read, nothing changes until the next check.
 
 Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
-`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests).
+`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.4.1.
 
 **Do:** nothing. The lens is on by default; reload or restart Claude Code to take it.
 
