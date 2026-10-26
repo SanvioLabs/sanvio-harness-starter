@@ -85,7 +85,7 @@ none is left out: `eval 2 · loop 1`. When nothing counts it shows `none`.
 
 A `claude` with neither above it isn't counted, so an interactive session in a
 terminal never shows. The match is on the command alone, so any clone's
-`scripts/loop.py` counts under `loop`, not only this one's. If `ps` fails or
+[`scripts/loop.py`](../../../scripts/loop.py) counts under `loop`, not only this one's. If `ps` fails or
 takes longer than two seconds, the segment keeps the last counts.
 
 The labels and what they match come from the `running` key (see

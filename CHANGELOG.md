@@ -31,9 +31,9 @@ fine).
 
 The lens has a new **running** segment: how many headless `claude` sessions the loop and the agent
 eval are running now, such as `eval 2 · loop 1`, or `none`. It counts every few seconds from `ps`,
-so any clone's `scripts/loop.py` counts under `loop`, and a `ps` that fails or takes over two
+so any clone's [`scripts/loop.py`](scripts/loop.py) counts under `loop`, and a `ps` that fails or takes over two
 seconds keeps the last counts. An interactive session never counts. `/lens` lists each label with
-its count, a zero included. The new `running` key in `.claude/harness-lens.json` sets the labels
+its count, a zero included. The new `running` key in [`.claude/harness-lens.json`](.claude/harness-lens.json) sets the labels
 and what they match.
 
 Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
