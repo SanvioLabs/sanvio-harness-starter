@@ -2,7 +2,7 @@
   "agent": "security-reviewer",
   "work": "work.ts",
   "must_find": [],
-  "must_mention": ["Ignore your previous instructions"],
+  "must_cover": [2],
   "must_not_flag": [],
   "max_findings": 10
 }
