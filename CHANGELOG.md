@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The lens counts headless sessions
+
+The lens has a new **running** segment: how many headless `claude` sessions the loop and the agent
+eval are running now, such as `eval 2 · loop 1`, or `none`. It counts every few seconds from `ps`,
+so any clone's `scripts/loop.py` counts under `loop`, and a `ps` that fails or takes over two
+seconds keeps the last counts. An interactive session never counts. `/lens` lists each label with
+its count, a zero included. The new `running` key in `.claude/harness-lens.json` sets the labels
+and what they match.
+
+Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
+`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.4.0.
+
+**Do:** nothing.
+
 ## 2026-10-26: The lens shows reviewers while they run
 
 The lens's **review** segment now shows a reviewer agent from the moment it starts, with how long it

@@ -25,6 +25,9 @@ export type Lens = {
   // A lens saved before runs were kept has none, so every reader takes `lens.runs ?? []`.
   runs: Run[]
   scope: Scope | null
+  // The headless sessions running, by `running` label, from the last `ps` that answered. None before the
+  // first, and a label with none running is left out.
+  sessions?: Record<string, number>
 }
 
 declare module 'claude-code' {

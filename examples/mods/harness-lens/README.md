@@ -5,7 +5,7 @@ nobody can say which part did that. This mod draws one line above the prompt
 naming the layer that just acted:
 
 ```
-◆ harness  steering: 3 always on + gates  skill: review-tests  gate: ✗ proposal  guard: ✗ refused Bash  review: reviewer
+◆ harness  steering: 3 always on + gates  skill: review-tests  gate: ✗ proposal  guard: ✗ refused Bash  review: reviewer  running: loop 1
 ```
 
 It's a Claude Code mod, so it works in Claude Code only: it was seen working in
@@ -46,6 +46,7 @@ claude plugin disable harness-lens@sanvio-harness-starter --scope local
 | **gate** | The last gate run and how it went. A commit the pre-commit hook refused shows as `✗ pre-commit`. A commit that got through shows nothing, because the hook is silent when it passes |
 | **guard** | The last tool a guard refused. Never the reason: that's in the transcript, and it can name a file |
 | **review** | The reviewer agents working now, else how the last one went. See [The review segment](#the-review-segment) |
+| **running** | The headless sessions the loop and the agent eval are running now: `eval 2 · loop 1`, or `none`. See [The running segment](#the-running-segment) |
 | **scope** | Only in a harness that declares one (see [Another layout](#another-layout)): the client, project or area this session is scoped to, first on the line. `none` when nothing is set |
 
 Cyan means it happened this turn. A gate or guard result this turn is green or
@@ -54,7 +55,8 @@ guard refusal and a failed gate also pop up a short notice.
 
 `/lens` prints the whole session, layer by layer: every steering file read,
 every skill followed, each gate with how many times it passed and failed, the
-refusals by tool, and the reviewers running now with how long each has run.
+refusals by tool, the reviewers running now with how long each has run, and
+how many headless sessions each `running` label has, a zero included.
 
 ### The review segment
 
@@ -73,6 +75,21 @@ or a plugin's agent never shows, and nor does an agent a subagent starts.
 
 A reviewer that ends while the lens is reloading isn't seen ending, so it
 shows `▶` for the rest of the session.
+
+### The running segment
+
+Every few seconds the lens runs `ps` and counts the `claude` processes running
+beneath [`scripts/loop.py`](../../../scripts/loop.py) (as `loop`) and beneath [`scripts/eval_agents.py`](../../../scripts/eval_agents.py) (as
+`eval`). Labels with a count are listed in alphabetical order, and a label with
+none is left out: `eval 2 · loop 1`. When nothing counts it shows `none`.
+
+A `claude` with neither above it isn't counted, so an interactive session in a
+terminal never shows. The match is on the command alone, so any clone's
+`scripts/loop.py` counts under `loop`, not only this one's. If `ps` fails or
+takes longer than two seconds, the segment keeps the last counts.
+
+The labels and what they match come from the `running` key (see
+[Another layout](#another-layout)).
 
 ## Try it
 
@@ -117,7 +134,8 @@ out keeps the starter's value:
   "skillPrefixes": ["studio:"],
   "agents": [".claude/agents"],
   "gates": ["check-gates\\.sh\\s+(\\S+)"],
-  "scope": [".studio/hooks/.client-scope.{session}.json", ".studio/hooks/.focus.{session}.json"]
+  "scope": [".studio/hooks/.client-scope.{session}.json", ".studio/hooks/.focus.{session}.json"],
+  "running": { "loop": "loop-runner", "eval": "scripts/eval_agents\\.py" }
 }
 ```
 
@@ -134,6 +152,12 @@ shows the first that names a scope: `{"client": "acme"}`, or `{"kind":
 "partner", "name": "fabrikam"}`. Put the file a guard enforces first, so a
 looser one never shows over it. The starter has no scope, so its band has no
 `scope` segment.
+
+`running` maps each label to a pattern for the command of a process that
+starts headless sessions. A `claude` process counts under the first label
+whose pattern matches a process above it. A map you give replaces the
+starter's `{"loop": "scripts/loop\\.py", "eval": "scripts/eval_agents\\.py"}`
+whole, and a pattern that's empty or doesn't compile is dropped.
 
 ## Changing it
 

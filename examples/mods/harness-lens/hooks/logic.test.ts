@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, reviewSegment, scopeFiles, scopeText, skillFromPath, startRun, steeringName } from './logic'
+import { STARTER, alwaysSteering, bandSegments, countSessions, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, reviewSegment, scopeFiles, scopeText, skillFromPath, startRun, steeringName } from './logic'
 
 const ROOT = '/h/my-harness'
 
@@ -107,6 +107,7 @@ describe('the band', () => {
       'gate: none run',
       'guard: no refusals',
       'review: none yet',
+      'running: none',
     ])
   })
   test('what acted this turn stands out, a failure in red', () => {
@@ -163,16 +164,64 @@ describe('reviewers while they run', () => {
   })
   test('/lens lists what is running now, and says nothing when none is', () => {
     expect(lensReport(started('reviewer', 'cto'), false, NOW)).toContain('  Running now:\n    reviewer 1:20\n    cto 1:20')
-    expect(lensReport(endRun(started('reviewer'), 'a0', true, NOW), false, NOW)).toContain('  Running now: nothing')
+    expect(lensReport(endRun(started('reviewer'), 'a0', true, NOW), false, NOW)).toContain('  Running now:\n    no reviewers')
   })
   test('no runs yet keeps the last reviewer seen, and a lens saved before runs still builds the band', () => {
     const seen = { ...lens, reviews: [{ name: 'cto', turn: 3 }] }
     expect(reviewSegment(seen, NOW)).toEqual({ label: 'review', text: 'cto', tone: 'now' })
     const old = JSON.parse(JSON.stringify({ ...seen, runs: undefined })) as typeof seen
     expect('runs' in old).toBe(false)
-    expect(bandSegments(old, false, NOW).at(-1)).toEqual({ label: 'review', text: 'cto', tone: 'now' })
-    expect(lensReport(old, false, NOW)).toContain('Running now: nothing')
+    expect(bandSegments(old, false, NOW).find(segment => segment.label === 'review')).toEqual({ label: 'review', text: 'cto', tone: 'now' })
+    expect(lensReport(old, false, NOW)).toContain('Running now:\n    no reviewers')
     expect(startRun(old, 'a0', 'reviewer', AGENTS, NOW).runs).toEqual([{ id: 'a0', name: 'reviewer', started: NOW }])
+  })
+})
+
+describe('headless sessions', () => {
+  const PS = [
+    '  PID  PPID COMMAND',
+    '    1     0 /sbin/launchd',
+    '  400     1 /bin/zsh -l',
+    '  500   400 python3 scripts/eval_agents.py --agent claude',
+    '  501   500 claude -p --output-format json',
+    '  502   500 /usr/local/bin/claude -p --output-format json',
+    '  600   400 python3 /h/other-clone/scripts/loop.py run',
+    '  601   600 sandbox-exec -f /tmp/held.sb claude -p',
+    '  602   601 claude -p --permission-mode acceptEdits',
+    '  700   400 claude',
+    '  800   801 claude -p',
+    '  801   800 claude -p',
+  ].join('\n')
+
+  test('the starter counts claude under the eval and under any clone\'s loop, not one under a shell', () => {
+    expect(countSessions(PS, STARTER)).toEqual({ eval: 2, loop: 1 })
+  })
+  test('a loop in the rows ends the walk rather than hanging it', () => {
+    expect(countSessions('  10    11 claude -p\n  11    10 bash', STARTER)).toEqual({})
+  })
+  test('a ps that failed keeps the last counts, and the same counts come back as the same object', () => {
+    const prev = { loop: 1 }
+    expect(nextSessions(prev, null, STARTER)).toBe(prev)
+    expect(nextSessions(prev, '  600     1 python3 scripts/loop.py\n  601   600 claude -p', STARTER)).toBe(prev)
+    expect(nextSessions(prev, '', STARTER)).toEqual({})
+    expect(nextSessions(undefined, null, STARTER)).toBeUndefined()
+  })
+  test('the config keeps the starter\'s labels when left out or wrong, and a custom map replaces them', () => {
+    expect(parseConfig('{}').running).toEqual(STARTER.running)
+    expect(parseConfig('{"running": ["scripts/loop\\\\.py"]}').running).toEqual(STARTER.running)
+    expect(parseConfig('{"running": {"loop": 3}}').running).toEqual(STARTER.running)
+    expect(parseConfig('{"running": {"runner": "loop-runner", "bad": "(", "empty": ""}}').running).toEqual({ runner: 'loop-runner' })
+    expect(countSessions(PS, parseConfig('{"running": {"clone": "other-clone"}}'))).toEqual({ clone: 1 })
+  })
+  test('the band lists the labels in order with their counts, or none', () => {
+    const lens = { ...emptyLens(ROOT, []), sessions: { loop: 1, eval: 2, runner: 0 } }
+    expect(bandSegments(lens).at(-1)).toEqual({ label: 'running', text: 'eval 2 · loop 1', tone: 'now' })
+    expect(bandSegments({ ...lens, sessions: { loop: 0 } }).at(-1)).toEqual({ label: 'running', text: 'none', tone: 'quiet' })
+  })
+  test('/lens has a row for each configured label, a zero included', () => {
+    const lens = { ...emptyLens(ROOT, []), sessions: { eval: 2 } }
+    expect(lensReport(lens)).toContain('    no reviewers\n    loop sessions: 0\n    eval sessions: 2')
+    expect(lensReport(lens, false, Date.now(), ['runner'])).toContain('    no reviewers\n    runner sessions: 0')
   })
 })
 

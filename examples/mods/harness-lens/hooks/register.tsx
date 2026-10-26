@@ -1,12 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, startRun, steeringName } from './logic'
+import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, startRun, steeringName } from './logic'
 import type { Config, Tone } from './logic'
 import type { Lens, Scope } from '../types'
 
 const launchAtom = atom({ plugin: 'harness-lens', key: 'launch' } as const, null)
 const lensAtom = atom({ plugin: 'harness-lens', key: 'lens' } as const, null)
+
+const PS_TIMEOUT_MS = 2_000
 
 // Rebuilt on every load, so a new skill or agent shows up after a reload.
 let config: Config = STARTER
@@ -109,9 +111,20 @@ async function change($: EngineInterface, edit: (lens: Lens) => Lens): Promise<v
   await update($, lensAtom, prev => (prev ? edit(prev) : prev))
 }
 
-// Every few seconds: the scope, and while a reviewer runs, a redraw so its time moves.
+// The headless sessions under each `running` pattern, from ps. A ps that fails or takes too long keeps
+// the last counts, and counts that haven't changed write nothing.
+async function refreshSessions($: EngineInterface): Promise<void> {
+  const lens = await read($, lensAtom)
+  if (!lens) return
+  const ran = await $.process.run(['ps', '-axo', 'pid,ppid,command'], { timeoutMs: PS_TIMEOUT_MS }).catch(() => null)
+  const sessions = nextSessions(lens.sessions, ran && ran.exitCode === 0 ? ran.stdout : null, config)
+  if (sessions !== lens.sessions) await change($, l => ({ ...l, sessions }))
+}
+
+// Every few seconds: the scope, the headless sessions, and while a reviewer runs, a redraw so its time moves.
 async function tick($: EngineInterface): Promise<void> {
   await refreshScope($).catch(() => {})
+  await refreshSessions($).catch(() => {})
   const lens = await read($, lensAtom)
   if (lens && (lens.runs ?? []).some(run => run.ended === undefined)) $.ui.invalidate('ui.render')
 }
@@ -122,7 +135,7 @@ export const register: Register = on => {
     await update($, launchAtom, prev => prev ?? e.cwd)
     await $.command.register({
       name: 'lens',
-      description: 'Show what the harness did this session: steering, skills, gates, guard refusals and reviewers',
+      description: 'Show what the harness did this session: steering, skills, gates, guard refusals, reviewers and headless sessions',
     })
     await load($).catch(() => {})
     await refreshScope($).catch(() => {})
@@ -132,7 +145,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'lens' }, async $ => {
     const lens = await read($, lensAtom)
-    return { text: lens ? lensReport(lens, config.scope.length > 0, Date.now()) :"This session didn't start inside a harness, so there's nothing to show." }
+    return { text: lens ? lensReport(lens, config.scope.length > 0, Date.now(), Object.keys(config.running)) :"This session didn't start inside a harness, so there's nothing to show." }
   })
 
   on('turn.start', async ($, e, next) => {
