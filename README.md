@@ -133,13 +133,16 @@ review reads the code cloned under [`projects/`](projects/) and not the rest of 
 A headless `Grep` whose glob could match a credential file at all, however broad,
 is refused too.
 Inside the root, a headless run also doesn't reach the files that hold tokens or
-company data: `.claude/settings.local.json`, any `.git` folder, `company/` and
-`local-data/`. A `Grep` over the root leaves those out: [`.gitignore`](.gitignore) lists them,
+company data: `.claude/settings.local.json`, any `.git` folder or bare repo
+(`*.git`), `company/`, `local-data/` and a leftover `.inbox/`. A `Grep` over the root leaves those out: [`.gitignore`](.gitignore) lists them,
 and Claude Code's `Grep` skips `.git`. A glob that matches one of them would bring
 it back in (`{company,*.md}` does), so a headless `Grep` with such a glob is
 refused. `Glob` lists names and reads nothing; a pattern that names one of them
 outright is refused, but a wildcard such as `c*/**` can still list the names under
 `company/`.
+A bare repo counts only when its folder ends `.git` and sits at the root or at the
+top of a project: a `Grep` over a project that holds one deeper, such as
+`vendor/lib.git/`, still searches it, as it would any file in that folder.
 In every session, a `Grep` that names a credential file in its path or glob, or
 whose glob can only match one, is refused as a `Read` of it is, and so is a link
 that lands on one. What the guard can't see is which files a search

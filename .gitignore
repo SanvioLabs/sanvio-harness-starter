@@ -12,3 +12,4 @@ projects/*
 reports/usage/*
 !reports/usage/README.md
 .inbox/
+*.git/
