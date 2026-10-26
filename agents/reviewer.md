@@ -23,7 +23,9 @@ from the work itself and say who you assumed.
 - Words that mean nothing to the reader: jargon, internal names, acronyms
 - What the job's brief adds
 
-The gate already checks what a script can. Don't repeat it.
+The gate already checks what a script can. Don't repeat it, and don't let a
+failure it catches, a placeholder say, change how you read the rest. Report
+what you would report if that failure weren't there, and nothing more.
 
 ## Report
 
