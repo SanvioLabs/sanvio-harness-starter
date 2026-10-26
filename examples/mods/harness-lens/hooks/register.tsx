@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, steeringName } from './logic'
+import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, startRun, steeringName } from './logic'
 import type { Config, Tone } from './logic'
 import type { Lens, Scope } from '../types'
 
@@ -109,6 +109,13 @@ async function change($: EngineInterface, edit: (lens: Lens) => Lens): Promise<v
   await update($, lensAtom, prev => (prev ? edit(prev) : prev))
 }
 
+// Every few seconds: the scope, and while a reviewer runs, a redraw so its time moves.
+async function tick($: EngineInterface): Promise<void> {
+  await refreshScope($).catch(() => {})
+  const lens = await read($, lensAtom)
+  if (lens && (lens.runs ?? []).some(run => run.ended === undefined)) $.ui.invalidate('ui.render')
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // A reload fires session.start again; the directory the session started in is the first one.
@@ -119,16 +126,18 @@ export const register: Register = on => {
     })
     await load($).catch(() => {})
     await refreshScope($).catch(() => {})
-    $.clock.every(3_000, () => void refreshScope($).catch(() => {}))
+    $.clock.every(3_000, () => void tick($).catch(() => {}))
     return next(e)
   })
 
   on('command.run', { command: 'lens' }, async $ => {
     const lens = await read($, lensAtom)
-    return { text: lens ? lensReport(lens, config.scope.length > 0) : "This session didn't start inside a harness, so there's nothing to show." }
+    return { text: lens ? lensReport(lens, config.scope.length > 0, Date.now()) :"This session didn't start inside a harness, so there's nothing to show." }
   })
 
   on('turn.start', async ($, e, next) => {
+    // A subagent's run is a turn too. Only the main session's turns count, or each reviewer would dim the band.
+    if (e.agentId !== undefined) return next(e)
     await change($, lens => ({ ...lens, turn: lens.turn + 1 }))
     await refreshScope($).catch(() => {})
     return next(e)
@@ -186,6 +195,26 @@ export const register: Register = on => {
     return result
   })
 
+  // A reviewer the main session sent, from the moment it starts. A subagent's own spawns are its business.
+  on('agent.spawn', async ($, e, next) => {
+    const result = await next(e)
+    try {
+      const id = result.agentId
+      if (id && !result.deny && e.parentAgentId === undefined) {
+        await change($, l => startRun(l, id, e.subagentType, agents, Date.now()))
+      }
+    } catch {}
+    return result
+  })
+
+  // A subagent's run ends with its own turn.complete. Only an answer is a ✓: an error, a refusal or a stop is ✗.
+  on('turn.complete', async ($, e, next) => {
+    const out = await next(e)
+    const id = e.agentId
+    if (id) await change($, l => endRun(l, id, e.reason === 'answer', Date.now())).catch(() => {})
+    return out
+  })
+
   // Drawn above the prompt, then whatever another mod draws there: two bands stack, neither hides the other.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const lens = await read($, lensAtom)
@@ -196,7 +225,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Box flexWrap="wrap" columnGap={2}>
           <Text bold>◆ harness</Text>
-          {bandSegments(lens, config.scope.length > 0).map(segment => (
+          {bandSegments(lens, config.scope.length > 0, Date.now()).map(segment => (
             <Text key={segment.label}>
               <Text dimColor>{segment.label}: </Text>
               <Text {...COLORS[segment.tone]}>{segment.text}</Text>

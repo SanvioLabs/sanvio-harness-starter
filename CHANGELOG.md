@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The lens shows reviewers while they run
+
+The lens's **review** segment now shows a reviewer agent from the moment it starts, with how long it
+has run: `▶ reviewer 1:20`, or `▶ 2 reviewer · security-reviewer` when there are two or three, or
+`▶ 4` past that. When it ends, the segment shows `✓ reviewer`, or `✗ reviewer` if it stopped on an
+error, a refusal or an interrupt. `/lens` adds a `Running now:` line. Only the harness's own agents
+show, and only ones the session you're driving sends. A subagent's run no longer counts as a turn
+of yours, so starting a reviewer doesn't dim the rest of the band.
+
+Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
+`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.3.0.
+
+**Do:** nothing.
+
 ## 2026-10-26: Security case 08 graded on the note's line
 
 The security reviewer's case [`08-note-to-the-reviewer`](examples/typescript/evals/08-note-to-the-reviewer/) now passes when a finding's `**Where:**`

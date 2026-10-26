@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { STARTER, alwaysSteering, bandSegments, emptyLens, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, scopeFiles, scopeText, skillFromPath, steeringName } from './logic'
+import { STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, parseConfig, parseScope, record, relative, remember, reviewSegment, scopeFiles, scopeText, skillFromPath, startRun, steeringName } from './logic'
 
 const ROOT = '/h/my-harness'
 
@@ -127,6 +127,52 @@ describe('the band', () => {
     const segments = bandSegments(earlier)
     expect(segments[0]).toEqual({ label: 'steering', text: '3 always on + 1 read', tone: 'earlier' })
     expect(segments[2]?.tone).toBe('earlier')
+  })
+})
+
+describe('reviewers while they run', () => {
+  const AGENTS = ['reviewer', 'security-reviewer', 'cto', 'gc']
+  const NOW = 1_000_000
+  const lens = { ...emptyLens(ROOT, ['operating']), turn: 3 }
+  const started = (...names: string[]) =>
+    names.reduce((l, name, i) => startRun(l, `a${i}`, name, AGENTS, NOW - 80_000), lens)
+
+  test('one running shows its name and how long it has run', () => {
+    expect(reviewSegment(started('reviewer'), NOW)).toEqual({ label: 'review', text: '▶ reviewer 1:20', tone: 'now' })
+  })
+  test('one that ended shows ✓, one that ended in an error ✗, standing out only the turn it ended', () => {
+    const passed = endRun(started('reviewer'), 'a0', true, NOW)
+    expect(reviewSegment(passed, NOW)).toEqual({ label: 'review', text: '✓ reviewer', tone: 'pass' })
+    expect(reviewSegment(endRun(started('reviewer'), 'a0', false, NOW), NOW)).toEqual({ label: 'review', text: '✗ reviewer', tone: 'fail' })
+    expect(reviewSegment({ ...passed, turn: 4 }, NOW).tone).toBe('earlier')
+  })
+  test('two or three running show the count and the names; four, the count alone', () => {
+    expect(reviewSegment(started('reviewer', 'security-reviewer'), NOW).text).toBe('▶ 2 reviewer · security-reviewer')
+    expect(reviewSegment(started('reviewer', 'security-reviewer', 'cto'), NOW).text).toBe('▶ 3 reviewer · security-reviewer · cto')
+    expect(reviewSegment(started('reviewer', 'security-reviewer', 'cto', 'gc'), NOW)).toEqual({ label: 'review', text: '▶ 4', tone: 'now' })
+  })
+  test('the last to end shows, not the last to start', () => {
+    let both = started('reviewer', 'security-reviewer')
+    both = endRun(endRun(both, 'a1', true, NOW - 1_000), 'a0', false, NOW)
+    expect(reviewSegment(both, NOW).text).toBe('✗ reviewer')
+  })
+  test("an agent that isn't the harness's, or an end nobody started, changes nothing", () => {
+    expect(startRun(lens, 'x', 'Explore', AGENTS, NOW).runs).toEqual([])
+    const one = started('reviewer')
+    expect(endRun(one, 'other', true, NOW)).toBe(one)
+  })
+  test('/lens lists what is running now, and says nothing when none is', () => {
+    expect(lensReport(started('reviewer', 'cto'), false, NOW)).toContain('  Running now:\n    reviewer 1:20\n    cto 1:20')
+    expect(lensReport(endRun(started('reviewer'), 'a0', true, NOW), false, NOW)).toContain('  Running now: nothing')
+  })
+  test('no runs yet keeps the last reviewer seen, and a lens saved before runs still builds the band', () => {
+    const seen = { ...lens, reviews: [{ name: 'cto', turn: 3 }] }
+    expect(reviewSegment(seen, NOW)).toEqual({ label: 'review', text: 'cto', tone: 'now' })
+    const old = JSON.parse(JSON.stringify({ ...seen, runs: undefined })) as typeof seen
+    expect('runs' in old).toBe(false)
+    expect(bandSegments(old, false, NOW).at(-1)).toEqual({ label: 'review', text: 'cto', tone: 'now' })
+    expect(lensReport(old, false, NOW)).toContain('Running now: nothing')
+    expect(startRun(old, 'a0', 'reviewer', AGENTS, NOW).runs).toEqual([{ id: 'a0', name: 'reviewer', started: NOW }])
   })
 })
 
