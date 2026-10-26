@@ -7,6 +7,11 @@ export type GateHit = Hit & { ok: boolean }
 // only names. Read from the files `scope` lists in .claude/harness-lens.json; the starter declares none.
 export type Scope = { kind: string; name: string }
 
+// One of the harness's agents the main session sent to work, by the subagent id its spawn answered.
+// `started` and `ended` are milliseconds; `ok` is false when it ended in an error, a refusal or a stop.
+// `turn` is the main session's turn it ended in, so its ✓ or ✗ stands out only that turn.
+export type Run = { id: string; name: string; started: number; ended?: number; ok?: boolean; turn?: number }
+
 export type Lens = {
   root: string
   turn: number
@@ -17,6 +22,8 @@ export type Lens = {
   // The tool a guard refused, never its reason: a reason can name a file or a customer.
   refusals: Hit[]
   reviews: Hit[]
+  // A lens saved before runs were kept has none, so every reader takes `lens.runs ?? []`.
+  runs: Run[]
   scope: Scope | null
 }
 

@@ -45,7 +45,7 @@ claude plugin disable harness-lens@sanvio-harness-starter --scope local
 | **skill** | The last of this harness's skills the agent followed, whether you typed `/name` or it read the `SKILL.md` |
 | **gate** | The last gate run and how it went. A commit the pre-commit hook refused shows as `✗ pre-commit`. A commit that got through shows nothing, because the hook is silent when it passes |
 | **guard** | The last tool a guard refused. Never the reason: that's in the transcript, and it can name a file |
-| **review** | The last reviewer agent the work went to |
+| **review** | The reviewer agents working now, else how the last one went. See [The review segment](#the-review-segment) |
 | **scope** | Only in a harness that declares one (see [Another layout](#another-layout)): the client, project or area this session is scoped to, first on the line. `none` when nothing is set |
 
 Cyan means it happened this turn. A gate or guard result this turn is green or
@@ -53,8 +53,26 @@ red. Plain text happened earlier in the session, and dim means nothing yet. A
 guard refusal and a failed gate also pop up a short notice.
 
 `/lens` prints the whole session, layer by layer: every steering file read,
-every skill followed, each gate with how many times it passed and failed, and
-the refusals by tool.
+every skill followed, each gate with how many times it passed and failed, the
+refusals by tool, and the reviewers running now with how long each has run.
+
+### The review segment
+
+It shows one of this harness's agents (those in [`agents/`](../../../agents/)) from the moment
+the session you're driving sends it to work, background or not. An `Explore`
+or a plugin's agent never shows, and nor does an agent a subagent starts.
+
+| State | Example | Means |
+|---|---|---|
+| One running | `▶ reviewer 1:20` | It has run for a minute and twenty seconds. The time moves every few seconds |
+| Two or three running | `▶ 2 reviewer · security-reviewer` | How many, and which |
+| More than three running | `▶ 4` | How many. `/lens` lists them |
+| Ended well | `✓ reviewer` | The last one to end gave its answer. Green the turn it ended, plain after |
+| Ended badly | `✗ reviewer` | The last one to end stopped on an error, a refusal or an interrupt. Red the turn it ended, plain after |
+| None sent yet | `none yet` | No reviewer has started this session |
+
+A reviewer that ends while the lens is reloading isn't seen ending, so it
+shows `▶` for the rest of the session.
 
 ## Try it
 
@@ -68,7 +86,8 @@ Load it, then:
    steering says so, and the band can't show a refusal that never became a
    tool call. **guard** goes red only when a call actually reaches the guard
    and the guard says no.
-4. Type `/review-tests`, then hand the work to the `reviewer` agent.
+4. Type `/review-tests`, then hand the work to the `reviewer` agent, and
+   watch **review** show `▶ reviewer` and its time until it ends.
 5. Type `/lens`.
 
 ## What it doesn't do

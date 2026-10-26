@@ -1,7 +1,7 @@
 // The decisions, as pure functions. register.tsx reads files and watches events, then calls in here,
 // because the test kit can't stand in for the filesystem.
 
-import type { GateHit, Hit, Lens, Scope } from '../types'
+import type { GateHit, Hit, Lens, Run, Scope } from '../types'
 
 // Where a harness keeps each layer, relative to its root. A harness with another layout says so in
 // .claude/harness-lens.json, with any of these keys; a key left out keeps the starter's value.
@@ -136,7 +136,7 @@ export function gateRun(command: string, output: string, isError: boolean, confi
 }
 
 export function emptyLens(root: string, always: string[]): Lens {
-  return { root, turn: 0, always, steering: [], skills: [], gates: [], refusals: [], reviews: [], scope: null }
+  return { root, turn: 0, always, steering: [], skills: [], gates: [], refusals: [], reviews: [], runs: [], scope: null }
 }
 
 const SESSION = /^[0-9a-fA-F-]{8,64}$/
@@ -185,13 +185,58 @@ export function record<T extends Hit>(list: readonly T[], hit: T): T[] {
   return [...list, hit].slice(-KEEP)
 }
 
+// A subagent started. Only the harness's own agents count, so an Explore or a plugin's agent never shows.
+// A resumed agent comes back under its id, so it replaces its earlier run rather than adding a second.
+export function startRun(lens: Lens, agentId: string, subagentType: string, agents: readonly string[], now: number): Lens {
+  if (!agentId || !agents.includes(subagentType)) return lens
+  const runs = (lens.runs ?? []).filter(run => run.id !== agentId)
+  return { ...lens, runs: [...runs, { id: agentId, name: subagentType, started: now }].slice(-KEEP) }
+}
+
+// A subagent's run ended. Only a run still open under that id changes: any other agent's end is ignored.
+export function endRun(lens: Lens, agentId: string, ok: boolean, now: number): Lens {
+  const runs = lens.runs ?? []
+  if (!runs.some(run => run.id === agentId && run.ended === undefined)) return lens
+  return {
+    ...lens,
+    runs: runs.map(run => (run.id === agentId && run.ended === undefined ? { ...run, ended: now, ok, turn: lens.turn } : run)),
+  }
+}
+
+const running = (lens: Lens) => (lens.runs ?? []).filter(run => run.ended === undefined)
+
+// 80 seconds is 1:20.
+export function elapsed(run: Run, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - run.started) / 1000))
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
 export type Tone = 'now' | 'pass' | 'fail' | 'earlier' | 'quiet'
 export type Segment = { label: string; text: string; tone: Tone }
 
+// The review segment: what is running now, else how the last one to end went, else the last reviewer seen.
+export function reviewSegment(lens: Lens, now: number): Segment {
+  const open = running(lens)
+  if (open.length === 1) return { label: 'review', text: `▶ ${open[0]!.name} ${elapsed(open[0]!, now)}`, tone: 'now' }
+  if (open.length > 3) return { label: 'review', text: `▶ ${open.length}`, tone: 'now' }
+  if (open.length) return { label: 'review', text: `▶ ${open.length} ${open.map(run => run.name).join(' · ')}`, tone: 'now' }
+  // The last to end, not the last to start: a reviewer started first can finish last.
+  const last = (lens.runs ?? []).reduce<Run | undefined>((latest, run) => (latest === undefined || run.ended! >= latest.ended! ? run : latest), undefined)
+  if (last) {
+    return {
+      label: 'review',
+      text: `${last.ok ? '✓' : '✗'} ${last.name}`,
+      tone: last.turn === lens.turn ? (last.ok ? 'pass' : 'fail') : 'earlier',
+    }
+  }
+  const review = lens.reviews.at(-1)
+  return { label: 'review', text: review?.name ?? 'none yet', tone: review ? (review.turn === lens.turn ? 'now' : 'earlier') : 'quiet' }
+}
+
 // The band: one segment per layer. A layer that acted this turn stands out; one that acted earlier is dim.
-export function bandSegments(lens: Lens, showScope = false): Segment[] {
-  const now = (hit: Hit | undefined) => hit !== undefined && hit.turn === lens.turn
-  const readNow = lens.steering.filter(now).map(hit => hit.name)
+export function bandSegments(lens: Lens, showScope = false, now = Date.now()): Segment[] {
+  const thisTurn = (hit: Hit | undefined) => hit !== undefined && hit.turn === lens.turn
+  const readNow = lens.steering.filter(thisTurn).map(hit => hit.name)
   const always = lens.always.length ? `${lens.always.length} always on` : 'none always on'
   const steering: Segment = readNow.length
     ? { label: 'steering', text: `${always} + ${readNow.join(' · ')}`, tone: 'now' }
@@ -200,7 +245,6 @@ export function bandSegments(lens: Lens, showScope = false): Segment[] {
   const skill = lens.skills.at(-1)
   const gate = lens.gates.at(-1)
   const refusal = lens.refusals.at(-1)
-  const review = lens.reviews.at(-1)
   // Only a harness that declares where its scope lives gets the segment, so the starter's band is unchanged.
   const scope: Segment[] = showScope
     ? [lens.scope ? { label: 'scope', text: scopeText(lens.scope), tone: 'earlier' } : { label: 'scope', text: 'none', tone: 'quiet' }]
@@ -208,18 +252,18 @@ export function bandSegments(lens: Lens, showScope = false): Segment[] {
   return [
     ...scope,
     steering,
-    { label: 'skill', text: skill?.name ?? 'none yet', tone: now(skill) ? 'now' : skill ? 'earlier' : 'quiet' },
+    { label: 'skill', text: skill?.name ?? 'none yet', tone: thisTurn(skill) ? 'now' : skill ? 'earlier' : 'quiet' },
     {
       label: 'gate',
       text: gate ? `${gate.ok ? '✓' : '✗'} ${gate.name}` : 'none run',
-      tone: now(gate) ? (gate!.ok ? 'pass' : 'fail') : gate ? 'earlier' : 'quiet',
+      tone: thisTurn(gate) ? (gate!.ok ? 'pass' : 'fail') : gate ? 'earlier' : 'quiet',
     },
     {
       label: 'guard',
       text: refusal ? `✗ refused ${refusal.name}` : 'no refusals',
-      tone: now(refusal) ? 'fail' : refusal ? 'earlier' : 'quiet',
+      tone: thisTurn(refusal) ? 'fail' : refusal ? 'earlier' : 'quiet',
     },
-    { label: 'review', text: review?.name ?? 'none yet', tone: now(review) ? 'now' : review ? 'earlier' : 'quiet' },
+    reviewSegment(lens, now),
   ]
 }
 
@@ -230,7 +274,8 @@ function counts(list: readonly Hit[]): string {
 }
 
 // What /lens prints: the whole session, layer by layer.
-export function lensReport(lens: Lens, showScope = false): string {
+export function lensReport(lens: Lens, showScope = false, now = Date.now()): string {
+  const open = running(lens)
   const names = (list: readonly Hit[]) => (list.length ? list.map(hit => hit.name).join(', ') : 'none')
   const passed = lens.gates.filter(gate => gate.ok)
   const failed = lens.gates.filter(gate => !gate.ok)
@@ -246,5 +291,6 @@ export function lensReport(lens: Lens, showScope = false): string {
     `  Gates: ${gates}`,
     `  Guard refusals: ${lens.refusals.length ? counts(lens.refusals) : 'none'} (the reasons are in the transcript)`,
     `  Reviewers: ${names(lens.reviews)}`,
+    ...(open.length ? ['  Running now:', ...open.map(run => `    ${run.name} ${elapsed(run, now)}`)] : ['  Running now: nothing']),
   ].join('\n')
 }
