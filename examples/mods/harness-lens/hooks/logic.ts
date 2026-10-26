@@ -21,6 +21,9 @@ export type Config = {
   // Files that hold this session's scope, read in order until one names it. `{session}` stands for the
   // session id. Put a file a guard enforces first, so a looser one never shows over it. The starter has none.
   scope: string[]
+  // Headless sessions to count, by label: a `claude` process counts under the first label whose pattern
+  // matches the command of a process it runs beneath.
+  running: Record<string, string>
 }
 
 export const STARTER: Config = {
@@ -31,11 +34,22 @@ export const STARTER: Config = {
   agents: ['agents'],
   gates: ['([\\w-]+)_gate\\.py'],
   scope: [],
+  running: { loop: 'scripts/loop\\.py', eval: 'scripts/eval_agents\\.py' },
 }
 
 export const CONFIG_FILE = '.claude/harness-lens.json'
 
-const KEYS = Object.keys(STARTER) as Array<keyof Config>
+type ListKey = Exclude<keyof Config, 'running'>
+const KEYS = Object.keys(STARTER).filter(key => key !== 'running') as ListKey[]
+
+function compile(pattern: string): RegExp | null {
+  if (!pattern) return null
+  try {
+    return new RegExp(pattern)
+  } catch {
+    return null
+  }
+}
 
 export function parseConfig(text: string | null): Config {
   if (text === null) return STARTER
@@ -50,6 +64,11 @@ export function parseConfig(text: string | null): Config {
   for (const key of KEYS) {
     const value = given[key]
     if (Array.isArray(value) && value.every(item => typeof item === 'string')) config[key] = value as string[]
+  }
+  // An empty pattern or one that doesn't compile is dropped, rather than matching everything or nothing.
+  const labels = given.running
+  if (labels && typeof labels === 'object' && !Array.isArray(labels) && Object.values(labels).every(item => typeof item === 'string')) {
+    config.running = Object.fromEntries(Object.entries(labels as Record<string, string>).filter(([, pattern]) => compile(pattern)))
   }
   return config
 }
@@ -211,6 +230,65 @@ export function elapsed(run: Run, now: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+// A `claude` command, by path or through node: `claude -p`, `/usr/local/bin/claude`, `node …/claude`.
+const CLAUDE = /^(?:(?:\S*\/)?node\s+)?(?:\S*\/)?claude(?:\s|$)/
+
+// The headless sessions running, by label, from `ps -axo pid,ppid,command`. Each `claude` process counts
+// under the label of the nearest process above it whose command matches a pattern, and not at all when
+// none does, so an interactive session under a shell is left out. A label with none isn't in the result.
+export function countSessions(ps: string, config: Config): Record<string, number> {
+  const parent = new Map<number, number>()
+  const command = new Map<number, string>()
+  for (const line of ps.split('\n')) {
+    // The header, and anything else that isn't a row, doesn't match.
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)
+    if (!match) continue
+    parent.set(Number(match[1]), Number(match[2]))
+    command.set(Number(match[1]), match[3]!)
+  }
+  const patterns: Array<[string, RegExp]> = []
+  for (const [label, pattern] of Object.entries(config.running)) {
+    const re = compile(pattern)
+    if (re) patterns.push([label, re])
+  }
+  const counts: Record<string, number> = {}
+  for (const [pid, text] of command) {
+    if (!CLAUDE.test(text)) continue
+    // Up the chain to pid 1. A pid seen before ends the walk, so a loop in the rows can't hang it.
+    const seen = new Set([pid])
+    let at = parent.get(pid)
+    while (at !== undefined && at > 1 && !seen.has(at)) {
+      seen.add(at)
+      const above = command.get(at) ?? ''
+      const label = patterns.find(([, re]) => re.test(above))?.[0]
+      if (label) {
+        counts[label] = (counts[label] ?? 0) + 1
+        break
+      }
+      at = parent.get(at)
+    }
+  }
+  return counts
+}
+
+const sameCounts = (a: Record<string, number>, b: Record<string, number>) =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([label, n]) => b[label] === n)
+
+// The counts after a `ps`. A null output is a `ps` that failed or timed out, and keeps the last counts.
+// Counts that haven't changed come back as the same object, so nothing is written.
+export function nextSessions(prev: Record<string, number> | undefined, output: string | null, config: Config): Record<string, number> | undefined {
+  if (output === null) return prev
+  const counts = countSessions(output, config)
+  return prev && sameCounts(prev, counts) ? prev : counts
+}
+
+const sessionText = (sessions: Record<string, number>) =>
+  Object.entries(sessions)
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, n]) => `${label} ${n}`)
+    .join(' · ')
+
 export type Tone = 'now' | 'pass' | 'fail' | 'earlier' | 'quiet'
 export type Segment = { label: string; text: string; tone: Tone }
 
@@ -245,6 +323,7 @@ export function bandSegments(lens: Lens, showScope = false, now = Date.now()): S
   const skill = lens.skills.at(-1)
   const gate = lens.gates.at(-1)
   const refusal = lens.refusals.at(-1)
+  const sessions = sessionText(lens.sessions ?? {})
   // Only a harness that declares where its scope lives gets the segment, so the starter's band is unchanged.
   const scope: Segment[] = showScope
     ? [lens.scope ? { label: 'scope', text: scopeText(lens.scope), tone: 'earlier' } : { label: 'scope', text: 'none', tone: 'quiet' }]
@@ -264,6 +343,7 @@ export function bandSegments(lens: Lens, showScope = false, now = Date.now()): S
       tone: thisTurn(refusal) ? 'fail' : refusal ? 'earlier' : 'quiet',
     },
     reviewSegment(lens, now),
+    sessions ? { label: 'running', text: sessions, tone: 'now' } : { label: 'running', text: 'none', tone: 'quiet' },
   ]
 }
 
@@ -273,8 +353,9 @@ function counts(list: readonly Hit[]): string {
   return [...seen].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ')
 }
 
-// What /lens prints: the whole session, layer by layer.
-export function lensReport(lens: Lens, showScope = false, now = Date.now()): string {
+// What /lens prints: the whole session, layer by layer. `labels` are the configured `running` labels,
+// each listed with its count, a zero included.
+export function lensReport(lens: Lens, showScope = false, now = Date.now(), labels: readonly string[] = Object.keys(STARTER.running)): string {
   const open = running(lens)
   const names = (list: readonly Hit[]) => (list.length ? list.map(hit => hit.name).join(', ') : 'none')
   const passed = lens.gates.filter(gate => gate.ok)
@@ -291,6 +372,8 @@ export function lensReport(lens: Lens, showScope = false, now = Date.now()): str
     `  Gates: ${gates}`,
     `  Guard refusals: ${lens.refusals.length ? counts(lens.refusals) : 'none'} (the reasons are in the transcript)`,
     `  Reviewers: ${names(lens.reviews)}`,
-    ...(open.length ? ['  Running now:', ...open.map(run => `    ${run.name} ${elapsed(run, now)}`)] : ['  Running now: nothing']),
+    '  Running now:',
+    ...(open.length ? open.map(run => `    ${run.name} ${elapsed(run, now)}`) : ['    no reviewers']),
+    ...labels.map(label => `    ${label} sessions: ${lens.sessions?.[label] ?? 0}`),
   ].join('\n')
 }
