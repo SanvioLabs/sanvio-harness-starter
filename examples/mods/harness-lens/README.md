@@ -71,10 +71,8 @@ or a plugin's agent never shows, and nor does an agent a subagent starts.
 | More than three running | `▶ 4` | How many. `/lens` lists them |
 | Ended well | `✓ reviewer` | The last one to end gave its answer. Green the turn it ended, plain after |
 | Ended badly | `✗ reviewer` | The last one to end stopped on an error, a refusal or an interrupt. Red the turn it ended, plain after |
+| Outcome unknown | `? reviewer` | It ended without the lens seeing how, for example during a reload. Dim |
 | None sent yet | `none yet` | No reviewer has started this session |
-
-A reviewer that ends while the lens is reloading isn't seen ending, so it
-shows `▶` for the rest of the session.
 
 ### The running segment
 

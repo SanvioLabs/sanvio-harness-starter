@@ -222,6 +222,30 @@ export function endRun(lens: Lens, agentId: string, ok: boolean, now: number): L
   }
 }
 
+// How a status in the session's agent list ends a run. A status not here is still working.
+const SETTLED = new Map([['completed', true], ['failed', false], ['killed', false]])
+
+// Runs whose end the lens didn't hear, as when one ends during a reload, settled from the session's agent
+// list. A run the list no longer has ends with its outcome unknown. A run already ended is never touched,
+// and nothing to settle comes back as the same object, so nothing is written.
+export function settleRuns(lens: Lens, rows: readonly { id: string; status: string }[], now: number): Lens {
+  const status = new Map(rows.map(row => [row.id, row.status]))
+  let changed = false
+  const runs = (lens.runs ?? []).map(run => {
+    if (run.ended !== undefined) return run
+    const said = status.get(run.id)
+    if (said === undefined) {
+      changed = true
+      return { ...run, ended: now, turn: lens.turn }
+    }
+    const ok = SETTLED.get(said)
+    if (ok === undefined) return run
+    changed = true
+    return { ...run, ended: now, ok, turn: lens.turn }
+  })
+  return changed ? { ...lens, runs } : lens
+}
+
 const running = (lens: Lens) => (lens.runs ?? []).filter(run => run.ended === undefined)
 
 // 80 seconds is 1:20.
@@ -301,6 +325,8 @@ export function reviewSegment(lens: Lens, now: number): Segment {
   // The last to end, not the last to start: a reviewer started first can finish last.
   const last = (lens.runs ?? []).reduce<Run | undefined>((latest, run) => (latest === undefined || run.ended! >= latest.ended! ? run : latest), undefined)
   if (last) {
+    // Ended without the lens seeing how, so neither ✓ nor ✗.
+    if (last.ok === undefined) return { label: 'review', text: `? ${last.name}`, tone: 'quiet' }
     return {
       label: 'review',
       text: `${last.ok ? '✓' : '✗'} ${last.name}`,

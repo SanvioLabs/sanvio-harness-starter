@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The lens settles reviewers it missed ending
+
+A reviewer that ended while the lens was reloading no longer shows `▶` for the rest of the session.
+Every few seconds, while any reviewer shows as running, the lens checks the session's own list of
+agents: one listed as completed shows `✓`, one failed or killed shows `✗`, and one no longer listed
+shows `? reviewer`, dim, because the lens didn't see how it ended. One still listed as working keeps
+its `▶`. If the list can't be read, nothing changes until the next check.
+
+Files: [`examples/mods/harness-lens/`](examples/mods/harness-lens/) (`hooks/logic.ts`, `hooks/register.tsx`,
+`types/index.d.ts`, [`README.md`](examples/mods/harness-lens/README.md), the tests), version 0.4.1.
+
+**Do:** nothing. The lens is on by default; reload or restart Claude Code to take it.
+
 ## 2026-10-26: The lens counts headless sessions
 
 The lens has a new **running** segment: how many headless `claude` sessions the loop and the agent

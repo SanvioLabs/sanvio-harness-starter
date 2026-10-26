@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, scopeFiles, skillFromPath, startRun, steeringName } from './logic'
+import { CONFIG_FILE, STARTER, alwaysSteering, bandSegments, emptyLens, endRun, gateRun, harnessSkill, lensReport, nextSessions, parseConfig, parseScope, record, relative, remember, scopeFiles, settleRuns, skillFromPath, startRun, steeringName } from './logic'
 import type { Config, Tone } from './logic'
 import type { Lens, Scope } from '../types'
 
@@ -126,7 +126,14 @@ async function tick($: EngineInterface): Promise<void> {
   await refreshScope($).catch(() => {})
   await refreshSessions($).catch(() => {})
   const lens = await read($, lensAtom)
-  if (lens && (lens.runs ?? []).some(run => run.ended === undefined)) $.ui.invalidate('ui.render')
+  if (!lens || !(lens.runs ?? []).some(run => run.ended === undefined)) return
+  // A reviewer can end without the lens hearing, as during a reload, so the session's agent list settles it.
+  // A list that fails changes nothing. The redraw still runs, so a run settled now shows how it ended.
+  try {
+    const rows = await $.agent.list()
+    await change($, l => settleRuns(l, rows, Date.now()))
+  } catch {}
+  $.ui.invalidate('ui.render')
 }
 
 export const register: Register = on => {
