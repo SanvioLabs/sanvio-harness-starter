@@ -466,6 +466,37 @@ class HeadlessPrivate(unittest.TestCase):
                                      ("deny", guard.HEADLESS_PRIVATE), glob)
                 self.assertIsNone(headless("Grep", _cwd=str(root), pattern="x", glob="*.md"))
 
+    def test_a_headless_search_leaves_out_bare_repos_at_any_depth(self):
+        with mock.patch.dict(os.environ, {"HARNESS_HEADLESS": "1"}):
+            rewrite = guard.headless_rewrite
+            self.assertEqual(rewrite({"tool_name": "Grep", "tool_input": {"pattern": "x", "path": "projects/app"}}),
+                             {"pattern": "x", "path": "projects/app", "glob": "!*.[gG][iI][tT]"})
+            self.assertEqual(rewrite({"tool_name": "Grep", "tool_input": {"pattern": "x", "glob": "*.ts",
+                                                                        "output_mode": "content"}}),
+                             {"pattern": "x", "glob": "*.ts !*.[gG][iI][tT]", "output_mode": "content"})
+            self.assertIsNone(rewrite({"tool_name": "Read", "tool_input": {"file_path": "README.md"}}))
+        with mock.patch.dict(os.environ):
+            os.environ.pop("HARNESS_HEADLESS", None)
+            self.assertIsNone(guard.headless_rewrite({"tool_name": "Grep", "tool_input": {"pattern": "x"}}))
+
+    def test_the_hook_passes_a_headless_search_on_changed_and_refuses_as_before(self):
+        def hook(tool_input, headless_run=True):
+            env = dict(os.environ)
+            env.pop("HARNESS_HEADLESS", None)
+            if headless_run:
+                env["HARNESS_HEADLESS"] = "1"
+            event = {"tool_name": "Grep", "tool_input": tool_input, "cwd": guard.ROOT}
+            out = subprocess.run([sys.executable, str(HOOKS / "guard.py")], input=json.dumps(event),
+                                 capture_output=True, text=True, env=env, timeout=30).stdout
+            return json.loads(out)["hookSpecificOutput"] if out.strip() else None
+        changed = hook({"pattern": "x", "path": "projects/app", "glob": "*.ts"})
+        self.assertEqual(changed["updatedInput"]["glob"], "*.ts !*.[gG][iI][tT]")
+        self.assertNotIn("permissionDecision", changed)
+        refused = hook({"pattern": "x", "glob": "{company,*.md}"})
+        self.assertEqual(refused["permissionDecision"], "deny")
+        self.assertNotIn("updatedInput", refused)
+        self.assertIsNone(hook({"pattern": "x", "glob": "*.ts"}, headless_run=False))
+
     def test_the_root_ignores_bare_repos(self):
         self.assertIn("*.git/", (ROOT / ".gitignore").read_text().splitlines())
 

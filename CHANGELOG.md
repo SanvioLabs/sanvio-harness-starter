@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: Headless searches skip bare repos at any depth
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) now passes each headless `Grep` on with `!*.git`, in any case, added to its glob,
+so a search over a project leaves out a bare repo inside it, `vendor/lib.git/` included, where
+before only one at the root or a project's top was left out. Nothing changes in ordinary sessions,
+and the usage log doesn't count the rewrite.
+
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py), [`tests/test_usage.py`](tests/test_usage.py), [`README.md`](README.md)
+
+**Do:** nothing.
+
 ## 2026-10-25: Headless runs skip .inbox and bare repos
 
 A run [`bin/harness`](bin/harness) started now also can't read a leftover `.inbox/` (where the old inbox

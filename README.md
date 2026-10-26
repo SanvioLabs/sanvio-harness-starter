@@ -140,9 +140,12 @@ it back in (`{company,*.md}` does), so a headless `Grep` with such a glob is
 refused. `Glob` lists names and reads nothing; a pattern that names one of them
 outright is refused, but a wildcard such as `c*/**` can still list the names under
 `company/`.
-A bare repo counts only when its folder ends `.git` and sits at the root or at the
-top of a project: a `Grep` over a project that holds one deeper, such as
-`vendor/lib.git/`, still searches it, as it would any file in that folder.
+A bare repo counts when its folder ends `.git`. Each headless `Grep` is passed on
+with `!*.[gG][iI][tT]` (`!*.git` in any case) added to its glob, which ripgrep lets
+win over any glob before it, so a search leaves out a bare repo at any depth
+(`vendor/lib.git/` included). That was
+measured on Claude Code 2.1.310; if a later version stops applying a hook's
+`updatedInput`, a bare repo deeper than a project's top folder is searched again.
 In every session, a `Grep` that names a credential file in its path or glob, or
 whose glob can only match one, is refused as a `Read` of it is, and so is a link
 that lands on one. What the guard can't see is which files a search
