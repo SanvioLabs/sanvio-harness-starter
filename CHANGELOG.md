@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Spend and conversation tokens by day
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains `by_day` in `loop_spend` and in each side of `conversations`:
+every day from `--since` to today, oldest first, with its tokens, and for spend its `cost_usd`. A day
+with nothing on it is 0, not left out. Both series cover the same days, in local time: a reply is
+counted on the day it was where you are, so an evening west of UTC stays on its own day. The conversation
+cache now keeps that local day too, so the first run after taking this reads every transcript again once.
+`loop_spend` also gains `first_run`, the earliest day a run counted since `--since` started, or `null`. A section
+that's `null` with a `why` has neither. Touches
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing.
+
 ## 2026-10-27: Loop rework in the dashboard numbers
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains a `loop_rework` section: how many of the loop's pull requests
