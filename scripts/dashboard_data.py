@@ -220,10 +220,12 @@ def freshness(root, result):
             paths.append(name)
     prefix = git(root, "rev-parse", "--show-prefix")
     status = git(root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *paths)
-    if prefix is None or status is None:
+    # Newest commit first, each as a NUL, its date, then the names it touched, one per line.
+    log = git(root, "-c", "core.quotePath=false", "log", "--format=%x00%cI", "--name-only", "--", *paths)
+    if prefix is None or status is None or log is None:
         return dict(unknown, stale=None, why="no git")
-    # Status names files from the repository's top, so the prefix comes off to match paths. A rename or
-    # copy is followed by a field holding the old name, which is skipped.
+    # Status and log name files from the repository's top, so the prefix comes off to match paths. A
+    # rename or copy in status is followed by a field holding the old name, which is skipped.
     top, dirty = prefix.strip(), set()
     fields = iter(status.split("\0"))
     for field in fields:
@@ -232,18 +234,18 @@ def freshness(root, result):
         if field[3:].startswith(top):
             dirty.add(field[3 + len(top):])
     dates = {}
-    for name in paths:
-        if name in dirty:
-            try:
-                dates[name] = datetime.datetime.fromtimestamp((root / name).stat().st_mtime).astimezone()
-            except OSError:
-                dates[name] = datetime.datetime.now().astimezone()  # deleted, so changed by now
-            continue
-        committed = git(root, "log", "-1", "--format=%cI", "--", name)
-        if committed is None:
-            return dict(unknown, stale=None, why="no git")
-        if when(committed.strip()):
-            dates[name] = when(committed.strip())
+    for name in dirty & set(paths):
+        try:
+            dates[name] = datetime.datetime.fromtimestamp((root / name).stat().st_mtime).astimezone()
+        except OSError:
+            dates[name] = datetime.datetime.now().astimezone()  # deleted, so changed by now
+    for entry in log.split("\0")[1:]:
+        lines = [line for line in entry.split("\n") if line]
+        date = when(lines[0]) if lines else None
+        for line in lines[1:]:
+            name = line[len(top):] if line.startswith(top) else None
+            if date and name in paths and name not in dates:
+                dates[name] = date  # the first commit seen is the newest
     changed = sorted(name for name, date in dates.items() if date > saved)
     return {"stale": bool(changed), "changed": changed,
             "newest_change": max(dates[name] for name in changed).isoformat(timespec="seconds") if changed else None}

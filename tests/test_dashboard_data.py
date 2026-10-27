@@ -231,12 +231,14 @@ class StaleEvals(Harness):
 
     def git(self, *args, date=None):
         env = dict(os.environ, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date) if date else None
-        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
-                       check=True, capture_output=True, env=env)
+        return subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                               *args], check=True, capture_output=True, text=True, env=env).stdout
 
     def commit(self, date):
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "change", date=date)
+        # The tests turn on this date, so a commit git dated otherwise fails here rather than as a fresh result.
+        self.assertEqual(self.git("log", "-1", "--format=%cI").strip(), date)
 
     def save(self, reviewer, **fields):
         result = {"reviewer": reviewer, "folder": "evals", "saved": self.SAVED, "cases": {"01-x": {"status": "stable"}}}
