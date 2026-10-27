@@ -14,9 +14,11 @@
                      model is under "null". cost_per_pr is, over the issues that ran since --since
                      and are in status.json, their cost over how many have a pull request,
                      or null when none has one. by_day lists every day from --since to today, oldest
-                     first, each with its tokens and cost_usd, 0 and 0.0 on a day with no run. A run
-                     dated after today, as a wrong clock can make, counts in since but has no day.
-                     first_run is the earliest day a run was counted since --since, or null
+                     first, each with its tokens and cost_usd, 0 and 0.0 on a day with no run, and
+                     cost_usd null on a day whose runs recorded no cost. run_started is local time,
+                     so a run dated after today only comes from a wrong clock: it counts in since
+                     but has no day. first_run is the earliest day a run was counted since --since,
+                     or null
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
@@ -36,8 +38,10 @@
                      projects/, "loop" for the loop's worktrees, each by model (input, output, cache
                      writes, cache reads and total) with how many sessions, and by_day, every day
                      from --since to today, oldest first, with its total tokens, 0 on a day with no
-                     reply. A reply dated after today counts in by_model but has no day. What each transcript
-                     held is kept in .harness/cache/conversations.json and read again only when the
+                     reply. Transcripts are dated in UTC, so west of UTC an evening's replies fall on
+                     tomorrow: by_day runs on to tomorrow on both sides when a reply is dated there.
+                     A reply dated later still, from a wrong clock, counts in by_model but has no
+                     day. What each transcript held is kept in .harness/cache/conversations.json and read again only when the
                      file's size or time changes: per reply, its message and request ids, day, side,
                      model, session id and counts, under the transcript's path, and nothing else
     waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
@@ -506,7 +510,10 @@ def conversations(root, since, today, projects_dir, cache_path):
 
     by_model = {"harness": {}, "loop": {}}
     sessions = {"harness": set(), "loop": set()}
-    by_day = {side: dict.fromkeys(days(since, today), 0) for side in ("harness", "loop")}
+    # UTC is at most a day ahead of local time, so tomorrow is the latest day a right clock can give.
+    tomorrow = today + datetime.timedelta(days=1)
+    by_day = {side: dict.fromkeys(days(since, tomorrow), 0) for side in ("harness", "loop")}
+    ahead = False
     seen = set()
     for entry in fresh.values():
         for message_id, request_id, day, side, model, session, *counts in entry["replies"]:
@@ -519,8 +526,12 @@ def conversations(root, since, today, projects_dir, cache_path):
             by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0] * len(COUNTS)), counts)]
             if day in by_day[side]:
                 by_day[side][day] += sum(counts)
+                ahead = ahead or day == tomorrow.isoformat()
             if session:
                 sessions[side].add(session)
+    if not ahead:
+        for side in by_day:
+            by_day[side].pop(tomorrow.isoformat(), None)  # not there when --since is after tomorrow
     return {side: {"by_model": {model: dict(zip(COUNTS, values), total=sum(values))
                                 for model, values in sorted(by_model[side].items(), key=lambda kv: natural(kv[0]))},
                    "sessions": len(sessions[side]),

@@ -31,8 +31,9 @@ fine).
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains `by_day` in `loop_spend` and in each side of `conversations`:
 every day from `--since` to today, oldest first, with its tokens, and for spend its `cost_usd`. A day
-with nothing on it is 0, not left out. `loop_spend` also gains `first_run`, the earliest day a run was
-counted in the period, or `null`. A section that's `null` with a `why` has neither. Touches
+with nothing on it is 0, not left out. Transcripts are dated in UTC, so the conversation days run on to
+tomorrow when an evening west of UTC has put a reply there. `loop_spend` also gains `first_run`, the
+earliest day a run was counted in the period, or `null`. A section that's `null` with a `why` has neither. Touches
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
 
 **Do:** nothing.
