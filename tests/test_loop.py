@@ -2688,7 +2688,10 @@ class TestProject(unittest.TestCase):
         for line in ("→ Read scripts/loop.py", bash, "→ Edit scripts/loop.py"):
             self.assertIn(line, lines)
         # The Bash line is one line, and what it shows of the command is at most 80 characters.
-        self.assertEqual([l for l in lines if l.startswith("→ Bash")], [bash])
+        # agent.log holds every step of the issue, and each claude step streams this, so count per line.
+        shown = [l for l in lines if l.startswith("→ Bash")]
+        self.assertTrue(shown)
+        self.assertTrue(all(l == bash for l in shown), shown)
         self.assertLessEqual(len(bash[len("→ Bash "):]), 80)
         for hidden in ("OLD-STRING-MARKER", "NEW-STRING-MARKER", "TOOL-RESULT-MARKER", "NOT-JSON-MARKER", '"type"'):
             self.assertNotIn(hidden, log)
