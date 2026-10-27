@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Dashboard numbers as JSON
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the
+loop's estimated spend today, over the last 7 days and since `--since` (14 days by default), by issue,
+step and model, with the cost per pull request; how many recent issues are in each state and how many
+took more than one round; your usage log's skills, agents, commands, guard refusals and asks; and the
+newest saved eval for each reviewer. A section whose source is missing or unreadable is `null` with a
+`why`, and it still exits 0. It prints counts and names only, never a title, note, prompt or path.
+[`scripts/token_report.py`](scripts/token_report.py) gains `loop_runs()`, which both scripts read the loop's records with; its
+report is unchanged. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`scripts/token_report.py`](scripts/token_report.py),
+[`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing.
+
 ## 2026-10-27: Eval results saved to .harness/evals/
 
 `--save` with no file now writes [`scripts/eval_agents.py`](scripts/eval_agents.py)'s results to `.harness/evals/`, named for

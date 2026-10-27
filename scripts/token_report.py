@@ -44,19 +44,23 @@ def loop_dir(root):
     return Path.home() / ".harness-loop" / Path(root).name
 
 
-def loop_costs(root, since):
-    """{issue: (estimated dollars or None, runs without a cost)} from the loop's usage.json records.
-
-    A harness issue is issue-N, a project's is <name>/issue-N. A run counts when its run_started, the
-    time the loop picked the issue up, is on or after `since`; a run with no run_started is in no
-    period. A run without a numeric cost_usd (it ended early, its agent isn't Claude, or it predates the
-    loop recording cost) is counted as one without. A record that can't be read is skipped.
-    """
+def usage_files(root):
+    """(issue, path) for every usage.json the loop wrote: issue-N for the harness, <name>/issue-N for a project."""
     state = Path(root) / ".loop"
     paths = [(p.parent.name, p) for p in state.glob("issue-*/usage.json")]
     paths += [("{}/{}".format(p.parent.parent.name, p.parent.name), p) for p in state.glob("projects/*/issue-*/usage.json")]
+    return paths
+
+
+def loop_runs(root, since):
+    """{issue: [usage.json entries]} for the loop's runs on or after `since`.
+
+    A run counts when its run_started, the time the loop picked the issue up, is on or after `since`;
+    a run with no run_started is in no period. A record that can't be read is skipped, and an issue
+    with no run in the period is left out.
+    """
     out = {}
-    for name, path in paths:
+    for name, path in usage_files(root):
         try:
             found = json.loads(path.read_text())
         except (OSError, ValueError):
@@ -65,9 +69,21 @@ def loop_costs(root, since):
             continue
         runs = [e for e in found if isinstance(e, dict) and isinstance(e.get("run_started"), str)
                 and e["run_started"][:10] >= since]
-        priced = [e for e in runs if isinstance(e.get("cost_usd"), (int, float)) and not isinstance(e.get("cost_usd"), bool)]
         if runs:
-            out[name] = (usage_totals(priced)[1], len(runs) - len(priced))
+            out[name] = runs
+    return out
+
+
+def loop_costs(root, since):
+    """{issue: (estimated dollars or None, runs without a cost)} from loop_runs().
+
+    A run without a numeric cost_usd (it ended early, its agent isn't Claude, or it predates the
+    loop recording cost) is counted as one without.
+    """
+    out = {}
+    for name, runs in loop_runs(root, since).items():
+        priced = [e for e in runs if isinstance(e.get("cost_usd"), (int, float)) and not isinstance(e.get("cost_usd"), bool)]
+        out[name] = (usage_totals(priced)[1], len(runs) - len(priced))
     return out
 
 
