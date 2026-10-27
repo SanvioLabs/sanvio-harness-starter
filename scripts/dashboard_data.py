@@ -19,25 +19,35 @@
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
                      slash commands by name, guard refusals by rule, and how many times it asked
     evals            the newest file in .harness/evals/ for each reviewer: when it was saved, how
-                     many cases were stable, flaky and failing, and the failing cases' names
+                     many cases were stable, flaky and failing, and the failing cases' names. stale
+                     is true when a file the result rests on changed after it was saved: the agent's
+                     file in agents/, scripts/eval_agents.py, or a case's case.json, work file or
+                     brief. A file changed when its last commit is later than saved, or when it has
+                     uncommitted changes written later. changed lists those files from the harness
+                     root, and newest_change is the latest of their dates. A result with no saved
+                     time or no cases in its folder is stale with a why, and one git can't check
+                     has stale null with a why
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the why names
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
 only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
 cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Nothing it prints holds a title, a note, a pull request's address, a
-prompt, an eval's reasons or a file path: counts, dollars, dates, issue names, step, model, skill,
-agent, rule and case names. The dollars are the loop's estimate at API prices, not what was billed.
+prompt, an eval's reasons or a file path other than those in changed, which are from the harness root:
+counts, dollars, dates, issue names, step, model, skill, agent, rule and case names. The dollars are the
+loop's estimate at API prices, not what was billed.
 """
 import argparse
 import datetime
 import json
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (needs scripts/ on the path first)
+from eval_agents import load_cases  # noqa: E402 (needs scripts/ on the path first)
+from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (same reason)
 from token_report import loop_runs, natural, usage_files  # noqa: E402 (same reason)
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
 
@@ -159,6 +169,86 @@ def activity(root, since):
             "asks": sum(1 for l in lines if l.get("event") == "guard_ask")}
 
 
+def git(root, *args):
+    """git's output run in root, or None when git isn't there or fails."""
+    try:
+        done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def when(text):
+    """text as an aware datetime, a time without an offset taken as local, or None when it isn't one."""
+    try:
+        found = datetime.datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    return found if found.tzinfo else found.astimezone()
+
+
+def freshness(root, result):
+    """{stale, changed, newest_change} for a saved result, with a why when it can't say from the files.
+
+    The files are the agent's, eval_agents.py, and each case's case.json, work file and brief. One counts
+    as changed when its date is later than "saved": its last commit's, or for one with uncommitted
+    changes, when it was last written."""
+    root = Path(root).resolve()
+    unknown = {"stale": True, "changed": [], "newest_change": None}
+    saved = when(result.get("saved"))
+    if saved is None:
+        return dict(unknown, why="no saved time")
+    folder = result.get("folder")
+    try:
+        cases = load_cases(root / folder) if isinstance(folder, str) and folder else []
+    except (OSError, ValueError, TypeError, AttributeError):
+        cases = []
+    if not cases:
+        return dict(unknown, why="folder missing")
+    files = [root / "agents" / (result["reviewer"] + ".md"), root / "scripts" / "eval_agents.py"]
+    for case in cases:
+        files += [case["folder"] / "case.json", case["work"]]
+        if isinstance(case.get("brief"), str) and case["brief"]:
+            files.append(root / case["brief"])
+    paths = []
+    for path in files:
+        try:
+            name = path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue  # outside the harness: git here can't date it, and its path isn't printed
+        if name not in paths:
+            paths.append(name)
+    prefix = git(root, "rev-parse", "--show-prefix")
+    status = git(root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *paths)
+    if prefix is None or status is None:
+        return dict(unknown, stale=None, why="no git")
+    # Status names files from the repository's top, so the prefix comes off to match paths. A rename or
+    # copy is followed by a field holding the old name, which is skipped.
+    top, dirty = prefix.strip(), set()
+    fields = iter(status.split("\0"))
+    for field in fields:
+        if "R" in field[:2] or "C" in field[:2]:
+            next(fields, None)
+        if field[3:].startswith(top):
+            dirty.add(field[3 + len(top):])
+    dates = {}
+    for name in paths:
+        if name in dirty:
+            try:
+                dates[name] = datetime.datetime.fromtimestamp((root / name).stat().st_mtime).astimezone()
+            except OSError:
+                dates[name] = datetime.datetime.now().astimezone()  # deleted, so changed by now
+            continue
+        committed = git(root, "log", "-1", "--format=%cI", "--", name)
+        if committed is None:
+            return dict(unknown, stale=None, why="no git")
+        if when(committed.strip()):
+            dates[name] = when(committed.strip())
+    changed = sorted(name for name, date in dates.items() if date > saved)
+    return {"stale": bool(changed), "changed": changed,
+            "newest_change": max(dates[name] for name in changed).isoformat(timespec="seconds") if changed else None}
+
+
 def evals(root):
     """The newest saved result for each reviewer. The same loop as eval_agents.latest(): names start with
     the time they were saved, so name order newest first, matched on the "reviewer" field, not the name.
@@ -183,7 +273,8 @@ def evals(root):
                          "stable": sum(1 for s in statuses.values() if s == "stable"),
                          "flaky": sum(1 for s in statuses.values() if s == "flaky"),
                          "failing": sum(1 for s in statuses.values() if s == "failing"),
-                         "failing_cases": sorted(name for name, s in statuses.items() if s == "failing")}
+                         "failing_cases": sorted(name for name, s in statuses.items() if s == "failing"),
+                         **freshness(root, found)}
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
