@@ -42,8 +42,13 @@ The summary line gives the tokens and seconds it used.
 From the harness root:
 
 ```
-python3 scripts/eval_agents.py examples/proposal/evals --save ~/before.json
+python3 scripts/eval_agents.py examples/proposal/evals --save
 ```
+
+`--save` on its own writes the results to `.harness/evals/`, as a file named for the
+time and the reviewer, such as `2026-10-27T0930-reviewer.json`. `.harness/` is
+gitignored. `--save FILE` still writes to the file you name. Keep the folder before
+`--save`: written after it, the folder would be read as the file.
 
 That runs `claude -p`, held to read tools like the loop's readers. Use `--agent` for
 another: `codex`, or a command line that reads the prompt on standard input and can
@@ -91,11 +96,15 @@ not. A miss prints as `not mentioned: …`.
 To compare a change with before it, save a run before you edit, then run again with it:
 
 ```
-python3 scripts/eval_agents.py examples/proposal/evals --baseline ~/before.json
+python3 scripts/eval_agents.py examples/proposal/evals --baseline latest
 ```
 
-It lists the cases whose status changed, such as `01-unlimited-revisions: stable -> failing`.
-Keep the saved file outside the repo: it holds one person's run on one model.
+`latest` is the newest file in `.harness/evals/` saved for the same reviewer, read from
+its `"reviewer"` field, and it prints the file it used. `--baseline FILE` compares with
+that file instead. It lists the cases whose status changed, such as
+`01-unlimited-revisions: stable -> failing`. Both defaults need every case in the folder
+to name the same agent, and refuse before any session starts if they don't. Never
+commit a saved file: it holds one person's run on one model.
 
 ## Cases for the security reviewer
 
