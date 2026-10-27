@@ -404,7 +404,8 @@ class Baseline(unittest.TestCase):
                 got = json.loads(path.read_text())
                 self.assertEqual(got["reviewer"], "reviewer", path)
                 self.assertEqual(got["folder"], str((Path(tmp) / "cases").resolve()), path)
-                datetime.fromisoformat(got["saved"])
+                # With its offset: it's compared with git commit dates, which carry one.
+                self.assertIsNotNone(datetime.fromisoformat(got["saved"]).tzinfo, path)
 
     def test_baseline_latest_takes_the_newest_run_of_the_same_reviewer(self):
         with tempfile.TemporaryDirectory() as tmp:

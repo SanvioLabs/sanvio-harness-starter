@@ -284,7 +284,8 @@ def main(argv):
     print("{} stable, {} flaky, {} failing; {} tokens, {:.0f}s".format(
         *counts, sum(tokens) if tokens else "unknown", sum(r["seconds"] for r in results.values())))
     if args.save is not None:
-        now = datetime.now()
+        # With its UTC offset, so it compares with git's commit dates, which carry one.
+        now = datetime.now().astimezone()
         path = Path(args.save) if args.save else SAVED / "{:%Y-%m-%dT%H%M}-{}.json".format(now, reviewer)
         if not args.save:
             path.parent.mkdir(parents=True, exist_ok=True)
