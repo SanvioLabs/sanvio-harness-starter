@@ -6,13 +6,14 @@
 
 --json is the only output, and the script refuses to run without it. It prints one object:
 
-    generated        today, YYYY-MM-DD
+    generated        when it ran, an ISO time with the local offset
     since            the first day counted
     loop_spend       tokens and estimated dollars from the loop's .loop/**/usage.json records: today,
                      the last 7 days and since --since, each keyed on when the loop picked the issue
                      up, then the --since totals by issue, step and model. A run that recorded no
-                     model is under "null". cost_per_pr is the --since cost over the issues in
-                     status.json with a pull request, or null when there are none
+                     model is under "null". cost_per_pr is, over the issues that ran since --since
+                     and are in status.json, their cost over how many have a pull request,
+                     or null when none has one
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
@@ -22,8 +23,8 @@
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the why names
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
-only the loop's 20 most recent issues, so throughput and cost_per_pr's count of pull requests cover
-those, whatever --since says. Nothing it prints holds a title, a note, a pull request's address, a
+only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
+cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Nothing it prints holds a title, a note, a pull request's address, a
 prompt, an eval's reasons or a file path: counts, dollars, dates, issue names, step, model, skill,
 agent, rule and case names. The dollars are the loop's estimate at API prices, not what was billed.
 """
@@ -119,9 +120,11 @@ def loop_spend(root, since, today):
            "by_model": by(lambda issue, e: named(e.get("model")))}
     for name, value in out["by_model"].items():
         value["label"] = "model not recorded" if name == "null" else name
-    rows, _ = status_rows(root)
-    prs = sum(1 for row in (rows or {}).values() if row.get("pr"))
-    cost = out["since"]["cost_usd"]
+    # Both sides over the same issues: ones that ran in the period and status.json still lists.
+    rows = status_rows(root)[0] or {}
+    tracked = {issue for issue in out["by_issue"] if issue in rows}
+    prs = sum(1 for issue in tracked if rows[issue].get("pr"))
+    cost = totals([e for issue, e in counted if issue in tracked])["cost_usd"]
     out["cost_per_pr"] = round(cost / prs, 4) if prs and cost is not None else None
     return out
 
@@ -184,8 +187,9 @@ def evals(root):
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
-def build(root, since, today):
-    return {"generated": today.isoformat(), "since": since,
+def build(root, since, today, now=None):
+    now = now or datetime.datetime.now().astimezone()
+    return {"generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
@@ -193,13 +197,14 @@ def build(root, since, today):
 
 
 def main(argv=None, root=ROOT):
-    today = datetime.date.today()
+    now = datetime.datetime.now().astimezone()
+    today = now.date()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", required=True, help="print the numbers as JSON")
     parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat(),
                         help="the first day to count, as YYYY-MM-DD (default: 14 days ago)")
     args = parser.parse_args(argv)
-    print(json.dumps(build(root, args.since, today), indent=2))
+    print(json.dumps(build(root, args.since, today, now), indent=2))
     return 0
 
 

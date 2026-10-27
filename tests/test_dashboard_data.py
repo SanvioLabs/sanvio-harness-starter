@@ -102,6 +102,7 @@ class Layout(Harness):
         found = json.loads(out)
         self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals"])
         self.assertEqual(found["since"], SINCE)
+        self.assertIsNotNone(datetime.datetime.fromisoformat(found["generated"]).tzinfo)
 
     def test_without_json_it_refuses(self):
         with self.assertRaises(SystemExit) as raised, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -147,6 +148,16 @@ class Spend(Harness):
 class CostPerPr(Harness):
     def test_the_since_cost_over_the_issues_with_a_pull_request(self):
         self.fill()
+        self.assertEqual(self.build()["loop_spend"]["cost_per_pr"], 2.0)
+
+    def test_only_issues_that_ran_in_the_period_and_status_json_lists(self):
+        self.fill()
+        # #5 has a pull request but no run since SINCE; #11 ran but has dropped off status.json.
+        found = json.loads((self.root / ".loop" / "status.json").read_text())
+        found["issues"].append({"number": 5, "state": "pr", "round": 1, "pr": "https://github.com/o/r/pull/2"})
+        write(self.root, ".loop/status.json", found)
+        write(self.root, ".loop/issue-5/usage.json", [run("2026-10-01T09:00:00", "plan", "claude-a", 1, 8.0)])
+        write(self.root, ".loop/issue-11/usage.json", [run("2026-10-20T09:00:00", "plan", "claude-a", 1, 6.0)])
         self.assertEqual(self.build()["loop_spend"]["cost_per_pr"], 2.0)
 
     def test_no_pull_request_gives_null(self):

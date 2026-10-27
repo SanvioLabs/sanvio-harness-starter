@@ -31,7 +31,7 @@ fine).
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the
 loop's estimated spend today, over the last 7 days and since `--since` (14 days by default), by issue,
-step and model, with the cost per pull request; how many recent issues are in each state and how many
+step and model, with the cost per pull request over the issues that ran in that time; how many recent issues are in each state and how many
 took more than one round; your usage log's skills, agents, commands, guard refusals and asks; and the
 newest saved eval for each reviewer. A section whose source is missing or unreadable is `null` with a
 `why`, and it still exits 0. It prints counts and names only, never a title, note, prompt or path.
