@@ -17,8 +17,8 @@
                      first, each with its tokens and cost_usd, 0 and 0.0 on a day with no run, and
                      cost_usd null on a day whose runs recorded no cost. run_started is local time,
                      so a run dated after today only comes from a wrong clock: it counts in since
-                     but has no day. first_run is the earliest day in by_day with a run counted on
-                     it, or null
+                     but has no day. first_run is the earliest day a run counted since --since
+                     started, or null
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
@@ -187,7 +187,7 @@ def loop_spend(root, since, today):
         on.setdefault(e["run_started"][:10], []).append(e)
     out["by_day"] = [dict(day=d, **(totals(on[d]) if d in on else {"tokens": 0, "cost_usd": 0.0}))
                      for d in days(since, today)]
-    out["first_run"] = next((d["day"] for d in out["by_day"] if d["day"] in on), None)
+    out["first_run"] = min((e["run_started"][:10] for _, e in counted), default=None)
     # Both sides over the same issues: ones that ran in the period and status.json still lists.
     rows = status_rows(root)[0] or {}
     tracked = {issue for issue in out["by_issue"] if issue in rows}

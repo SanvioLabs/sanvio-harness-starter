@@ -253,12 +253,6 @@ class SpendByDay(Harness):
         self.assertEqual(spend["since"], {"tokens": 1315 + 7, "cost_usd": 4.0 + 0.5})
         self.assertEqual(sum(d["tokens"] for d in spend["by_day"]), 1315)
 
-    def test_first_run_is_a_day_in_by_day_when_a_run_is_dated_after_today(self):
-        write(self.root, ".loop/issue-7/usage.json", [run("2026-10-28T09:00:00", "plan", "m", 10, 1.0)])
-        self.assertIsNone(self.build()["loop_spend"]["first_run"])
-        write(self.root, ".loop/issue-8/usage.json", [run("2026-10-22T09:00:00", "plan", "m", 10, 1.0)])
-        self.assertEqual(self.build()["loop_spend"]["first_run"], "2026-10-22")
-
     def test_no_run_counted_gives_no_first_run_and_every_day_zero(self):
         write(self.root, ".loop/issue-7/usage.json", [run("2026-09-01T09:00:00", "plan", "m", 10, 1.0)])
         spend = self.build()["loop_spend"]
@@ -732,6 +726,7 @@ class Conversations(Harness):
 
     def test_by_day_runs_over_the_same_days_as_loop_spend(self):
         lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-28T02:00:00Z")])
+        write(self.root, ".loop/issue-7/usage.json", [run("2026-10-22T09:00:00", "plan", "m", 10, 1.0)])
         found = self.build()
         spend = [d["day"] for d in found["loop_spend"]["by_day"]]
         for side in ("harness", "loop"):
