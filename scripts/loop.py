@@ -615,11 +615,19 @@ def progress_line(line):
             target = next((given[key] for key in ("file_path", "path", "pattern", "url")
                            if isinstance(given.get(key), str)), None)
             if target is None and isinstance(given.get("command"), str):
-                target = " ".join(given["command"].splitlines())
+                # One line, cut to 80 characters: a long command would otherwise fill the window.
+                target = " ".join(given["command"].splitlines())[:80]
             name = block.get("name") if isinstance(block.get("name"), str) else "tool"
-            # One line, cut to 80 characters: a long command would otherwise fill the window.
-            shown.append(" ".join(["→", name] + ([target] if target else []))[:80])
+            shown.append(" ".join(["→", name] + ([target] if target else [])))
     return "\n".join(shown) if shown else None
+
+
+def is_event(line):
+    """Whether a line is one of stream-json's events, a JSON object, rather than something else said."""
+    try:
+        return isinstance(json.loads(line), dict)
+    except ValueError:
+        return False
 
 
 def output_format(cmd):
@@ -1105,9 +1113,10 @@ class Loop:
 
         A claude command is asked for --output-format stream-json --verbose, which prints each event as
         it happens and its reply once, at the end, in a result event. Each tool call and each text block
-        goes to the log as plain text (progress_line), and nothing else that streams does. The result
-        is replaced by the reply's text, which goes to the log too and is all the return value holds,
-        so everything built from it reads as plain text, and its usage is recorded for number.
+        goes to the log as plain text (progress_line), as does any line that isn't an event, which is
+        stderr, and no other event does. The result is replaced by the reply's text, which goes to the
+        log too and is all the return value holds, so everything built from it reads as plain text, and
+        its usage is recorded for number.
         """
         timeout = self.cfg["agent_timeout"]
         # Unless the command already chose a format: that's kept as written, and usage is read only if
@@ -1165,10 +1174,13 @@ class Loop:
                             line, usage = found
                             line = line if line.endswith("\n") else line + "\n"
                         elif streaming:
-                            # Progress goes to the log only, and a line it doesn't show is dropped.
-                            line = progress_line(line)
-                            if line is None:
+                            # Progress goes to the log only, and an event it doesn't show is dropped. A
+                            # line that isn't an event is stderr, such as an auth failure: it's kept as
+                            # it is, so a run that fails says why.
+                            shown = progress_line(line)
+                            if shown is None and is_event(line):
                                 continue
+                            line = line if shown is None else shown
                             handle.write(line if line.endswith("\n") else line + "\n")
                             handle.flush()
                             continue

@@ -31,8 +31,8 @@ fine).
 
 A `claude` agent run by [`scripts/loop.py`](scripts/loop.py) now writes each tool call to `.loop/issue-N/agent.log` as it
 makes it, one line each, by its name and what it acts on: `→ Read scripts/loop.py`, or a command
-on one line cut to 80 characters. What the agent says between calls shows too. A tool's other input
-and what it returned don't. The loop asks claude for `--output-format stream-json --verbose` in place
+on one line cut to 80 characters. What the agent says between calls shows too, and so does anything
+claude writes to stderr. A tool's other input and what it returned don't. The loop asks claude for `--output-format stream-json --verbose` in place
 of `json`, and still reads usage from the result at the end. A command that names its own output
 format keeps it, and a `stream-json` one is run as written.
 
