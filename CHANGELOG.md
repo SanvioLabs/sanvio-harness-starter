@@ -33,9 +33,48 @@ fine).
 (branch `loop/issue-N`) merged since `--since`, how many gained a commit without the loop's
 `Loop: issue #` line, and each of those with its number, title, merges from main and other commits.
 It reads them through `gh`, and is `null` with a `why` when `gh` fails. Each pull request's commits are
-fetched once and cached in `.harness/cache/loop_rework.json`. Its pull request titles are the one
-place the script prints a title. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py),
+fetched once and cached in `.harness/cache/loop_rework.json`. Its pull request titles are printed,
+as `waiting`'s are; a commit's message and author never are. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py),
 [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing.
+
+## 2026-10-27: What's waiting in the dashboard data
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains a `waiting` section with two halves that fail on their own.
+`pull_requests` is the harness repo's open pull requests from `gh`, each with its title, when it
+opened, hours waited, its loop issue for a `loop/issue-N` branch, whether it's a draft, its checks
+(`pass`, `fail`, `pending`, or `null` with none) and whether it conflicts; without `gh`, signed out or
+on output it can't read, it's `null` with `why: "gh unavailable"`, never an empty list. `blocked` is
+the issues in `status.json`, the harness's and each project's, whose state is blocked, with title,
+note and last update. The rule that the output holds no title or note now has this one exception:
+titles and notes appear under `waiting` and nowhere else; addresses, prompts and paths still never
+appear. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing. Anything that reads the output and assumed it holds no titles should skip `waiting`.
+
+## 2026-10-27: Stale eval results marked
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `evals` now says, for each reviewer's newest saved result, whether it is
+stale: whether the agent's file in [`agents/`](agents/), [`scripts/eval_agents.py`](scripts/eval_agents.py), or a case's `case.json`, work file or
+brief was committed, or edited and not yet committed, or written while git ignores it, after the result was saved. `changed` lists
+those files from the harness root and `newest_change` gives the latest date. A result with no saved
+time or no cases in its folder is stale with a `why`, and one git can't check has `stale: null`.
+Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing. To clear a stale result, run the eval again with `--save`.
+
+## 2026-10-27: Conversation tokens in the dashboard numbers
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` gains a `conversations` section: Claude Code's tokens since
+`--since` from `~/.claude/projects`, counted as [`scripts/token_report.py`](scripts/token_report.py) counts them, split into
+`harness` (the root and [`projects/`](projects/)) and `loop` (the loop's worktrees), each by model with a session
+count. It keeps what it read in `.harness/cache/conversations.json`, which is gitignored, and reads a transcript again
+only when its size or time changes. The cache holds per-reply ids, days, models,
+session ids and counts under each transcript's path, never a prompt, a reply or a working folder.
+[`scripts/token_report.py`](scripts/token_report.py) gains `read_file()`; its report is unchanged. Touches
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py),
+[`tests/test_token_report.py`](tests/test_token_report.py).
 
 **Do:** nothing.
 
