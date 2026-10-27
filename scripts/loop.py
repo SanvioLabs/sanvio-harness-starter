@@ -431,6 +431,11 @@ def named(value):
     return (name, model.strip()) if name in AGENT_NAMES else (None, "")
 
 
+def configured_model(cfg, which):
+    """The model cfg[which] names, as in claude:claude-opus-5-5 or ollama:qwen3:8b, else None."""
+    return named(cfg.get(which))[1] or None
+
+
 def command_name(value):
     """The tool a command setting runs, for a record: its name, or the last part of a command line's
     first word, so no path is written. None when it's empty."""
@@ -588,6 +593,20 @@ def result_line(line):
     return text, (usage if any(value is not None for value in usage.values()) else None)
 
 
+def init_model(line):
+    """The model a line that is claude's init event names, else None."""
+    if not line.lstrip().startswith("{"):
+        return None
+    try:
+        found = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(found, dict) or found.get("type") != "system" or found.get("subtype") != "init":
+        return None
+    model = found.get("model")
+    return model if isinstance(model, str) and model.strip() else None
+
+
 def progress_line(line):
     """The text agent.log shows for one line of claude's stream-json, else None.
 
@@ -652,21 +671,32 @@ def usage_totals(entries):
 
 
 def usage_table(entries):
-    """The pull request's ## Usage section: a row per step and round, and a total."""
+    """The pull request's ## Usage section: a row per step and round, and a total.
+
+    A row's model is each model its runs named, in the order they ran, or unknown when none did, as
+    for an entry written before models were recorded.
+    """
     groups = {}
     for entry in entries:
         groups.setdefault((entry.get("step", ""), entry.get("round", 0)), []).append(entry)
 
+    def models(group):
+        seen = []
+        for entry in group:
+            if entry.get("model") and entry["model"] not in seen:
+                seen.append(entry["model"])
+        return " · ".join(seen) or "unknown"
+
     def row(name, group):
         tokens, cost = usage_totals(group)
-        return "| {} | {} | {} |".format(
-            name, "not reported" if tokens is None else "{:,}".format(tokens),
+        return "| {} | {} | {} | {} |".format(
+            name, models(group), "not reported" if tokens is None else "{:,}".format(tokens),
             "not reported" if cost is None else "${:,.2f}".format(cost))
 
     rows = [row("{} {}".format(step, round_no) if round_no else step, group)
             for (step, round_no), group in groups.items()]
     rows.append(row("**Total**", entries))
-    return ("## Usage\n\n| Step | Tokens | Cost |\n|---|---|---|\n{}\n\nEstimated at API prices. "
+    return ("## Usage\n\n| Step | Model | Tokens | Cost |\n|---|---|---|---|\n{}\n\nEstimated at API prices. "
             "A subscription is billed differently.\n\n").format("\n".join(rows))
 
 
@@ -1052,7 +1082,7 @@ class Loop:
         """
         cmd, why = self.argv(which, untrusted, confine)
         if cmd is None:
-            self.record_usage(number, step, round_no, None)
+            self.record_usage(number, step, round_no, None, configured_model(self.cfg, which))
             return REFUSED, why
         if number is None:
             return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
@@ -1110,8 +1140,12 @@ class Loop:
         event comes it is what the return value holds, so a run that failed still says why. The result is
         replaced by the reply's text, which goes to the log too and is all the return value holds, so
         everything built from it reads as plain text, and its usage is recorded for number.
+
+        The model is the one claude's init event names, which the log shows ahead of the first tool
+        call and the status row takes. Without one, it's the model cfg[which] names, or None.
         """
         timeout = self.cfg["agent_timeout"]
+        model = configured_model(self.cfg, which)
         # Unless the command already chose a format: that's kept as written, and usage is read only if
         # it's json or stream-json.
         if Path(cmd[0]).name == "claude" and output_format(cmd) is None:
@@ -1124,10 +1158,10 @@ class Loop:
                                     stderr=subprocess.STDOUT if stderr else subprocess.DEVNULL,
                                     text=True, errors="replace", start_new_session=True)
         except FileNotFoundError:
-            self.record_usage(number, step, round_no, None)
+            self.record_usage(number, step, round_no, None, model)
             return 127, "command not found: {}".format(cmd[0])
         except OSError as err:
-            self.record_usage(number, step, round_no, None)
+            self.record_usage(number, step, round_no, None, model)
             return 126, "could not run {}: {}".format(cmd[0], err.strerror or err)
 
         def feed():
@@ -1177,6 +1211,15 @@ class Loop:
                             handle.flush()
                             continue
                         elif streaming:
+                            init = init_model(line)
+                            if init:
+                                # It comes before any tool call, so the window says the model first.
+                                model = init
+                                handle.write("· model {}\n".format(model))
+                                handle.flush()
+                                if number is not None:
+                                    self.mark(number, model=model)
+                                continue
                             # Progress goes to the log only. Any other event, one it doesn't show, is dropped.
                             shown = progress_line(line)
                             if shown is not None:
@@ -1191,7 +1234,7 @@ class Loop:
                 timer.cancel()
                 self.agents.discard(proc)
                 try:
-                    self.record_usage(number, step, round_no, usage)
+                    self.record_usage(number, step, round_no, usage, model)
                 except OSError as err:
                     # Never hides the run's own result.
                     self.log("ERROR", "could not record usage: {}".format(err.strerror or err), number)
@@ -1201,18 +1244,20 @@ class Loop:
             said = stray
         return proc.returncode, "".join(said)
 
-    def record_usage(self, number, step, round_no, usage):
+    def record_usage(self, number, step, round_no, usage, model=None):
         """Append one run to .loop/issue-N/usage.json, then put the issue's totals on its status row.
 
         usage is result_line()'s, or None when the run reported nothing: its entry says so, with null
-        numbers, never 0. The totals cover every entry, so runs before a relabel count too.
+        numbers, never 0. The totals cover every entry, so runs before a relabel count too. model is
+        the one the run used, or None when nothing said which: the entry has null, the log "model unknown".
         """
         if number is None:
             return  # a review of someone else's pull request: no issue to record it on
         with self.write_lock:
             # Under the lock: another worker's mark() reorders these rows.
             started = next((r.get("started") for r in self.status["issues"] if r["number"] == number), None)
-            entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None}
+            entry = {"step": step, "round": round_no, "run_started": started, "reported": usage is not None,
+                     "model": model}
             entry.update(usage or {name: None for name in USAGE_TOKENS + ("cost_usd",)})
             entries = self.usage(number)
             entries.append(entry)
@@ -1224,9 +1269,10 @@ class Loop:
             tokens, cost = usage_totals(entries)
             self.mark(number, tokens=tokens, cost_usd=cost)
         tokens, cost = usage_totals([entry])
-        self.log("USAGE", "{} round {} {}".format(step, round_no, "not reported" if usage is None else
-                 "tokens {} cost {}".format("not reported" if tokens is None else "{:,}".format(tokens),
-                                            "not reported" if cost is None else "${:,.2f}".format(cost))), number)
+        self.log("USAGE", "{} round {} {} {}".format(
+            step, round_no, model or "model unknown", "not reported" if usage is None else
+            "tokens {} cost {}".format("not reported" if tokens is None else "{:,}".format(tokens),
+                                       "not reported" if cost is None else "${:,.2f}".format(cost))), number)
 
     def run_tokens(self, number):
         """Tokens the issue's current run has used: the entries stamped with this run's start. A relabelled

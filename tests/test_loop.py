@@ -96,6 +96,34 @@ class TestPureParts(unittest.TestCase):
                     ["codex", "exec"]):
             self.assertFalse(loop.reports_usage(cmd), cmd)
 
+    def test_a_usage_row_names_each_model_its_runs_used_and_an_old_entry_is_unknown(self):
+        def entry(model, **more):
+            found = dict({"step": "build", "round": 1, "input_tokens": 10, "output_tokens": None,
+                          "cache_write_tokens": None, "cache_read_tokens": None, "cost_usd": None}, **more)
+            if model is not False:
+                found["model"] = model
+            return found
+
+        table = loop.usage_table([entry("a"), entry(None), entry("b"), entry("a")])
+        self.assertIn("| Step | Model | Tokens | Cost |", table)
+        self.assertIn("| build 1 | a · b | 40 | not reported |", table)
+        self.assertIn("| **Total** | a · b | 40 | not reported |", table)
+        old = loop.usage_table([entry(False, step="plan", round=0), entry(False)])
+        self.assertIn("| plan | unknown | 10 | not reported |", old)
+        self.assertIn("| build 1 | unknown | 10 | not reported |", old)
+        self.assertIn("| **Total** | unknown | 20 | not reported |", old)
+
+    def test_the_model_comes_from_claudes_init_event_or_the_setting(self):
+        self.assertEqual(loop.init_model(json.dumps({"type": "system", "subtype": "init", "model": "claude-opus-5-5"})),
+                         "claude-opus-5-5")
+        for line in (json.dumps({"type": "system", "subtype": "init"}), json.dumps({"type": "result", "model": "x"}),
+                     json.dumps({"type": "system", "subtype": "init", "model": 5}), "model claude", "{not json"):
+            self.assertIsNone(loop.init_model(line), line)
+        self.assertEqual(loop.configured_model({"reader_agent": "ollama:qwen3:8b"}, "reader_agent"), "qwen3:8b")
+        self.assertEqual(loop.configured_model({"agent": "claude:claude-opus-5-5"}, "agent"), "claude-opus-5-5")
+        for value in ("codex", "claude", "claude -p --model x", ""):
+            self.assertIsNone(loop.configured_model({"agent": value}, "agent"), value)
+
     def test_verdict_is_the_last_line_and_defaults_to_fix(self):
         self.assertEqual(loop.parse_verdict("ok\nVERDICT: PASS"), "PASS")
         self.assertEqual(loop.parse_verdict("VERDICT: PASS\nbut wait\nVERDICT: FIX"), "FIX")
@@ -654,14 +682,15 @@ class TestAPass(unittest.TestCase):
         self.assertIsNone(row["tokens"])
         self.assertIsNone(row["cost_usd"])
         self.assertEqual([l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"],
-                         ["plan round 0 not reported", "build round 1 not reported", "review round 1 not reported"])
+                         ["plan round 0 model unknown not reported", "build round 1 model unknown not reported",
+                          "review round 1 model unknown not reported"])
 
     def test_the_pull_request_says_a_step_without_usage_was_not_reported(self):
         self.go()
         body = (self.state / "gh-calls").read_text().split("pr create", 1)[1]
         self.assertIn("## Usage", body)
-        self.assertIn("| plan | not reported | not reported |", body)
-        self.assertIn("| **Total** | not reported | not reported |", body)
+        self.assertIn("| plan | unknown | not reported | not reported |", body)
+        self.assertIn("| **Total** | unknown | not reported | not reported |", body)
 
     def test_a_block_comment_says_when_usage_was_not_reported(self):
         (self.state / "verdict").write_text("FIX")
@@ -791,7 +820,44 @@ class TestAPass(unittest.TestCase):
         entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
         self.assertEqual([(e["step"], e["reported"], e["input_tokens"]) for e in entries], [("plan", False, None)])
         self.assertEqual([l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"],
-                         ["plan round 0 not reported"])
+                         ["plan round 0 model unknown not reported"])
+
+    def test_an_ollama_reader_with_no_init_event_records_the_model_its_setting_names(self):
+        ollama = Path(self.tmp.name) / "bin" / "ollama"
+        ollama.write_text(AGENT)
+        ollama.chmod(ollama.stat().st_mode | stat.S_IEXEC)
+        self.cfg.update(reader_agent="ollama:qwen3:8b")
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["model"]) for e in entries],
+                         [("plan", "qwen3:8b"), ("build", None), ("review", "qwen3:8b")])
+        self.assertIn("plan round 0 qwen3:8b not reported",
+                      [l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"])
+
+    def test_a_codex_setting_with_no_model_records_null_and_logs_model_unknown(self):
+        self.cfg.update(agent="codex")
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        built = [e for e in entries if e["step"] == "build"]
+        self.assertEqual(len(built), 1)
+        self.assertIn("model", built[0])
+        self.assertIsNone(built[0]["model"])
+        self.assertIn("build round 1 model unknown not reported",
+                      [l.split(" ", 3)[3] for l in self.raw_lines() if l.split()[2] == "USAGE"])
+
+    def test_an_older_status_row_with_no_model_still_loads_and_takes_updates(self):
+        folder = self.work / ".loop"
+        folder.mkdir()
+        old = {"number": 12, "title": "Add the thing", "step": "scale", "state": "pr", "round": 1, "tests": 0,
+               "review": "PASS", "pr": None, "note": "", "updated": "2026-01-01T00:00:00"}
+        (folder / "status.json").write_text(json.dumps({"queue": [], "issues": [old]}))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            lp = loop.Loop(self.work, self.cfg)
+            lp.mark(12, note="seen")
+            lp.record_usage(12, "plan", 0, None)
+        row = self.status()["issues"][0]
+        self.assertEqual((row["number"], row["title"], row["note"]), (12, "Add the thing", "seen"))
+        self.assertNotIn("model", row)
 
     def test_the_log_lines_it_already_wrote_are_unchanged(self):
         self.go()
@@ -2640,8 +2706,9 @@ class TestProject(unittest.TestCase):
         self.assertEqual((row["tokens"], row["cost_usd"], row["state"], row["round"]), (600, 0.75, "pr", 1))
         self.assertFalse((self.harness / ".loop" / "issue-12").exists())
         usage = [l.split(" ", 3)[3] for l in (state / "loop.log").read_text().splitlines() if l.split()[2] == "USAGE"]
-        self.assertEqual(usage, ["plan round 0 tokens 200 cost $0.25", "build round 1 tokens 200 cost $0.25",
-                                 "review round 1 tokens 200 cost $0.25"])
+        self.assertEqual(usage, ["plan round 0 model unknown tokens 200 cost $0.25",
+                                 "build round 1 model unknown tokens 200 cost $0.25",
+                                 "review round 1 model unknown tokens 200 cost $0.25"])
 
     def test_the_log_and_the_files_read_as_plain_text_not_json(self):
         self.go()
@@ -2700,6 +2767,27 @@ class TestProject(unittest.TestCase):
         self.assertIn("Reading the loop first.", lines)
         self.assertEqual((folder / "plan.md").read_text(), reply)
 
+    def test_the_model_claudes_init_event_names_is_logged_recorded_and_on_the_status_row(self):
+        self.streaming_claude(
+            {"type": "system", "subtype": "init", "session_id": "s1", "model": "claude-opus-5-5"},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "README.md"}}]}},
+            {"type": "result", "subtype": "success", "result": "Plan: add feature.txt.\n", "total_cost_usd": 0.1,
+             "usage": {"input_tokens": 10, "output_tokens": 5}})
+        self.go()
+        state = self.harness / ".loop" / "projects" / "app"
+        lines = (state / "issue-12" / "agent.log").read_text().splitlines()
+        self.assertIn("· model claude-opus-5-5", lines)
+        self.assertLess(lines.index("· model claude-opus-5-5"), lines.index("→ Read README.md"))
+        self.assertNotIn('"type"', "\n".join(lines))
+        entries = json.loads((state / "issue-12" / "usage.json").read_text())
+        self.assertTrue(entries)
+        self.assertTrue(all(e["model"] == "claude-opus-5-5" for e in entries), entries)
+        row = json.loads((state / "status.json").read_text())["issues"][0]
+        self.assertEqual(row["model"], "claude-opus-5-5")
+        usage = [l.split(" ", 3)[3] for l in (state / "loop.log").read_text().splitlines() if l.split()[2] == "USAGE"]
+        self.assertEqual(usage[0], "plan round 0 claude-opus-5-5 tokens 15 cost $0.10")
+
     def test_a_stream_with_no_result_logs_and_returns_what_the_cli_printed(self):
         error = "error: unknown option '--no-such-flag'"
         self.streaming_claude(error)
@@ -2723,8 +2811,8 @@ class TestProject(unittest.TestCase):
         self.go()
         body = (self.state / "gh-calls").read_text().split("pr create", 1)[1]
         self.assertIn("## Usage", body)
-        for row in ("| plan | 200 | $0.25 |", "| build 1 | 200 | $0.25 |", "| review 1 | 200 | $0.25 |",
-                    "| **Total** | 600 | $0.75 |"):
+        for row in ("| plan | unknown | 200 | $0.25 |", "| build 1 | unknown | 200 | $0.25 |",
+                    "| review 1 | unknown | 200 | $0.25 |", "| **Total** | unknown | 600 | $0.75 |"):
             self.assertIn(row, body)
         self.assertIn("Estimated at API prices. A subscription is billed differently.", body)
 

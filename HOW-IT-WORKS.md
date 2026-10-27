@@ -127,6 +127,16 @@ file is in `.loop/projects/<name>/issue-N/`. A `claude` command in `loop.json`
 that sets its own `--output-format` keeps it, and its usage is read only when
 that's `json`.
 
+**Which model ran.** Each run also records its model: the one `claude`'s
+`init` event names, or, without one, the model the setting names, so
+`ollama:qwen3:8b` records `qwen3:8b`. A bare `codex` or a command line records
+`null`. For a `claude` run, the issue's window shows `· model <id>` ahead of
+its first tool call and the status row's `model` takes it, so the row holds the
+model the last `claude` run started on. Every run's `USAGE` line in `loop.log`
+names it after the round (`model unknown` when it's `null`), each `usage.json`
+entry has it as `model`, and the pull request's `## Usage` table has a Model
+column. Entries written before this read as `unknown`.
+
 **A history of runs.** Each run of an issue that ends (`pr`, `blocked`,
 `stopped` or `skipped`) adds one line to `.loop/history.jsonl`, under
 `--project` `.loop/projects/<name>/history.jsonl`. The line is JSON with
