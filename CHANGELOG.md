@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Conversation tokens in the dashboard numbers
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` gains a `conversations` section: Claude Code's tokens since
+`--since` from `~/.claude/projects`, counted as [`scripts/token_report.py`](scripts/token_report.py) counts them, split into
+`harness` (the root and [`projects/`](projects/)) and `loop` (the loop's worktrees), each by model with a session
+count. It keeps what it read in `.harness/cache/conversations.json`, which is gitignored, and reads a transcript again
+only when its size or time changes. The cache holds per-reply ids, days, models,
+session ids and counts under each transcript's path, never a prompt, a reply or a working folder.
+[`scripts/token_report.py`](scripts/token_report.py) gains `read_file()`; its report is unchanged. Touches
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py),
+[`tests/test_token_report.py`](tests/test_token_report.py).
+
+**Do:** nothing.
+
 ## 2026-10-27: Dashboard numbers as JSON
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the

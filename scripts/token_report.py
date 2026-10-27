@@ -119,29 +119,42 @@ def read(projects_dir, since):
     for path in sorted(projects_dir.rglob("*.jsonl")):
         nested = len(path.relative_to(projects_dir).parts) > 2
         try:
-            with open(path, encoding="utf-8", errors="replace") as handle:
-                lines = handle.readlines()
+            found = read_file(path, nested)
         except OSError:
             continue
-        for raw in lines:
-            try:
-                entry = json.loads(raw)
-            except ValueError:
-                continue
-            if not isinstance(entry, dict):
-                continue
-            message = entry.get("message")
-            if not isinstance(message, dict) or not isinstance(message.get("usage"), dict):
-                continue
+        for entry in found:
             if str(entry.get("timestamp", ""))[:10] < since:
                 continue
-            key = (message.get("id"), entry.get("requestId"))
+            key = (entry["message"].get("id"), entry.get("requestId"))
             if key != (None, None):
                 if key in seen:
                     continue
                 seen.add(key)
-            entry["_subagent"] = bool(entry.get("isSidechain")) or nested
             entries.append(entry)
+    return entries
+
+
+def read_file(path, nested):
+    """Every line in one transcript that is a reply with a usage, in file order, with `_subagent` set.
+
+    No date filter and no dedup: read() does both across files. Lines that aren't JSON are skipped;
+    a file that can't be read raises OSError.
+    """
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        lines = handle.readlines()
+    entries = []
+    for raw in lines:
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("usage"), dict):
+            continue
+        entry["_subagent"] = bool(entry.get("isSidechain")) or nested
+        entries.append(entry)
     return entries
 
 
