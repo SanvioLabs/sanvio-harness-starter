@@ -20,6 +20,8 @@ export type Row = {
   // Totals over every run of the issue. A loop.py older than #179 doesn't write them.
   tokens?: number
   cost_usd?: number
+  // The model the issue's latest agent run used. A loop.py older than #257 doesn't write it.
+  model?: string
   // The issue's tmux window, issue-N, while it's open.
   window?: string
 }

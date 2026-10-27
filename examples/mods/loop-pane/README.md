@@ -11,14 +11,14 @@ starter                                ● Running 2 · up 1h 04m
 [ Queue 1 ] [ Active 2 ] [ Finished 4 ]
 
 ● #14 Gate: an empty Role cell passes
-  started 14:22 · running 6m 12s · 840k tokens · ~$3.40
+  started 14:22 · running 6m 12s · 840k tokens · ~$3.40 · opus-5-5
   building, round 2 of 5
   tests failed (1), review FIX
 
   [ Watch ]
 
 ● #15 Proposal: stamp the phase
-  started 14:27 · running 1m 03s · 95k tokens · ~$0.41
+  started 14:27 · running 1m 03s · 95k tokens · ~$0.41 · sonnet-5-5
   planning
 
 
@@ -39,7 +39,13 @@ long it took. A job started by a loop.py older than this one has no clock.
 After the time come the job's tokens and, beside them, its cost, totalled over
 every run of the issue. The cost is Claude Code's estimate at API prices, not a
 bill. A job with no tokens recorded, or from a loop.py older than #179, shows
-neither, and in a narrow pane the usage is the part that's cut.
+neither.
+
+Last comes the model the job's latest step ran on, with `claude-` dropped, so
+`claude-opus-5-5` reads `opus-5-5`; any other model, an ollama one say, shows
+whole. A job with no model recorded, or from a loop.py older than #257, shows
+the line as before. In a narrow pane the end of the line is the part that's
+cut, so the model goes first, then the usage.
 
 An issue on the **Queue** tab that depends on one still open says so:
 
@@ -52,7 +58,7 @@ Pick **Finished** and it lists the last day's jobs, three at a time:
 ```
 ▲ 1 more
 ● #1 Gate: a fee row with 0 hours passes
-  started 09:10 · took 18m 03s · 1.2M tokens · ~$3.40
+  started 09:10 · took 18m 03s · 1.2M tokens · ~$3.40 · opus-5-5
   pull request open
   tests passed, review PASS
   [ Copy pull request link ]

@@ -66,6 +66,7 @@ export function parseStatus(text: string | null): Status | null {
       window: orNull(r.window) ?? undefined,
       tokens: positive(r.tokens),
       cost_usd: positive(r.cost_usd),
+      model: orNull(r.model) ?? undefined,
     }))
   return {
     running: data.running === true, updated: orNull(data.updated), tmux: orNull(data.tmux),
@@ -258,9 +259,16 @@ export function usage(row: Row): string | null {
   return `${tokens} tokens${row.cost_usd && row.cost_usd > 0 ? ` · ~$${row.cost_usd.toFixed(2)}` : ''}`
 }
 
-// When a job started and how long it has been running, or took, then what it has used. loop.py writes
-// local time with no zone, which Date.parse reads as local too. A start on another day carries its
-// date. A row from an older loop.py has no start, so no clock.
+// The model a job's latest run used, with a leading claude- dropped: opus-5-5. Any other id, an
+// ollama model's say, shows whole. Null when the row has none, as from a loop.py older than #257.
+export function modelName(row: Row): string | null {
+  if (!row.model) return null
+  return row.model.startsWith('claude-') ? row.model.slice('claude-'.length) : row.model
+}
+
+// When a job started and how long it has been running, or took, then what it has used, then its
+// model. loop.py writes local time with no zone, which Date.parse reads as local too. A start on
+// another day carries its date. A row from an older loop.py has no start, so no clock.
 export function clock(row: Row, isRunning: boolean, now: number): string | null {
   const from = row.started ? Date.parse(row.started) : Number.NaN
   if (!Number.isFinite(from)) return null
@@ -271,8 +279,7 @@ export function clock(row: Row, isRunning: boolean, now: number): string | null 
   let line = `started ${when}`
   if (dot(row, isRunning).isPulsing) line += ` · running ${duration(now - from)}`
   else if (Number.isFinite(end)) line += ` · ${ENDED[row.state] ? 'took' : 'ran'} ${duration(end - from)}`
-  const used = usage(row)
-  return used ? `${line} · ${used}` : line
+  return [line, usage(row), modelName(row)].filter(Boolean).join(' · ')
 }
 
 // A short line for each issue that has just reached an end: a pull request, a block or a stop.
