@@ -20,17 +20,27 @@
                      slash commands by name, guard refusals by rule, and how many times it asked
     evals            the newest file in .harness/evals/ for each reviewer: when it was saved, how
                      many cases were stable, flaky and failing, and the failing cases' names
+    waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
+                     the harness repo's open pull requests from gh, each with its title, when it
+                     opened, hours waited, its loop issue if its branch is loop/issue-N, whether it's
+                     a draft, its checks (pass, fail, pending, or null with none) and whether it
+                     conflicts (null while GitHub doesn't know); and blocked, the issues in
+                     status.json whose state is blocked, each with its title, note and last update
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the why names
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
 only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
-cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Nothing it prints holds a title, a note, a pull request's address, a
-prompt, an eval's reasons or a file path: counts, dollars, dates, issue names, step, model, skill,
-agent, rule and case names. The dollars are the loop's estimate at API prices, not what was billed.
+cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Titles and notes
+appear only under waiting. Nothing it prints holds a pull request's address, a prompt, an eval's
+reasons or a file path, and outside waiting it holds no title or note: counts, dollars, dates, issue
+names, step, model, skill, agent, rule and case names. The dollars are the loop's estimate at API
+prices, not what was billed.
 """
 import argparse
 import datetime
 import json
+import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -42,6 +52,10 @@ from token_report import loop_runs, natural, usage_files  # noqa: E402 (same rea
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
 
 WEEK = 7  # days in the last-7-days window, today included
+GH_TIMEOUT = 30  # seconds before a gh call counts as unavailable
+PR_FIELDS = "number,title,createdAt,headRefName,isDraft,statusCheckRollup,mergeable"
+FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
+LOOP_BRANCH = re.compile(r"^loop/issue-(\d+)$")
 
 
 def missing(why):
@@ -187,13 +201,82 @@ def evals(root):
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
+def checks(rollup):
+    """fail if any check failed, else pending if any hasn't finished, else pass; None with no checks.
+
+    gh mixes two shapes: a check run has status and conclusion ("" until it ends), a commit status has state.
+    """
+    found = [c for c in rollup if isinstance(c, dict)] if isinstance(rollup, list) else []
+    if not found:
+        return None
+    ends = [c.get("conclusion") or c.get("state") for c in found]
+    if any(end in FAILED for end in ends):
+        return "fail"
+    if any(c.get("status", "COMPLETED") != "COMPLETED" or end in ("PENDING", "EXPECTED") or not end
+           for c, end in zip(found, ends)):
+        return "pending"
+    return "pass"
+
+
+def hours_since(opened, now):
+    try:
+        then = datetime.datetime.fromisoformat(opened.replace("Z", "+00:00"))
+        return round((now - then).total_seconds() / 3600, 1)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def pull_requests(root, now):
+    try:
+        done = subprocess.run(["gh", "pr", "list", "--state", "open", "--limit", "100", "--json", PR_FIELDS],
+                              cwd=root, capture_output=True, text=True, timeout=GH_TIMEOUT)
+        found = json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        found = None
+    if not isinstance(found, list):
+        return missing("gh unavailable")
+    out = []
+    for pr in found:
+        if not isinstance(pr, dict):
+            continue
+        opened = pr.get("createdAt") if isinstance(pr.get("createdAt"), str) else None
+        branch = LOOP_BRANCH.match(pr["headRefName"]) if isinstance(pr.get("headRefName"), str) else None
+        out.append({"number": number(pr.get("number")),
+                    "title": pr["title"] if isinstance(pr.get("title"), str) else None,
+                    "opened": opened,
+                    "hours_waited": hours_since(opened, now),
+                    "loop_issue": int(branch.group(1)) if branch else None,
+                    "draft": pr["isDraft"] if isinstance(pr.get("isDraft"), bool) else None,
+                    "checks": checks(pr.get("statusCheckRollup")),
+                    "conflicts": {"CONFLICTING": True, "MERGEABLE": False}.get(pr.get("mergeable"))})
+    return out
+
+
+def blocked(root):
+    rows, why = status_rows(root)
+    if rows is None:
+        return missing(why)
+
+    def text(row, name):
+        return row[name] if isinstance(row.get(name), str) else None
+
+    return [{"issue": name, "number": rows[name]["number"], "title": text(rows[name], "title"),
+             "note": text(rows[name], "note"), "updated": text(rows[name], "updated")}
+            for name in sorted(rows, key=natural) if rows[name].get("state") == "blocked"]
+
+
+def waiting(root, now):
+    return {"pull_requests": pull_requests(root, now), "blocked": blocked(root)}
+
+
 def build(root, since, today, now=None):
     now = now or datetime.datetime.now().astimezone()
     return {"generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
-            "evals": evals(root)}
+            "evals": evals(root),
+            "waiting": waiting(root, now)}
 
 
 def main(argv=None, root=ROOT):

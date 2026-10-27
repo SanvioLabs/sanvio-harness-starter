@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: What's waiting in the dashboard data
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains a `waiting` section with two halves that fail on their own.
+`pull_requests` is the harness repo's open pull requests from `gh`, each with its title, when it
+opened, hours waited, its loop issue for a `loop/issue-N` branch, whether it's a draft, its checks
+(`pass`, `fail`, `pending`, or `null` with none) and whether it conflicts; without `gh`, signed out or
+on output it can't read, it's `null` with `why: "gh unavailable"`, never an empty list. `blocked` is
+the issues in `status.json`, the harness's and each project's, whose state is blocked, with title,
+note and last update. The rule that the output holds no title or note now has this one exception:
+titles and notes appear under `waiting` and nowhere else; addresses, prompts and paths still never
+appear. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing. Anything that reads the output and assumed it holds no titles should skip `waiting`.
+
 ## 2026-10-27: Dashboard numbers as JSON
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the

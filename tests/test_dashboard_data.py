@@ -2,11 +2,13 @@
 import datetime
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -16,6 +18,43 @@ from usage_report import log_path  # noqa: E402 (same reason)
 TODAY = datetime.date(2026, 10, 27)
 SINCE = "2026-10-15"
 LEAK = "sentinel-zq7"  # put in every field the output must never carry
+NOW = datetime.datetime(2026, 10, 27, 12, 0, tzinfo=datetime.timezone.utc)
+SYSTEM_PATH = "/usr/bin:/bin"  # for the fake gh's own commands; the real gh isn't on it
+
+
+def check_run(status, conclusion):
+    return {"__typename": "CheckRun", "name": "tests", "status": status, "conclusion": conclusion,
+            "detailsUrl": "https://github.com/o/r/actions/runs/1?" + LEAK}
+
+
+def commit_status(state):
+    return {"__typename": "StatusContext", "context": "ci", "state": state,
+            "targetUrl": "https://github.com/o/r/status?" + LEAK}
+
+
+def pr(number, created, branch, draft=False, mergeable="MERGEABLE", rollup=()):
+    """One row of gh pr list --json, with the fields dashboard_data asks for."""
+    return {"number": number, "title": "PR {} {}".format(number, LEAK), "createdAt": created,
+            "headRefName": branch, "isDraft": draft, "mergeable": mergeable, "statusCheckRollup": list(rollup)}
+
+
+PRS = [pr(41, "2026-10-27T09:30:00Z", "loop/issue-264",
+          rollup=[check_run("COMPLETED", "SUCCESS"), commit_status("SUCCESS")]),
+       pr(42, "2026-10-25T12:00:00Z", "fix-typo", draft=True, mergeable="CONFLICTING",
+          rollup=[check_run("COMPLETED", "SUCCESS"), check_run("COMPLETED", "FAILURE")]),
+       pr(43, "2026-10-27T11:00:00Z", "loop/issue-7-old", mergeable="UNKNOWN",
+          rollup=[check_run("COMPLETED", "SUCCESS"), check_run("IN_PROGRESS", "")]),
+       pr(44, "2026-10-27T11:00:00Z", "loop/issue-8", rollup=[commit_status("PENDING")]),
+       pr(45, "2026-10-27T11:00:00Z", "docs", rollup=[commit_status("ERROR"), check_run("QUEUED", "")]),
+       pr(46, "2026-10-27T11:00:00Z", "docs-2")]
+
+
+def fake_gh(folder, script):
+    """A gh in folder that runs the shell script given, for PATH to find instead of the real one."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "gh"
+    path.write_text("#!/bin/sh\n" + script + "\n")
+    path.chmod(0o755)
 
 
 def run(started, step, model, tokens, cost):
@@ -40,6 +79,17 @@ class Harness(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name).resolve() / ("harness-" + LEAK)
         self.root.mkdir()
+        # A gh that fails unless a test says otherwise, so no test reaches the real one.
+        self.bin = Path(tmp.name).resolve() / "bin"
+        fake_gh(self.bin, "exit 1")
+        patcher = mock.patch.dict(os.environ, {"PATH": str(self.bin) + os.pathsep + SYSTEM_PATH})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def gh(self, prs):
+        """Make gh print prs as gh pr list --json would."""
+        write(self.bin, "prs.json", prs)
+        fake_gh(self.bin, 'cat "{}"'.format(self.bin / "prs.json"))
 
     def fill(self):
         write(self.root, ".loop/issue-7/usage.json", [
@@ -85,7 +135,7 @@ class Harness(unittest.TestCase):
         write(self.root, ".harness/evals/2026-10-27T0900-broken.json", "not json")
 
     def build(self, since=SINCE):
-        return dashboard_data.build(self.root, since, TODAY)
+        return dashboard_data.build(self.root, since, TODAY, NOW)
 
     def main(self, *args):
         out = io.StringIO()
@@ -100,7 +150,8 @@ class Layout(Harness):
         code, out = self.main()
         self.assertEqual(code, 0)
         found = json.loads(out)
-        self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals"])
+        self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals",
+                                       "waiting"])
         self.assertEqual(found["since"], SINCE)
         self.assertIsNotNone(datetime.datetime.fromisoformat(found["generated"]).tzinfo)
 
@@ -202,6 +253,80 @@ class Evals(Harness):
                                   "failing_cases": []}})
 
 
+class PullRequests(Harness):
+    def test_each_open_pull_request_with_its_wait_branch_draft_checks_and_conflicts(self):
+        self.gh(PRS)
+        found = self.build()["waiting"]["pull_requests"]
+        self.assertEqual([(p["number"], p["loop_issue"], p["draft"], p["checks"], p["conflicts"]) for p in found], [
+            (41, 264, False, "pass", False),
+            (42, None, True, "fail", True),
+            (43, None, False, "pending", None),
+            (44, 8, False, "pending", False),
+            (45, None, False, "fail", False),
+            (46, None, False, None, False)])
+
+    def test_title_opened_and_hours_waited_against_now(self):
+        self.gh(PRS[:2])
+        found = self.build()["waiting"]["pull_requests"]
+        self.assertEqual(found[0], {"number": 41, "title": "PR 41 " + LEAK, "opened": "2026-10-27T09:30:00Z",
+                                    "hours_waited": 2.5, "loop_issue": 264, "draft": False, "checks": "pass",
+                                    "conflicts": False})
+        self.assertEqual(found[1]["hours_waited"], 48.0)
+
+    def test_no_open_pull_requests_is_an_empty_list(self):
+        self.gh([])
+        self.assertEqual(self.build()["waiting"]["pull_requests"], [])
+
+
+class Blocked(Harness):
+    def test_blocked_issues_with_title_note_and_update(self):
+        self.fill()
+        self.assertEqual(self.build()["waiting"]["blocked"], [
+            {"issue": "issue-9", "number": 9, "title": LEAK, "note": LEAK, "updated": None}])
+
+    def test_a_project_issue_carries_its_prefix(self):
+        self.fill()
+        write(self.root, ".loop/projects/app/status.json", {"issues": [
+            {"number": 3, "state": "pr", "round": 1},
+            {"number": 5, "title": "Stuck", "state": "blocked", "round": 2, "note": "tests failed twice",
+             "updated": "2026-10-26T15:00:00", "pr": "https://github.com/o/app/pull/6"}]})
+        self.assertEqual(self.build()["waiting"]["blocked"], [
+            {"issue": "app/issue-5", "number": 5, "title": "Stuck", "note": "tests failed twice",
+             "updated": "2026-10-26T15:00:00"},
+            {"issue": "issue-9", "number": 9, "title": LEAK, "note": LEAK, "updated": None}])
+
+
+class GhUnavailable(Harness):
+    def assert_unavailable_but_blocked_filled(self):
+        found = self.build()["waiting"]
+        self.assertEqual(found["pull_requests"], {"value": None, "why": "gh unavailable"})
+        self.assertEqual([b["issue"] for b in found["blocked"]], ["issue-9"])
+
+    def test_gh_missing(self):
+        self.fill()
+        empty = self.root.parent / "empty"
+        empty.mkdir()
+        with mock.patch.dict(os.environ, {"PATH": str(empty)}):
+            self.assert_unavailable_but_blocked_filled()
+
+    def test_gh_failing_as_when_signed_out(self):
+        self.fill()
+        self.assert_unavailable_but_blocked_filled()
+
+    def test_gh_printing_something_other_than_a_list(self):
+        self.fill()
+        for script in ("echo not json", "echo '{\"number\": 1}'"):
+            with self.subTest(script=script):
+                fake_gh(self.bin, script)
+                self.assert_unavailable_but_blocked_filled()
+
+    def test_gh_timing_out(self):
+        self.fill()
+        fake_gh(self.bin, "exec sleep 5")
+        with mock.patch.object(dashboard_data, "GH_TIMEOUT", 0.2):
+            self.assert_unavailable_but_blocked_filled()
+
+
 class MissingOrCorrupt(Harness):
     def test_every_source_missing_gives_null_and_why_and_exits_0(self):
         code, out = self.main()
@@ -211,6 +336,8 @@ class MissingOrCorrupt(Harness):
         self.assertEqual(found["loop_throughput"], {"value": None, "why": "no status.json"})
         self.assertEqual(found["activity"], {"value": None, "why": "no usage log"})
         self.assertEqual(found["evals"], {"value": None, "why": "no saved evals"})
+        self.assertEqual(found["waiting"], {"pull_requests": {"value": None, "why": "gh unavailable"},
+                                            "blocked": {"value": None, "why": "no status.json"}})
 
     def test_every_source_corrupt_gives_null_and_why_and_exits_0(self):
         write(self.root, ".loop/issue-7/usage.json", "not json")
@@ -234,12 +361,20 @@ class MissingOrCorrupt(Harness):
 
 
 class Privacy(Harness):
-    def test_no_title_note_pr_prompt_reason_or_path_is_printed(self):
+    def test_titles_and_notes_only_under_waiting_and_no_address_prompt_reason_or_path_anywhere(self):
         self.fill()
+        self.gh(PRS)
         code, out = self.main()
         self.assertEqual(code, 0)
-        for leak in (LEAK, str(self.root), str(self.root.parent), "github.com"):
+        found = json.loads(out)
+        for section in found:
+            if section != "waiting":
+                self.assertNotIn(LEAK, json.dumps(found[section]), section)
+        for leak in (str(self.root), str(self.root.parent), "github.com"):
             self.assertNotIn(leak, out)
+        # The exemption is used: waiting carries the titles and the note, nothing else of LEAK's.
+        self.assertEqual([(b["title"], b["note"]) for b in found["waiting"]["blocked"]], [(LEAK, LEAK)])
+        self.assertTrue(all(p["title"].endswith(LEAK) for p in found["waiting"]["pull_requests"]))
 
 
 if __name__ == "__main__":
