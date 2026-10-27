@@ -59,6 +59,26 @@ def fake_gh(folder, script):
     path.write_text("#!/bin/sh\n" + script + "\n")
     path.chmod(0o755)
 
+# A stand-in for gh, found on PATH. It logs each call, answers pr list from prs.json ([] when there's
+# none) and pulls/<n>/commits from commits.json's pages for n, and exits 1 while a file named fail exists.
+GH = """#!PYTHON
+import json, os, sys
+folder = FOLDER
+args = sys.argv[1:]
+with open(os.path.join(folder, "calls"), "a") as f:
+    f.write(" ".join(args) + "\\n")
+if os.path.exists(os.path.join(folder, "fail")):
+    sys.exit(1)
+if args[:2] == ["pr", "list"]:
+    path = os.path.join(folder, "prs.json")
+    print(open(path).read() if os.path.exists(path) else "[]")
+elif args[:1] == ["api"]:
+    for page in json.load(open(os.path.join(folder, "commits.json")))[args[1].split("/")[-2]]:
+        print(json.dumps(page))
+else:
+    sys.exit(1)
+"""
+
 
 def run(started, step, model, tokens, cost):
     """One usage.json entry, the shape loop.py's record_usage() writes."""
@@ -156,7 +176,7 @@ class Layout(Harness):
         self.assertEqual(code, 0)
         found = json.loads(out)
         self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals",
-                                       "conversations", "waiting"])
+                                       "conversations", "waiting", "loop_rework"])
         self.assertEqual(found["since"], SINCE)
         self.assertIsNotNone(datetime.datetime.fromisoformat(found["generated"]).tzinfo)
 
@@ -445,6 +465,63 @@ class GhUnavailable(Harness):
         fake_gh(self.bin, "exec sleep 5")
         with mock.patch.object(dashboard_data, "GH_TIMEOUT", 0.2):
             self.assert_unavailable_but_blocked_filled()
+
+
+def commit(message, parents=1):
+    """One item from the pulls/<n>/commits API, the parts loop_rework reads and an author it mustn't keep."""
+    return {"sha": "abc", "commit": {"message": message, "author": {"name": LEAK}},
+            "parents": [{"sha": "p{}".format(i)} for i in range(parents)]}
+
+
+class Rework(Harness):
+    def setUp(self):
+        super().setUp()
+        # A gh that answers from files in self.bin and logs each call there, in place of the one that fails.
+        fake = self.bin / "gh"
+        fake.write_text(GH.replace("PYTHON", sys.executable).replace("FOLDER", repr(str(self.bin))))
+        fake.chmod(0o755)
+        loop = commit("Build it\n\nLoop: issue #1, round 1.")
+        write(self.bin, "prs.json", [
+            {"number": 101, "title": "All the loop's", "headRefName": "loop/issue-1", "mergedAt": "2026-10-20T12:00:00Z"},
+            {"number": 102, "title": "Fixed by hand", "headRefName": "loop/issue-2", "mergedAt": "2026-10-21T12:00:00Z"},
+            {"number": 103, "title": "Not the loop's", "headRefName": "feature/x", "mergedAt": "2026-10-22T12:00:00Z"},
+            {"number": 104, "title": "Too old", "headRefName": "loop/issue-4", "mergedAt": "2026-10-01T12:00:00Z"}])
+        # 102's commits come in two pages, as gh --paginate prints them.
+        write(self.bin, "commits.json", {
+            "101": [[loop, loop]],
+            "102": [[loop, commit("Merge branch 'main' into loop/issue-2", parents=2)], [commit("fix " + LEAK)]],
+            "103": [[commit("by hand")]], "104": [[commit("by hand")]]})
+
+    def test_counts_the_loop_pull_requests_merged_since_and_the_reworked_ones(self):
+        rework = self.build()["loop_rework"]
+        self.assertEqual((rework["merged"], rework["reworked"]), (2, 1))
+
+    def test_lists_each_reworked_pull_request_with_its_merges_and_other_commits(self):
+        self.assertEqual(self.build()["loop_rework"]["pull_requests"], [
+            {"number": 102, "title": "Fixed by hand", "merges_from_base": 1, "other_commits": 1}])
+
+    def test_asks_gh_for_a_pull_requests_commits_once_and_caches_only_what_it_counts(self):
+        first, second = self.build()["loop_rework"], self.build()["loop_rework"]
+        self.assertEqual(first, second)
+        calls = [c for c in (self.bin / "calls").read_text().splitlines() if "/commits" in c]
+        self.assertEqual(sorted(c.split("/")[-2] for c in calls), ["101", "102"])
+        cache = (self.root / ".harness" / "cache" / "loop_rework.json").read_text()
+        self.assertEqual(sorted(json.loads(cache)), ["101", "102"])
+        self.assertNotIn(LEAK, cache)
+
+    def test_a_failed_fetch_keeps_the_commits_already_read_in_the_cache(self):
+        commits = json.loads((self.bin / "commits.json").read_text())
+        del commits["102"]  # the fake gh fails on 102, after reading 101
+        write(self.bin, "commits.json", commits)
+        self.assertEqual(self.build()["loop_rework"], {"value": None, "why": "gh failed"})
+        cache = json.loads((self.root / ".harness" / "cache" / "loop_rework.json").read_text())
+        self.assertEqual(sorted(cache), ["101"])
+
+    def test_gh_failing_gives_null_and_why_and_exits_0(self):
+        write(self.bin, "fail", "")
+        code, out = self.main()
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["loop_rework"], {"value": None, "why": "gh failed"})
 
 
 class MissingOrCorrupt(Harness):
