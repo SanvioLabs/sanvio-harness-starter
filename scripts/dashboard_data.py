@@ -38,12 +38,14 @@
                      projects/, "loop" for the loop's worktrees, each by model (input, output, cache
                      writes, cache reads and total) with how many sessions, and by_day, every day
                      from --since to today, oldest first, the same days as loop_spend's, with its
-                     total tokens, 0 on a day with no reply. Transcripts are dated in UTC, so a
-                     reply dated after today, as an evening's are west of UTC, counts in by_model
-                     but has no day. What each transcript held is kept in
-                     .harness/cache/conversations.json and read again only when the file's size or
-                     time changes: per reply, its message and request ids, day, side, model,
-                     session id and counts, under the transcript's path, and nothing else
+                     total tokens, 0 on a day with no reply. A reply's day there is local time, as a
+                     loop run's is, so the evening stays on its own day; --since and by_model go by
+                     the transcript's UTC date, as token_report.py does, so west of UTC a reply on
+                     the evening before --since counts in by_model but has no day. What each
+                     transcript held is kept in .harness/cache/conversations.json and read again
+                     only when the file's size or time changes: per reply, its message and request
+                     ids, UTC day, side, model, session id, local day and counts, under the
+                     transcript's path, and nothing else
     waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
                      the harness repo's open pull requests from gh, each with its title, when it
                      opened, hours waited, its loop issue if its branch is loop/issue-N, whether it's
@@ -418,7 +420,9 @@ def text_or_none(value):
 
 def replies(entries, root, loop):
     """One record per reply in a transcript's entries, for the cache, leaving out replies outside the harness:
-    [message id, request id, day, side, model, session id, input, output, cache writes, cache reads].
+    [message id, request id, UTC day, side, model, session id, local day, input, output, cache writes,
+    cache reads]. The UTC day is the transcript's own, which --since and dedup go by; the local day is
+    the one by_day counts under, and is the UTC day when the timestamp can't be read.
 
     A reply written as several lines keeps only its first line for each day. read() keeps the first line
     on or after its since date, so that's the same line whatever the date.
@@ -432,9 +436,11 @@ def replies(entries, root, loop):
         if sides[cwd] is None:
             continue
         message = entry["message"]
-        record = [text_or_none(message.get("id")), text_or_none(entry.get("requestId")),
-                  str(entry.get("timestamp", ""))[:10], sides[cwd],
-                  text_or_none(message.get("model")) or "unknown", text_or_none(entry.get("sessionId"))] + tokens(entry)
+        stamp = str(entry.get("timestamp", ""))
+        at = when(stamp)
+        record = [text_or_none(message.get("id")), text_or_none(entry.get("requestId")), stamp[:10], sides[cwd],
+                  text_or_none(message.get("model")) or "unknown", text_or_none(entry.get("sessionId")),
+                  at.astimezone().date().isoformat() if at else stamp[:10]] + tokens(entry)
         if record[:2] != [None, None]:
             if tuple(record[:3]) in kept:
                 continue
@@ -453,9 +459,10 @@ def cached(entry):
         return False
     records = entry.get("replies")
     return isinstance(records, list) and all(
-        isinstance(r, list) and len(r) == 6 + len(COUNTS) and all(v is None or isinstance(v, str) for v in r[:2])
+        isinstance(r, list) and len(r) == 7 + len(COUNTS) and all(v is None or isinstance(v, str) for v in r[:2])
         and isinstance(r[2], str) and r[3] in SIDES.values() and isinstance(r[4], str)
-        and (r[5] is None or isinstance(r[5], str)) and all(whole(n) for n in r[6:]) for r in records)
+        and (r[5] is None or isinstance(r[5], str)) and isinstance(r[6], str) and all(whole(n) for n in r[7:])
+        for r in records)
 
 
 def save(path, data):
@@ -513,7 +520,7 @@ def conversations(root, since, today, projects_dir, cache_path):
     by_day = {side: dict.fromkeys(days(since, today), 0) for side in ("harness", "loop")}
     seen = set()
     for entry in fresh.values():
-        for message_id, request_id, day, side, model, session, *counts in entry["replies"]:
+        for message_id, request_id, day, side, model, session, local, *counts in entry["replies"]:
             if day < since:
                 continue
             if (message_id, request_id) != (None, None):
@@ -521,8 +528,8 @@ def conversations(root, since, today, projects_dir, cache_path):
                     continue
                 seen.add((message_id, request_id))
             by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0] * len(COUNTS)), counts)]
-            if day in by_day[side]:
-                by_day[side][day] += sum(counts)
+            if local in by_day[side]:
+                by_day[side][local] += sum(counts)
             if session:
                 sessions[side].add(session)
     return {side: {"by_model": {model: dict(zip(COUNTS, values), total=sum(values))

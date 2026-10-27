@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -619,6 +620,12 @@ class Conversations(Harness):
 
     def setUp(self):
         super().setUp()
+        # West of UTC, where an evening's replies carry tomorrow's UTC date, whatever the machine's zone.
+        zone = os.environ.get("TZ")
+        os.environ["TZ"] = "America/Los_Angeles"
+        time.tzset()
+        self.addCleanup(time.tzset)
+        self.addCleanup(lambda: os.environ.pop("TZ", None) if zone is None else os.environ.__setitem__("TZ", zone))
         self.loop = self.root.parent / "loop-checkouts"
         write(self.root, "loop.json", {"worktree_dir": str(self.loop)})
         self.cache = self.root / ".harness" / "cache" / "conversations.json"
@@ -649,7 +656,7 @@ class Conversations(Harness):
             model = entry["message"]["model"]
             by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0, 0, 0, 0]),
                                                            token_report.tokens(entry))]
-            day = entry["timestamp"][:10]
+            day = datetime.datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00")).astimezone().date().isoformat()
             if day in by_day[side]:
                 by_day[side][day] += sum(token_report.tokens(entry))
             sessions[side].add(entry["sessionId"])
@@ -714,15 +721,23 @@ class Conversations(Harness):
         self.assertEqual(harness["2026-10-15"], 0)
         self.assertEqual(found, self.from_token_report())
 
-    def test_a_reply_dated_after_today_counts_in_the_models_but_has_no_day(self):
-        # 02:00 UTC on the 28th is the evening of the 27th west of UTC.
+    def test_an_evening_reply_west_of_utc_counts_on_its_own_local_day(self):
+        # 02:00 UTC on the 28th is 19:00 on the 27th in Los Angeles: today's last bar, not off the end.
         lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-28T02:00:00Z")])
         found = self.conversations()
         for side in ("harness", "loop"):
             self.assertEqual([d["day"] for d in found[side]["by_day"]], dashboard_data.days(SINCE, TODAY), side)
-        self.assertEqual(found["harness"]["by_model"]["m-a"]["total"], 1010 + 20)
-        self.assertEqual(sum(d["tokens"] for d in found["harness"]["by_day"]), 1010 + 100)
+            self.assertEqual(sum(d["tokens"] for d in found[side]["by_day"]),
+                             sum(m["total"] for m in found[side]["by_model"].values()), side)
+        self.assertEqual(found["harness"]["by_day"][-1], {"day": "2026-10-27", "tokens": 20})
         self.assertEqual(found, self.from_token_report())
+
+    def test_a_cache_from_before_local_days_is_read_again(self):
+        old = [["1", "r", "2026-10-28", "harness", "m-a", "s1", 1, 2, 3, 4]]  # no local day
+        stat = self.other.stat()
+        write(self.cache.parent, self.cache.name,
+              {str(self.other): {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "replies": old}})
+        self.assertEqual(self.conversations(), self.from_token_report())
 
     def test_by_day_runs_over_the_same_days_as_loop_spend(self):
         lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-28T02:00:00Z")])
