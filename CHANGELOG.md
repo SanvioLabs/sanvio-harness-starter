@@ -29,19 +29,24 @@ fine).
 
 ## 2026-10-26: The issue window shows each tool call
 
-A `claude` agent run by [`scripts/loop.py`](scripts/loop.py) now writes each tool call to `.loop/issue-N/agent.log` as it
-makes it, one line each, by its name and what it acts on: `→ Read scripts/loop.py`, or a command
-on one line cut to 80 characters. What the agent says between calls shows too. A tool's other input,
-what it returned and claude's other events don't. A line that isn't JSON, such as an error from
-claude itself, still shows, and when the run ends with no result it is the reply, so a blocked issue
-says why. The loop asks
-claude for `--output-format stream-json --verbose` in place of `json`, and still reads usage from the
-result at the end. A command that names its own output
-format keeps it, and a `stream-json` one is run as written.
+While a `claude` agent run by [`scripts/loop.py`](scripts/loop.py) works, `.loop/issue-N/agent.log` now gets a line for
+each tool call it makes: the tool's name and the path, pattern or URL it was given, such as
+`→ Read /Users/you/.harness-loop/my-harness/issue-12/scripts/loop.py`, or the command on one line,
+cut to 80 characters. What the agent says between calls shows too. Tool results and the rest of a
+tool's input, such as an edit's text, stay out. In tmux, the issue's `issue-N` window follows that
+file, so you watch it live; without tmux, `tail -f` it. Usage is still recorded.
+
+If `claude` fails before it answers, with a bad flag say, its error now shows in `agent.log`. The issue's block comment gives the exit code, so `agent.log` is where to look.
+
+This needs the loop to choose the output format. If the `agent`, `reader_agent` or `review_agent`
+in your `loop.json` names `--output-format`, the loop keeps your format, and you won't see the tool calls.
+Take the flag out to get them. One that names `stream-json` also needs `--verbose`, or `claude`
+exits at once with `requires --verbose`.
 
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md).
 
-**Do:** nothing. Restart a running loop to take it.
+**Do:** if a loop is running, stop it the way [`skills/loop-control/`](skills/loop-control/) (*Stop it*) says, so no issue
+is picked straight back up, then start it again. A running loop keeps the old code until then.
 
 ## 2026-10-26: The lens settles reviewers it missed ending
 
