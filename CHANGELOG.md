@@ -41,6 +41,31 @@ appear. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`test
 
 **Do:** nothing. Anything that reads the output and assumed it holds no titles should skip `waiting`.
 
+## 2026-10-27: Stale eval results marked
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `evals` now says, for each reviewer's newest saved result, whether it is
+stale: whether the agent's file in [`agents/`](agents/), [`scripts/eval_agents.py`](scripts/eval_agents.py), or a case's `case.json`, work file or
+brief was committed, or edited and not yet committed, or written while git ignores it, after the result was saved. `changed` lists
+those files from the harness root and `newest_change` gives the latest date. A result with no saved
+time or no cases in its folder is stale with a `why`, and one git can't check has `stale: null`.
+Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing. To clear a stale result, run the eval again with `--save`.
+
+## 2026-10-27: Conversation tokens in the dashboard numbers
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` gains a `conversations` section: Claude Code's tokens since
+`--since` from `~/.claude/projects`, counted as [`scripts/token_report.py`](scripts/token_report.py) counts them, split into
+`harness` (the root and [`projects/`](projects/)) and `loop` (the loop's worktrees), each by model with a session
+count. It keeps what it read in `.harness/cache/conversations.json`, which is gitignored, and reads a transcript again
+only when its size or time changes. The cache holds per-reply ids, days, models,
+session ids and counts under each transcript's path, never a prompt, a reply or a working folder.
+[`scripts/token_report.py`](scripts/token_report.py) gains `read_file()`; its report is unchanged. Touches
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py),
+[`tests/test_token_report.py`](tests/test_token_report.py).
+
+**Do:** nothing.
+
 ## 2026-10-27: Dashboard numbers as JSON
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the

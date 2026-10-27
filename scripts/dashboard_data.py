@@ -19,7 +19,22 @@
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
                      slash commands by name, guard refusals by rule, and how many times it asked
     evals            the newest file in .harness/evals/ for each reviewer: when it was saved, how
-                     many cases were stable, flaky and failing, and the failing cases' names
+                     many cases were stable, flaky and failing, and the failing cases' names. stale
+                     is true when a file the result rests on changed after it was saved: the agent's
+                     file in agents/, scripts/eval_agents.py, or a case's case.json, work file or
+                     brief. A file changed when its last commit is later than saved, or when it has
+                     uncommitted changes, or git ignores it, and it was written later. A file that
+                     doesn't exist and was never committed can't count. changed lists those files from the harness
+                     root, and newest_change is the latest of their dates. A result with no saved
+                     time or no cases in its folder is stale with a why, and one git can't check
+                     has stale null with a why
+    conversations    Claude Code's tokens since --since from ~/.claude/projects, counted as
+                     token_report.py counts them: "harness" for conversations at the root and in
+                     projects/, "loop" for the loop's worktrees, each by model (input, output, cache
+                     writes, cache reads and total) with how many sessions. What each transcript
+                     held is kept in .harness/cache/conversations.json and read again only when the
+                     file's size or time changes: per reply, its message and request ids, day, side,
+                     model, session id and counts, under the transcript's path, and nothing else
     waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
                      the harness repo's open pull requests from gh, each with its title, when it
                      opened, hours waited, its loop issue if its branch is loop/issue-N, whether it's
@@ -31,27 +46,36 @@ A section whose source is missing or can't be read is {"value": null, "why": ...
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
 only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
 cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Titles and notes
-appear only under waiting. Nothing it prints holds a pull request's address, a prompt, an eval's
-reasons or a file path, and outside waiting it holds no title or note: counts, dollars, dates, issue
-names, step, model, skill, agent, rule and case names. The dollars are the loop's estimate at API
-prices, not what was billed.
+appear only under waiting, printed as they were written, so they hold whatever was typed into them.
+Outside waiting nothing it prints holds a title or a note, and nowhere does it add a pull request's
+address, a prompt, an eval's reasons or a file path other than those in changed, which are from the
+harness root: counts, dollars, dates, issue names, step, model, skill, agent, rule and case names. The
+dollars are the loop's estimate at API prices, not what was billed.
 """
 import argparse
+import contextlib
 import datetime
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (needs scripts/ on the path first)
-from token_report import loop_runs, natural, usage_files  # noqa: E402 (same reason)
+from eval_agents import load_cases  # noqa: E402 (needs scripts/ on the path first)
+from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (same reason)
+from token_report import group, loop_dir, loop_runs, natural, read_file, tokens, usage_files  # noqa: E402 (same reason)
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
 
 WEEK = 7  # days in the last-7-days window, today included
+TRANSCRIPTS = Path.home() / ".claude" / "projects"
+CACHE = Path(".harness") / "cache" / "conversations.json"
+SIDES = {"Conversations": "harness", "projects/": "harness", "Loop": "loop"}  # token_report's groups, two sides
+COUNTS = ("input", "output", "cache_writes", "cache_reads")  # token_report's FIELDS, in order
 GH_TIMEOUT = 30  # seconds before a gh call counts as unavailable
 PR_FIELDS = "number,title,createdAt,headRefName,isDraft,statusCheckRollup,mergeable"
 FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
@@ -173,6 +197,94 @@ def activity(root, since):
             "asks": sum(1 for l in lines if l.get("event") == "guard_ask")}
 
 
+def git(root, *args):
+    """git's output run in root, or None when git isn't there or fails."""
+    try:
+        done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def when(text):
+    """text as an aware datetime, a time without an offset taken as local, or None when it isn't one.
+
+    A trailing Z, which some versions of git print for UTC, becomes +00:00: fromisoformat() before
+    Python 3.11 refuses it."""
+    try:
+        found = datetime.datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return found if found.tzinfo else found.astimezone()
+
+
+def freshness(root, result):
+    """{stale, changed, newest_change} for a saved result, with a why when it can't say from the files.
+
+    The files are the agent's, eval_agents.py, and each case's case.json, work file and brief. One counts
+    as changed when its date is later than "saved": its last commit's, or for one with uncommitted
+    changes or that git ignores, when it was last written. One that doesn't exist and was never
+    committed has no date, so it can't count as changed."""
+    root = Path(root).resolve()
+    unknown = {"stale": True, "changed": [], "newest_change": None}
+    saved = when(result.get("saved"))
+    if saved is None:
+        return dict(unknown, why="no saved time")
+    folder = result.get("folder")
+    try:
+        cases = load_cases(root / folder) if isinstance(folder, str) and folder else []
+    except (OSError, ValueError, TypeError, AttributeError):
+        cases = []
+    if not cases:
+        return dict(unknown, why="folder missing")
+    reviewer = result.get("reviewer")
+    files = [root / "agents" / (reviewer + ".md")] if isinstance(reviewer, str) and reviewer else []
+    files.append(root / "scripts" / "eval_agents.py")
+    for case in cases:
+        files += [case["folder"] / "case.json", case["work"]]
+        if isinstance(case.get("brief"), str) and case["brief"]:
+            files.append(root / case["brief"])
+    paths = []
+    for path in files:
+        try:
+            name = path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue  # outside the harness: git here can't date it, and its path isn't printed
+        if name not in paths:
+            paths.append(name)
+    prefix = git(root, "rev-parse", "--show-prefix")
+    status = git(root, "status", "--porcelain", "-z", "--untracked-files=all", "--ignored", "--", *paths)
+    # Newest commit first, each as a NUL, its date, then the names it touched, one per line.
+    log = git(root, "-c", "core.quotePath=false", "log", "--format=%x00%cI", "--name-only", "--", *paths)
+    if prefix is None or status is None or log is None:
+        return dict(unknown, stale=None, why="no git")
+    # Status and log name files from the repository's top, so the prefix comes off to match paths. A
+    # rename or copy in status is followed by a field holding the old name, which is skipped.
+    top, dirty = prefix.strip(), set()
+    fields = iter(status.split("\0"))
+    for field in fields:
+        if "R" in field[:2] or "C" in field[:2]:
+            next(fields, None)
+        if field[3:].startswith(top):
+            dirty.add(field[3 + len(top):])
+    dates = {}
+    for name in dirty & set(paths):
+        try:
+            dates[name] = datetime.datetime.fromtimestamp((root / name).stat().st_mtime).astimezone()
+        except OSError:
+            dates[name] = datetime.datetime.now().astimezone()  # deleted, so changed by now
+    for entry in log.split("\0")[1:]:
+        lines = [line for line in entry.split("\n") if line]
+        date = when(lines[0]) if lines else None
+        for line in lines[1:]:
+            name = line[len(top):] if line.startswith(top) else None
+            if date and name in paths and name not in dates:
+                dates[name] = date  # the first commit seen is the newest
+    changed = sorted(name for name, date in dates.items() if date > saved)
+    return {"stale": bool(changed), "changed": changed,
+            "newest_change": max(dates[name] for name in changed).isoformat(timespec="seconds") if changed else None}
+
+
 def evals(root):
     """The newest saved result for each reviewer. The same loop as eval_agents.latest(): names start with
     the time they were saved, so name order newest first, matched on the "reviewer" field, not the name.
@@ -197,7 +309,8 @@ def evals(root):
                          "stable": sum(1 for s in statuses.values() if s == "stable"),
                          "flaky": sum(1 for s in statuses.values() if s == "flaky"),
                          "failing": sum(1 for s in statuses.values() if s == "failing"),
-                         "failing_cases": sorted(name for name, s in statuses.items() if s == "failing")}
+                         "failing_cases": sorted(name for name, s in statuses.items() if s == "failing"),
+                         **freshness(root, found)}
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
@@ -269,17 +382,134 @@ def waiting(root, now):
     return {"pull_requests": pull_requests(root, now), "blocked": blocked(root)}
 
 
-def build(root, since, today, now=None):
+def text_or_none(value):
+    return value if isinstance(value, str) and value else None
+
+
+def replies(entries, root, loop):
+    """One record per reply in a transcript's entries, for the cache, leaving out replies outside the harness:
+    [message id, request id, day, side, model, session id, input, output, cache writes, cache reads].
+
+    A reply written as several lines keeps only its first line for each day. read() keeps the first line
+    on or after its since date, so that's the same line whatever the date.
+    """
+    out, kept, sides = [], set(), {}
+    for entry in entries:
+        cwd = text_or_none(entry.get("cwd"))
+        if cwd not in sides:
+            found = group(entry, root, loop)
+            sides[cwd] = SIDES[found[0]] if found else None
+        if sides[cwd] is None:
+            continue
+        message = entry["message"]
+        record = [text_or_none(message.get("id")), text_or_none(entry.get("requestId")),
+                  str(entry.get("timestamp", ""))[:10], sides[cwd],
+                  text_or_none(message.get("model")) or "unknown", text_or_none(entry.get("sessionId"))] + tokens(entry)
+        if record[:2] != [None, None]:
+            if tuple(record[:3]) in kept:
+                continue
+            kept.add(tuple(record[:3]))
+        out.append(record)
+    return out
+
+
+def whole(n):
+    return isinstance(n, int) and not isinstance(n, bool) and n >= 0
+
+
+def cached(entry):
+    """True when a cache entry has the shape conversations() writes."""
+    if not isinstance(entry, dict) or not whole(entry.get("size")) or not whole(entry.get("mtime_ns")):
+        return False
+    records = entry.get("replies")
+    return isinstance(records, list) and all(
+        isinstance(r, list) and len(r) == 6 + len(COUNTS) and all(v is None or isinstance(v, str) for v in r[:2])
+        and isinstance(r[2], str) and r[3] in SIDES.values() and isinstance(r[4], str)
+        and (r[5] is None or isinstance(r[5], str)) and all(whole(n) for n in r[6:]) for r in records)
+
+
+def save(path, data):
+    """Write data as JSON through a temporary file beside path, so a reader never sees half of it.
+    A cache that can't be written is left as it was."""
+    path, temp = Path(path), None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=path.name + ".", suffix=".tmp",
+                                         delete=False, encoding="utf-8") as handle:
+            temp = handle.name
+            json.dump(data, handle, separators=(",", ":"))
+        os.replace(temp, path)
+    except OSError:
+        if temp:
+            with contextlib.suppress(OSError):
+                os.unlink(temp)
+
+
+def conversations(root, since, projects_dir, cache_path):
+    """Tokens since `since` in the transcripts under projects_dir, by side and model, the way token_report.py
+    counts them: each reply once, the first copy in path order, judged by the folder it ran in.
+
+    A transcript whose size and time match its cache entry isn't read again. The cache drops transcripts
+    that are gone, and one that can't be read or isn't the right shape is rebuilt.
+    """
+    projects_dir = Path(projects_dir)
+    if not projects_dir.is_dir():
+        return missing("no transcripts")
+    try:
+        loop = loop_dir(root)
+    except (OSError, ValueError):
+        return missing("unreadable")
+    try:
+        cache = json.loads(Path(cache_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    if not isinstance(cache, dict):
+        cache = {}
+    fresh = {}
+    for path in sorted(projects_dir.rglob("*.jsonl")):
+        try:
+            stat = path.stat()  # before the read, so a file that grows during it is read again next time
+            entry = cache.get(str(path))
+            if not (cached(entry) and entry["size"] == stat.st_size and entry["mtime_ns"] == stat.st_mtime_ns):
+                entry = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+                         "replies": replies(read_file(path, False), root, loop)}
+        except OSError:
+            continue
+        fresh[str(path)] = entry
+    save(cache_path, fresh)
+
+    by_model = {"harness": {}, "loop": {}}
+    sessions = {"harness": set(), "loop": set()}
+    seen = set()
+    for entry in fresh.values():
+        for message_id, request_id, day, side, model, session, *counts in entry["replies"]:
+            if day < since:
+                continue
+            if (message_id, request_id) != (None, None):
+                if (message_id, request_id) in seen:
+                    continue
+                seen.add((message_id, request_id))
+            by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0] * len(COUNTS)), counts)]
+            if session:
+                sessions[side].add(session)
+    return {side: {"by_model": {model: dict(zip(COUNTS, values), total=sum(values))
+                                for model, values in sorted(by_model[side].items(), key=lambda kv: natural(kv[0]))},
+                   "sessions": len(sessions[side])}
+            for side in ("harness", "loop")}
+
+
+def build(root, since, today, now=None, projects_dir=TRANSCRIPTS):
     now = now or datetime.datetime.now().astimezone()
     return {"generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
             "evals": evals(root),
+            "conversations": conversations(root, since, projects_dir, Path(root) / CACHE),
             "waiting": waiting(root, now)}
 
 
-def main(argv=None, root=ROOT):
+def main(argv=None, root=ROOT, projects_dir=TRANSCRIPTS):
     now = datetime.datetime.now().astimezone()
     today = now.date()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -287,7 +517,7 @@ def main(argv=None, root=ROOT):
     parser.add_argument("--since", type=since_date, default=(today - datetime.timedelta(days=14)).isoformat(),
                         help="the first day to count, as YYYY-MM-DD (default: 14 days ago)")
     args = parser.parse_args(argv)
-    print(json.dumps(build(root, args.since, today, now), indent=2))
+    print(json.dumps(build(root, args.since, today, now, projects_dir), indent=2))
     return 0
 
 
