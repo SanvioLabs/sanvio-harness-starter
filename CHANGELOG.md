@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The issue window shows each tool call
+
+A `claude` agent run by [`scripts/loop.py`](scripts/loop.py) now writes each tool call to `.loop/issue-N/agent.log` as it
+makes it, one line each, by its name and what it acts on: `→ Read scripts/loop.py`, or a command
+on one line cut to 80 characters. What the agent says between calls shows too. A tool's other input,
+what it returned and claude's other events don't. A line that isn't JSON, such as an error from
+claude itself, still shows, and when the run ends with no result it is the reply, so a blocked issue
+says why. The loop asks
+claude for `--output-format stream-json --verbose` in place of `json`, and still reads usage from the
+result at the end. A command that names its own output
+format keeps it, and a `stream-json` one is run as written.
+
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md).
+
+**Do:** nothing. Restart a running loop to take it.
+
 ## 2026-10-26: The lens settles reviewers it missed ending
 
 A reviewer that ended while the lens was reloading no longer shows `▶` for the rest of the session.

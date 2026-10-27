@@ -88,6 +88,14 @@ def local(day, hhmm, week=0):
 
 
 class TestPureParts(unittest.TestCase):
+    def test_a_claude_command_reports_usage_in_json_or_stream_json_but_not_text(self):
+        for cmd in (["claude", "-p", "--output-format", "json"], ["claude", "-p", "--output-format=stream-json"],
+                    ["claude", "-p", "--output-format", "stream-json", "--verbose"], ["claude", "-p"]):
+            self.assertTrue(loop.reports_usage(cmd), cmd)
+        for cmd in (["claude", "-p", "--output-format", "text"], ["claude", "-p", "--output-format=text"],
+                    ["codex", "exec"]):
+            self.assertFalse(loop.reports_usage(cmd), cmd)
+
     def test_verdict_is_the_last_line_and_defaults_to_fix(self):
         self.assertEqual(loop.parse_verdict("ok\nVERDICT: PASS"), "PASS")
         self.assertEqual(loop.parse_verdict("VERDICT: PASS\nbut wait\nVERDICT: FIX"), "FIX")
@@ -357,8 +365,9 @@ AGENT = """#!/usr/bin/env python3
 import json, os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
-if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") + 1:][:1] == ["json"]:
-    # As claude -p --output-format json: the reply once, at the end, in a result object with its usage.
+if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") + 1:][:1] in (["json"], ["stream-json"]):
+    # As claude -p --output-format json, or stream-json: the reply once, at the end, in a result object
+    # with its usage.
     import atexit, io
     real, said = sys.stdout, io.StringIO()
     sys.stdout = said
@@ -2643,7 +2652,72 @@ class TestProject(unittest.TestCase):
         self.assertEqual((folder / "review.md").read_text(), "Looks right.\nVERDICT: PASS\n")
         self.assertEqual(loop.parse_verdict((folder / "review.md").read_text()), "PASS")
         for step in ("plan", "build", "review"):
-            self.assertEqual(json.loads((self.state / (step + "-argv")).read_text())[-2:], ["--output-format", "json"])
+            self.assertEqual(json.loads((self.state / (step + "-argv")).read_text())[-3:],
+                             ["--output-format", "stream-json", "--verbose"])
+
+    def streaming_claude(self, *events):
+        """A claude that reads its prompt, then prints each event: a dict as a JSON line, a string as it is."""
+        (self.state / "stream").write_text("".join((json.dumps(e) if isinstance(e, dict) else e) + "\n"
+                                                   for e in events))
+        path = Path(self.tmp.name) / "bin" / "claude"
+        path.write_text("#!/usr/bin/env python3\nimport os, sys\nsys.stdin.read()\n"
+                        "sys.stdout.write(open(os.path.join(os.environ['LOOP_TEST_STATE'], 'stream')).read())\n")
+
+    def test_the_log_shows_each_tool_call_by_name_and_target_and_the_reply_is_the_result(self):
+        command = "cd scripts &&\npython3 -m unittest " + "tests.test_loop " * 10
+        reply = "Plan: add feature.txt.\nThen test it.\n"
+        self.streaming_claude(
+            {"type": "system", "subtype": "init", "session_id": "s1", "tools": ["Read", "Bash", "Edit"]},
+            {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed"}},
+            "NOT-JSON-MARKER a warning from the CLI",
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "Reading the loop first."},
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "scripts/loop.py", "limit": 40}},
+                {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": command, "description": "Run it"}},
+                {"type": "tool_use", "id": "t3", "name": "Edit", "input": {
+                    "file_path": "scripts/loop.py", "old_string": "OLD-STRING-MARKER", "new_string": "NEW-STRING-MARKER"}}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "TOOL-RESULT-MARKER"}]}},
+            {"type": "result", "subtype": "success", "result": reply, "total_cost_usd": 0.1,
+             "usage": {"input_tokens": 10, "output_tokens": 5}})
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        log = (folder / "agent.log").read_text()
+        lines = log.splitlines()
+        bash = "→ Bash " + ("cd scripts && python3 -m unittest " + "tests.test_loop " * 10)[:80]
+        for line in ("→ Read scripts/loop.py", bash, "→ Edit scripts/loop.py"):
+            self.assertIn(line, lines)
+        # The Bash line is one line, and what it shows of the command is at most 80 characters.
+        # agent.log holds every step of the issue, and each claude step streams this, so count per line.
+        shown = [l for l in lines if l.startswith("→ Bash")]
+        self.assertTrue(shown)
+        self.assertTrue(all(l == bash for l in shown), shown)
+        self.assertLessEqual(len(bash[len("→ Bash "):]), 80)
+        for hidden in ("OLD-STRING-MARKER", "NEW-STRING-MARKER", "TOOL-RESULT-MARKER", '"type"'):
+            self.assertNotIn(hidden, log)
+        # A line that isn't JSON is the CLI's own: the log shows it, and with a result it goes no further.
+        self.assertIn("NOT-JSON-MARKER a warning from the CLI", lines)
+        self.assertIn("Reading the loop first.", lines)
+        self.assertEqual((folder / "plan.md").read_text(), reply)
+
+    def test_a_stream_with_no_result_logs_and_returns_what_the_cli_printed(self):
+        error = "error: unknown option '--no-such-flag'"
+        self.streaming_claude(error)
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        self.assertIn(error, (folder / "agent.log").read_text().splitlines())
+        self.assertEqual((folder / "plan.md").read_text(), error + "\n")
+
+    def test_a_stream_with_no_result_is_recorded_as_not_reported(self):
+        self.streaming_claude(
+            {"type": "system", "subtype": "init", "session_id": "s1"},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "README.md"}}]}})
+        self.go()
+        entries = json.loads((self.harness / ".loop" / "projects" / "app" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["reported"], e["input_tokens"], e["cost_usd"]) for e in entries][:1],
+                         [("plan", False, None, None)])
+        self.assertFalse(any(e["reported"] for e in entries))
 
     def test_the_pull_request_shows_usage_with_the_estimate_line(self):
         self.go()
