@@ -253,6 +253,12 @@ class SpendByDay(Harness):
         self.assertEqual(spend["since"], {"tokens": 1315 + 7, "cost_usd": 4.0 + 0.5})
         self.assertEqual(sum(d["tokens"] for d in spend["by_day"]), 1315)
 
+    def test_first_run_is_a_day_in_by_day_when_a_run_is_dated_after_today(self):
+        write(self.root, ".loop/issue-7/usage.json", [run("2026-10-28T09:00:00", "plan", "m", 10, 1.0)])
+        self.assertIsNone(self.build()["loop_spend"]["first_run"])
+        write(self.root, ".loop/issue-8/usage.json", [run("2026-10-22T09:00:00", "plan", "m", 10, 1.0)])
+        self.assertEqual(self.build()["loop_spend"]["first_run"], "2026-10-22")
+
     def test_no_run_counted_gives_no_first_run_and_every_day_zero(self):
         write(self.root, ".loop/issue-7/usage.json", [run("2026-09-01T09:00:00", "plan", "m", 10, 1.0)])
         spend = self.build()["loop_spend"]
@@ -640,9 +646,7 @@ class Conversations(Harness):
     def from_token_report(self):
         """What token_report.read() and group() make of the same transcripts, in the same shape."""
         by_model, sessions = {"harness": {}, "loop": {}}, {"harness": set(), "loop": set()}
-        tomorrow = (TODAY + datetime.timedelta(days=1)).isoformat()
-        by_day = {side: dict.fromkeys(dashboard_data.days(SINCE, TODAY) + [tomorrow], 0) for side in by_model}
-        dated = set()
+        by_day = {side: dict.fromkeys(dashboard_data.days(SINCE, TODAY), 0) for side in by_model}
         for entry in token_report.read(self.transcripts, SINCE):
             found = token_report.group(entry, self.root, self.loop)
             if found is None:
@@ -654,11 +658,7 @@ class Conversations(Harness):
             day = entry["timestamp"][:10]
             if day in by_day[side]:
                 by_day[side][day] += sum(token_report.tokens(entry))
-                dated.add(day)
             sessions[side].add(entry["sessionId"])
-        if tomorrow not in dated:
-            for side in by_day:
-                by_day[side].pop(tomorrow, None)
         return {side: {"by_model": {m: dict(zip(dashboard_data.COUNTS, v), total=sum(v))
                                     for m, v in sorted(by_model[side].items())},
                        "sessions": len(sessions[side]),
@@ -666,15 +666,19 @@ class Conversations(Harness):
 
     def test_tokens_by_side_and_model_counted_as_token_report_counts_them(self):
         found = self.conversations()
-        self.assertEqual({side: {k: v for k, v in found[side].items() if k != "by_day"} for side in found}, {
+
+        def on_the_20th(tokens):
+            return [{"day": d, "tokens": tokens if d == "2026-10-20" else 0} for d in dashboard_data.days(SINCE, TODAY)]
+
+        self.assertEqual(found, {
             "harness": {"by_model": {"m-a": {"input": 101, "output": 202, "cache_writes": 303, "cache_reads": 404,
                                              "total": 1010},
                                      "m-b": {"input": 10, "output": 20, "cache_writes": 30, "cache_reads": 40,
                                              "total": 100}},
-                        "sessions": 1},
+                        "sessions": 1, "by_day": on_the_20th(1110)},
             "loop": {"by_model": {"m-a": {"input": 1000, "output": 2000, "cache_writes": 3000, "cache_reads": 4000,
                                           "total": 10000}},
-                     "sessions": 1}})
+                     "sessions": 1, "by_day": on_the_20th(10000)}})
         self.assertEqual(found, self.from_token_report())
 
     def test_a_second_run_reads_only_the_transcript_that_changed(self):
@@ -716,26 +720,22 @@ class Conversations(Harness):
         self.assertEqual(harness["2026-10-15"], 0)
         self.assertEqual(found, self.from_token_report())
 
-    def test_a_reply_dated_tomorrow_in_utc_adds_tomorrow_to_both_sides(self):
+    def test_a_reply_dated_after_today_counts_in_the_models_but_has_no_day(self):
         # 02:00 UTC on the 28th is the evening of the 27th west of UTC.
         lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-28T02:00:00Z")])
         found = self.conversations()
         for side in ("harness", "loop"):
-            self.assertEqual([d["day"] for d in found[side]["by_day"]],
-                             dashboard_data.days(SINCE, TODAY) + ["2026-10-28"], side)
-            self.assertEqual(sum(d["tokens"] for d in found[side]["by_day"]),
-                             sum(m["total"] for m in found[side]["by_model"].values()), side)
-        self.assertEqual(found["harness"]["by_day"][-1], {"day": "2026-10-28", "tokens": 20})
-        self.assertEqual(found["loop"]["by_day"][-1], {"day": "2026-10-28", "tokens": 0})
-        self.assertEqual(found, self.from_token_report())
-
-    def test_a_reply_dated_after_tomorrow_counts_in_the_models_but_has_no_day(self):
-        lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-29T12:00:00Z")])
-        found = self.conversations()
-        self.assertEqual([d["day"] for d in found["harness"]["by_day"]], dashboard_data.days(SINCE, TODAY))
+            self.assertEqual([d["day"] for d in found[side]["by_day"]], dashboard_data.days(SINCE, TODAY), side)
         self.assertEqual(found["harness"]["by_model"]["m-a"]["total"], 1010 + 20)
         self.assertEqual(sum(d["tokens"] for d in found["harness"]["by_day"]), 1010 + 100)
         self.assertEqual(found, self.from_token_report())
+
+    def test_by_day_runs_over_the_same_days_as_loop_spend(self):
+        lines(self.transcripts, "c/s4.jsonl", [reply(self.root, 2, "5", "s4", ts="2026-10-28T02:00:00Z")])
+        found = self.build()
+        spend = [d["day"] for d in found["loop_spend"]["by_day"]]
+        for side in ("harness", "loop"):
+            self.assertEqual([d["day"] for d in found["conversations"][side]["by_day"]], spend, side)
 
     def test_a_missing_transcripts_folder_gives_null_and_why(self):
         self.assertEqual(dashboard_data.conversations(self.root, SINCE, TODAY, self.transcripts / "missing",

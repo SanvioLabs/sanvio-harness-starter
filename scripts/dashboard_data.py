@@ -17,8 +17,8 @@
                      first, each with its tokens and cost_usd, 0 and 0.0 on a day with no run, and
                      cost_usd null on a day whose runs recorded no cost. run_started is local time,
                      so a run dated after today only comes from a wrong clock: it counts in since
-                     but has no day. first_run is the earliest day a run was counted since --since,
-                     or null
+                     but has no day. first_run is the earliest day in by_day with a run counted on
+                     it, or null
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
@@ -37,13 +37,13 @@
                      token_report.py counts them: "harness" for conversations at the root and in
                      projects/, "loop" for the loop's worktrees, each by model (input, output, cache
                      writes, cache reads and total) with how many sessions, and by_day, every day
-                     from --since to today, oldest first, with its total tokens, 0 on a day with no
-                     reply. Transcripts are dated in UTC, so west of UTC an evening's replies fall on
-                     tomorrow: by_day runs on to tomorrow on both sides when a reply is dated there.
-                     A reply dated later still, from a wrong clock, counts in by_model but has no
-                     day. What each transcript held is kept in .harness/cache/conversations.json and read again only when the
-                     file's size or time changes: per reply, its message and request ids, day, side,
-                     model, session id and counts, under the transcript's path, and nothing else
+                     from --since to today, oldest first, the same days as loop_spend's, with its
+                     total tokens, 0 on a day with no reply. Transcripts are dated in UTC, so a
+                     reply dated after today, as an evening's are west of UTC, counts in by_model
+                     but has no day. What each transcript held is kept in
+                     .harness/cache/conversations.json and read again only when the file's size or
+                     time changes: per reply, its message and request ids, day, side, model,
+                     session id and counts, under the transcript's path, and nothing else
     waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
                      the harness repo's open pull requests from gh, each with its title, when it
                      opened, hours waited, its loop issue if its branch is loop/issue-N, whether it's
@@ -187,7 +187,7 @@ def loop_spend(root, since, today):
         on.setdefault(e["run_started"][:10], []).append(e)
     out["by_day"] = [dict(day=d, **(totals(on[d]) if d in on else {"tokens": 0, "cost_usd": 0.0}))
                      for d in days(since, today)]
-    out["first_run"] = min(on) if on else None
+    out["first_run"] = next((d["day"] for d in out["by_day"] if d["day"] in on), None)
     # Both sides over the same issues: ones that ran in the period and status.json still lists.
     rows = status_rows(root)[0] or {}
     tracked = {issue for issue in out["by_issue"] if issue in rows}
@@ -510,10 +510,7 @@ def conversations(root, since, today, projects_dir, cache_path):
 
     by_model = {"harness": {}, "loop": {}}
     sessions = {"harness": set(), "loop": set()}
-    # UTC is at most a day ahead of local time, so tomorrow is the latest day a right clock can give.
-    tomorrow = today + datetime.timedelta(days=1)
-    by_day = {side: dict.fromkeys(days(since, tomorrow), 0) for side in ("harness", "loop")}
-    ahead = False
+    by_day = {side: dict.fromkeys(days(since, today), 0) for side in ("harness", "loop")}
     seen = set()
     for entry in fresh.values():
         for message_id, request_id, day, side, model, session, *counts in entry["replies"]:
@@ -526,12 +523,8 @@ def conversations(root, since, today, projects_dir, cache_path):
             by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0] * len(COUNTS)), counts)]
             if day in by_day[side]:
                 by_day[side][day] += sum(counts)
-                ahead = ahead or day == tomorrow.isoformat()
             if session:
                 sessions[side].add(session)
-    if not ahead:
-        for side in by_day:
-            by_day[side].pop(tomorrow.isoformat(), None)  # not there when --since is after tomorrow
     return {side: {"by_model": {model: dict(zip(COUNTS, values), total=sum(values))
                                 for model, values in sorted(by_model[side].items(), key=lambda kv: natural(kv[0]))},
                    "sessions": len(sessions[side]),
