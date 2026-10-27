@@ -2,8 +2,8 @@
 """Golden-example eval for the review agents: does a reviewer still catch what it should?
 
 Usage:
-    python3 scripts/eval_agents.py FOLDER [--runs 2] [--agent claude] [--save FILE] [--baseline FILE]
-                                          [--checkout PATH]
+    python3 scripts/eval_agents.py FOLDER [--runs 2] [--agent claude] [--save [FILE]]
+                                          [--baseline FILE|latest] [--checkout PATH]
 
 FOLDER holds one folder per case, <NN-slug>/, each with a work file for the agent to review and a
 case.json that says what a good review of it looks like:
@@ -32,10 +32,13 @@ Each case runs --runs times (two by default): all pass is stable, some is flaky,
 Every run starts a real agent session, so a run of ten cases costs twenty. --agent takes claude or
 codex like loop.json's reader_agent, or any command line that reads the prompt on standard input.
 The agent is given the work's path, not its text, so it has to be able to read files: ollama can't.
-Only claude is held to read tools. --save writes the results as JSON, and --baseline lists the cases whose status
-differs from a file saved earlier.
+Only claude is held to read tools. --save writes the results as JSON, with the reviewer, the folder and
+when it was saved: to FILE, or with no FILE to .harness/evals/<YYYY-MM-DDTHHMM>-<reviewer>.json. --baseline
+lists the cases whose status differs from a file saved earlier: FILE, or with latest the newest file in
+.harness/evals/ whose "reviewer" is this run's. Both defaults need every case to name the same agent.
 
-Exits 0 when no case is failing, 1 when one is, 2 when the folder has no cases.
+Exits 0 when no case is failing, 1 when one is, 2 when the folder has no cases or a default is asked of
+cases for more than one reviewer.
 
 From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-harness-starter
 """
@@ -45,12 +48,14 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from loop import command, confined, result_line  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
+SAVED = ROOT / ".harness" / "evals"  # where --save with no file writes, and --baseline latest reads
 TIMEOUT = 900  # seconds one agent session may take
 WHERE = re.compile(r"^\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*Where:\*\*", re.M)
 CLOSING = re.compile(r"^(?:#+ |\s*(?:[-*]\s+|\d+[.)]\s+)?\*\*(?:Recommendations|Not checked|Summary):\*\*)", re.M)
@@ -220,12 +225,39 @@ def changed_since(old, new):
     return lines
 
 
+def reviewer_of(cases):
+    """The set of agents the cases name."""
+    return {case["agent"] for case in cases}
+
+
+def latest(reviewer):
+    """The newest file in SAVED whose "reviewer" field is reviewer, or None. Names start with the time
+    they were saved, so the last in name order is the newest. The field is read, not the name, because
+    *-reviewer.json also matches security-reviewer's files."""
+    for path in sorted(SAVED.glob("*.json"), reverse=True):
+        try:
+            if json.loads(path.read_text()).get("reviewer") == reviewer:
+                return path
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
+
+
+def shown(path):
+    """path relative to ROOT, or whole when it's outside ROOT."""
+    path = Path(path).resolve()
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description="Run the golden examples against a review agent.")
     ap.add_argument("folder")
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--agent", default="claude")
-    ap.add_argument("--save", metavar="FILE")
+    ap.add_argument("--save", metavar="FILE", nargs="?", const="")
     ap.add_argument("--baseline", metavar="FILE")
     ap.add_argument("--checkout", default=str(ROOT))
     args = ap.parse_args(argv)
@@ -233,6 +265,15 @@ def main(argv):
     if not cases:
         print("no cases in " + args.folder)
         return 2
+    reviewers = sorted(reviewer_of(cases))
+    reviewer = ", ".join(reviewers)
+    if len(reviewers) > 1 and (args.save == "" or args.baseline == "latest"):
+        print("the cases are for more than one reviewer ({}), so --save needs a FILE and --baseline "
+              "can't be latest".format(reviewer))
+        return 2
+    baseline = args.baseline
+    if baseline == "latest":
+        baseline = latest(reviewer)
     results = evaluate(cases, max(1, args.runs), args.agent, Path(args.checkout))
     for name, r in results.items():
         print("{:<8} {}  ({}/{} runs)".format(r["status"].upper(), name, r["passes"], r["runs"]))
@@ -242,12 +283,20 @@ def main(argv):
     tokens = [r["tokens"] for r in results.values() if r["tokens"] is not None]
     print("{} stable, {} flaky, {} failing; {} tokens, {:.0f}s".format(
         *counts, sum(tokens) if tokens else "unknown", sum(r["seconds"] for r in results.values())))
-    if args.save:
-        Path(args.save).write_text(json.dumps({"agent": args.agent, "cases": results}, indent=2) + "\n")
-    if args.baseline:
-        old = json.loads(Path(args.baseline).read_text())["cases"]
+    if args.save is not None:
+        now = datetime.now()
+        path = Path(args.save) if args.save else SAVED / "{:%Y-%m-%dT%H%M}-{}.json".format(now, reviewer)
+        if not args.save:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"agent": args.agent, "reviewer": reviewer, "folder": shown(args.folder),
+                                    "saved": now.isoformat(timespec="seconds"), "cases": results}, indent=2) + "\n")
+    if args.baseline == "latest" and baseline is None:
+        print("no saved run for {} in {}/".format(reviewer, shown(SAVED)))
+    elif baseline:
+        old = json.loads(Path(baseline).read_text())["cases"]
         diff = changed_since(old, results)
-        print("against {}: {}".format(args.baseline, "no case changed" if not diff else ""))
+        shown_as = shown(baseline) if args.baseline == "latest" else baseline
+        print("against {}: {}".format(shown_as, "no case changed" if not diff else ""))
         for line in diff:
             print("  " + line)
     return 1 if counts[2] else 0

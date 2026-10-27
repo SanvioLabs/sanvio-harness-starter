@@ -10,7 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -85,6 +87,27 @@ reply = {!r} if calls == 0 else {!r}
 
 def first_case():
     return next(c for c in eval_agents.load_cases(EVALS) if c["name"].startswith("01"))
+
+
+def case_folder(folder, *agents):
+    """A folder of cases, 01-case, 02-case and on, one per agent named, each with nothing to find."""
+    for n, agent in enumerate(agents, 1):
+        (Path(folder) / "{:02d}-case".format(n)).mkdir(parents=True)
+        (Path(folder) / "{:02d}-case".format(n) / "work.md").write_text("# w\n")
+        (Path(folder) / "{:02d}-case".format(n) / "case.json").write_text(json.dumps({"agent": agent}))
+    return Path(folder)
+
+
+def run_main(tmp, saved, *extra, agent=None):
+    """main on a folder of one reviewer case in tmp, with SAVED at saved: (exit code, what it printed)."""
+    folder = Path(tmp) / "cases"
+    if not folder.exists():
+        case_folder(folder, "reviewer")
+    agent = agent or fake_agent(tmp, "reply = " + repr(NOTHING))
+    out = io.StringIO()
+    with mock.patch.object(eval_agents, "SAVED", saved), contextlib.redirect_stdout(out):
+        code = eval_agents.main([str(folder), "--runs", "1", "--agent", agent, "--checkout", tmp] + list(extra))
+    return code, out.getvalue()
 
 
 class Cases(unittest.TestCase):
@@ -361,6 +384,62 @@ class Baseline(unittest.TestCase):
             self.assertEqual(json.loads(saved.read_text())["cases"]["01-unlimited-revisions"]["status"], "failing")
         self.assertIn("01-unlimited-revisions: stable -> failing", out.getvalue())
         self.assertIn("02-photos-not-in-out-of-scope: failing -> stable", out.getvalue())
+
+    def test_save_alone_writes_one_dated_file_and_makes_the_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / "harness" / "evals"
+            code, out = run_main(tmp, saved, "--save")
+            names = [p.name for p in saved.iterdir()]
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(names), 1)
+        self.assertRegex(names[0], r"^\d{4}-\d\d-\d\dT\d{4}-reviewer\.json$")
+
+    def test_a_default_and_a_named_save_both_hold_the_reviewer_folder_and_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / "evals"
+            named = Path(tmp) / "named.json"
+            run_main(tmp, saved, "--save")
+            run_main(tmp, saved, "--save", str(named))
+            for path in (next(saved.iterdir()), named):
+                got = json.loads(path.read_text())
+                self.assertEqual(got["reviewer"], "reviewer", path)
+                self.assertEqual(got["folder"], str((Path(tmp) / "cases").resolve()), path)
+                datetime.fromisoformat(got["saved"])
+
+    def test_baseline_latest_takes_the_newest_run_of_the_same_reviewer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / "evals"
+            saved.mkdir()
+            for name, reviewer, was in (("2026-01-01T0900-reviewer", "reviewer", "failing"),
+                                        ("2026-02-01T0900-reviewer", "reviewer", "flaky"),
+                                        ("2026-03-01T0900-security-reviewer", "security-reviewer", "absent")):
+                (saved / (name + ".json")).write_text(json.dumps(
+                    {"reviewer": reviewer, "cases": {"01-case": {"status": was}}}))
+            code, out = run_main(tmp, saved, "--baseline", "latest")
+            used = saved.resolve() / "2026-02-01T0900-reviewer.json"
+        self.assertEqual(code, 0, out)
+        self.assertIn("against {}:".format(used), out)
+        self.assertIn("01-case: flaky -> stable", out)
+        self.assertNotIn("failing -> stable", out)
+
+    def test_baseline_latest_with_nothing_saved_says_so_and_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out = run_main(tmp, Path(tmp) / "evals", "--baseline", "latest")
+        self.assertEqual(code, 0, out)
+        self.assertIn("no saved run for reviewer in ", out)
+        self.assertNotIn("against", out)
+
+    def test_save_alone_on_cases_for_two_reviewers_refuses_before_any_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / "evals"
+            called = Path(tmp) / "called"
+            case_folder(Path(tmp) / "cases", "reviewer", "security-reviewer")
+            agent = fake_agent(tmp, "open({!r}, 'w').write('x')".format(str(called)))
+            code, out = run_main(tmp, saved, "--save", agent=agent)
+            self.assertFalse(saved.exists())
+            self.assertFalse(called.exists())
+        self.assertEqual(code, 2)
+        self.assertIn("reviewer, security-reviewer", out)
 
 
 if __name__ == "__main__":

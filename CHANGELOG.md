@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Eval results saved to .harness/evals/
+
+`--save` with no file now writes [`scripts/eval_agents.py`](scripts/eval_agents.py)'s results to `.harness/evals/`, named for
+the time and the reviewer, such as `2026-10-27T0930-reviewer.json`, and `--baseline latest` compares
+with the newest file there for the same reviewer. Every saved file, named or not, now also holds
+`reviewer`, `folder` and `saved`. `--save FILE` and `--baseline FILE` work as before. Either default
+on a folder whose cases name more than one agent exits 2 before any session starts. Touches
+[`scripts/eval_agents.py`](scripts/eval_agents.py), [`tests/test_eval_agents.py`](tests/test_eval_agents.py), [`examples/proposal/evals/README.md`](examples/proposal/evals/README.md).
+
+**Do:** nothing, unless you kept results elsewhere and want `latest` to find them: move them into
+`.harness/evals/`, such as `mv ~/harness-evals/*.json .harness/evals/`, and add a `"reviewer"` field
+to each, such as `"reviewer": "reviewer"`. `latest` skips a file without one. It takes the last
+file in name order, so name each one for when it ran, as `2026-10-01T0900-reviewer.json`.
+
 ## 2026-10-26: Loop pane shows each job's model
 
 In the [loop pane](examples/mods/loop-pane/), each job's clock line now ends with the model its
