@@ -27,6 +27,8 @@ inside a session, at the root:
 It's active as soon as the install says so, no restart. Or load it for one
 session with `claude --plugin-dir examples/mods/github-status`.
 
+A change to what the mod does raises `version` in its [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), because `/plugin update` keeps an installed copy whose version hasn't changed, and CI checks this on every pull request with [`scripts/check_mod_versions.py`](../../../scripts/check_mod_versions.py).
+
 It reads GitHub through the [`gh`](https://cli.github.com/) command line, so
 `gh` has to be installed and signed in (`gh auth status` says).
 
