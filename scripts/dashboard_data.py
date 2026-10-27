@@ -35,20 +35,29 @@
                      held is kept in .harness/cache/conversations.json and read again only when the
                      file's size or time changes: per reply, its message and request ids, day, side,
                      model, session id and counts, under the transcript's path, and nothing else
+    waiting          what's waiting on you, in two halves that each fail on their own: pull_requests,
+                     the harness repo's open pull requests from gh, each with its title, when it
+                     opened, hours waited, its loop issue if its branch is loop/issue-N, whether it's
+                     a draft, its checks (pass, fail, pending, or null with none) and whether it
+                     conflicts (null while GitHub doesn't know); and blocked, the issues in
+                     status.json whose state is blocked, each with its title, note and last update
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the why names
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
 only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
-cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Nothing it prints holds a title, a note, a pull request's address, a
-prompt, an eval's reasons or a file path other than those in changed, which are from the harness root:
-counts, dollars, dates, issue names, step, model, skill, agent, rule and case names. The dollars are the
-loop's estimate at API prices, not what was billed.
+cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Titles and notes
+appear only under waiting, printed as they were written, so they hold whatever was typed into them.
+Outside waiting nothing it prints holds a title or a note, and nowhere does it add a pull request's
+address, a prompt, an eval's reasons or a file path other than those in changed, which are from the
+harness root: counts, dollars, dates, issue names, step, model, skill, agent, rule and case names. The
+dollars are the loop's estimate at API prices, not what was billed.
 """
 import argparse
 import contextlib
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -67,6 +76,10 @@ TRANSCRIPTS = Path.home() / ".claude" / "projects"
 CACHE = Path(".harness") / "cache" / "conversations.json"
 SIDES = {"Conversations": "harness", "projects/": "harness", "Loop": "loop"}  # token_report's groups, two sides
 COUNTS = ("input", "output", "cache_writes", "cache_reads")  # token_report's FIELDS, in order
+GH_TIMEOUT = 30  # seconds before a gh call counts as unavailable
+PR_FIELDS = "number,title,createdAt,headRefName,isDraft,statusCheckRollup,mergeable"
+FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
+LOOP_BRANCH = re.compile(r"^loop/issue-(\d+)$")
 
 
 def missing(why):
@@ -301,6 +314,74 @@ def evals(root):
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
+def checks(rollup):
+    """fail if any check failed, else pending if any hasn't finished, else pass; None with no checks.
+
+    gh mixes two shapes: a check run has status and conclusion ("" until it ends), a commit status has state.
+    """
+    found = [c for c in rollup if isinstance(c, dict)] if isinstance(rollup, list) else []
+    if not found:
+        return None
+    ends = [c.get("conclusion") or c.get("state") for c in found]
+    if any(end in FAILED for end in ends):
+        return "fail"
+    if any(c.get("status", "COMPLETED") != "COMPLETED" or end in ("PENDING", "EXPECTED") or not end
+           for c, end in zip(found, ends)):
+        return "pending"
+    return "pass"
+
+
+def hours_since(opened, now):
+    try:
+        then = datetime.datetime.fromisoformat(opened.replace("Z", "+00:00"))
+        return round((now - then).total_seconds() / 3600, 1)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def pull_requests(root, now):
+    try:
+        done = subprocess.run(["gh", "pr", "list", "--state", "open", "--limit", "100", "--json", PR_FIELDS],
+                              cwd=root, capture_output=True, text=True, timeout=GH_TIMEOUT)
+        found = json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        found = None
+    if not isinstance(found, list):
+        return missing("gh unavailable")
+    out = []
+    for pr in found:
+        if not isinstance(pr, dict):
+            continue
+        opened = pr.get("createdAt") if isinstance(pr.get("createdAt"), str) else None
+        branch = LOOP_BRANCH.match(pr["headRefName"]) if isinstance(pr.get("headRefName"), str) else None
+        out.append({"number": number(pr.get("number")),
+                    "title": pr["title"] if isinstance(pr.get("title"), str) else None,
+                    "opened": opened,
+                    "hours_waited": hours_since(opened, now),
+                    "loop_issue": int(branch.group(1)) if branch else None,
+                    "draft": pr["isDraft"] if isinstance(pr.get("isDraft"), bool) else None,
+                    "checks": checks(pr.get("statusCheckRollup")),
+                    "conflicts": {"CONFLICTING": True, "MERGEABLE": False}.get(pr.get("mergeable"))})
+    return out
+
+
+def blocked(root):
+    rows, why = status_rows(root)
+    if rows is None:
+        return missing(why)
+
+    def text(row, name):
+        return row[name] if isinstance(row.get(name), str) else None
+
+    return [{"issue": name, "number": rows[name]["number"], "title": text(rows[name], "title"),
+             "note": text(rows[name], "note"), "updated": text(rows[name], "updated")}
+            for name in sorted(rows, key=natural) if rows[name].get("state") == "blocked"]
+
+
+def waiting(root, now):
+    return {"pull_requests": pull_requests(root, now), "blocked": blocked(root)}
+
+
 def text_or_none(value):
     return value if isinstance(value, str) and value else None
 
@@ -424,7 +505,8 @@ def build(root, since, today, now=None, projects_dir=TRANSCRIPTS):
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
             "evals": evals(root),
-            "conversations": conversations(root, since, projects_dir, Path(root) / CACHE)}
+            "conversations": conversations(root, since, projects_dir, Path(root) / CACHE),
+            "waiting": waiting(root, now)}
 
 
 def main(argv=None, root=ROOT, projects_dir=TRANSCRIPTS):
