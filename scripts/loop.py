@@ -1105,7 +1105,9 @@ class Loop:
 
         A claude command is asked for --output-format stream-json --verbose, which prints each event as
         it happens and its reply once, at the end, in a result event. Each tool call and each text block
-        goes to the log as plain text (progress_line), and no other line does, JSON or not. The result is
+        goes to the log as plain text (progress_line), and no other JSON line does. A line that isn't JSON is
+        the CLI's own, such as an error before the session starts: it goes to the log, and when no result
+        event comes it is what the return value holds, so a run that failed still says why. The result is
         replaced by the reply's text, which goes to the log too and is all the return value holds, so
         everything built from it reads as plain text, and its usage is recorded for number.
         """
@@ -1149,6 +1151,8 @@ class Loop:
         timer.daemon = True
         said = []
         usage = None
+        answered = False
+        stray = []  # stream-json: lines that weren't JSON, the reply when no result event comes
         with proc:
             self.agents.add(proc)
             if self.interrupted.is_set():
@@ -1164,9 +1168,16 @@ class Loop:
                         if found:
                             line, usage = found
                             line = line if line.endswith("\n") else line + "\n"
+                            answered = True
+                        elif streaming and not line.lstrip().startswith("{"):
+                            # Not JSON: the CLI's own words, an error say. The log shows it, and it is kept
+                            # in case no result comes.
+                            stray.append(line)
+                            handle.write(line)
+                            handle.flush()
+                            continue
                         elif streaming:
-                            # Progress goes to the log only. Any other line, an event it doesn't show or
-                            # one that isn't JSON, is dropped.
+                            # Progress goes to the log only. Any other event, one it doesn't show, is dropped.
                             shown = progress_line(line)
                             if shown is not None:
                                 handle.write(shown + "\n")
@@ -1186,6 +1197,8 @@ class Loop:
                     self.log("ERROR", "could not record usage: {}".format(err.strerror or err), number)
         if expired.is_set():
             return 124, "timed out after {}s".format(timeout)
+        if streaming and not answered:
+            said = stray
         return proc.returncode, "".join(said)
 
     def record_usage(self, number, step, round_no, usage):

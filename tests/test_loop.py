@@ -2693,10 +2693,20 @@ class TestProject(unittest.TestCase):
         self.assertTrue(shown)
         self.assertTrue(all(l == bash for l in shown), shown)
         self.assertLessEqual(len(bash[len("→ Bash "):]), 80)
-        for hidden in ("OLD-STRING-MARKER", "NEW-STRING-MARKER", "TOOL-RESULT-MARKER", "NOT-JSON-MARKER", '"type"'):
+        for hidden in ("OLD-STRING-MARKER", "NEW-STRING-MARKER", "TOOL-RESULT-MARKER", '"type"'):
             self.assertNotIn(hidden, log)
+        # A line that isn't JSON is the CLI's own: the log shows it, and with a result it goes no further.
+        self.assertIn("NOT-JSON-MARKER a warning from the CLI", lines)
         self.assertIn("Reading the loop first.", lines)
         self.assertEqual((folder / "plan.md").read_text(), reply)
+
+    def test_a_stream_with_no_result_logs_and_returns_what_the_cli_printed(self):
+        error = "error: unknown option '--no-such-flag'"
+        self.streaming_claude(error)
+        self.go()
+        folder = self.harness / ".loop" / "projects" / "app" / "issue-12"
+        self.assertIn(error, (folder / "agent.log").read_text().splitlines())
+        self.assertEqual((folder / "plan.md").read_text(), error + "\n")
 
     def test_a_stream_with_no_result_is_recorded_as_not_reported(self):
         self.streaming_claude(
