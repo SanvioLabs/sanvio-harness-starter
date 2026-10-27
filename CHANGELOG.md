@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: The loop records which model each step ran on
+
+Each agent run by [`scripts/loop.py`](scripts/loop.py) now records its model: the one `claude`'s `init` event
+names, or the model the setting names, such as `qwen3:8b` for `ollama:qwen3:8b`, or `null` when
+nothing says. For a `claude` run, `.loop/issue-N/agent.log` shows `· model <id>` before its first
+tool call and the issue's status row takes it as `model`. Every run's `USAGE` line in `loop.log`
+names it after the round (`build round 1 claude-opus-5-5 tokens …`, or `model unknown`), each
+`usage.json` entry has a `model` field, and the pull request's `## Usage` table has a Model column.
+Older `usage.json` and `status.json` files still load, and their entries show as `unknown`. Touches
+[`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md).
+
+**Do:** nothing, unless something of yours reads the `USAGE` line or the Usage table by position:
+allow for the model after the round, and the new column.
+
 ## 2026-10-26: The issue window shows each tool call
 
 While a `claude` agent run by [`scripts/loop.py`](scripts/loop.py) works, `.loop/issue-N/agent.log` now gets a line for
