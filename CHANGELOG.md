@@ -31,7 +31,7 @@ fine).
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `evals` now says, for each reviewer's newest saved result, whether it is
 stale: whether the agent's file in [`agents/`](agents/), [`scripts/eval_agents.py`](scripts/eval_agents.py), or a case's `case.json`, work file or
-brief was committed, or edited and not yet committed, after the result was saved. `changed` lists
+brief was committed, or edited and not yet committed, or written while git ignores it, after the result was saved. `changed` lists
 those files from the harness root and `newest_change` gives the latest date. A result with no saved
 time or no cases in its folder is stale with a `why`, and one git can't check has `stale: null`.
 Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).

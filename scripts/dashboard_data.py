@@ -23,7 +23,8 @@
                      is true when a file the result rests on changed after it was saved: the agent's
                      file in agents/, scripts/eval_agents.py, or a case's case.json, work file or
                      brief. A file changed when its last commit is later than saved, or when it has
-                     uncommitted changes written later. changed lists those files from the harness
+                     uncommitted changes, or git ignores it, and it was written later. A file that
+                     doesn't exist and was never committed can't count. changed lists those files from the harness
                      root, and newest_change is the latest of their dates. A result with no saved
                      time or no cases in its folder is stale with a why, and one git can't check
                      has stale null with a why
@@ -179,10 +180,13 @@ def git(root, *args):
 
 
 def when(text):
-    """text as an aware datetime, a time without an offset taken as local, or None when it isn't one."""
+    """text as an aware datetime, a time without an offset taken as local, or None when it isn't one.
+
+    A trailing Z, which some versions of git print for UTC, becomes +00:00: fromisoformat() before
+    Python 3.11 refuses it."""
     try:
-        found = datetime.datetime.fromisoformat(text)
-    except (TypeError, ValueError):
+        found = datetime.datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+    except (AttributeError, TypeError, ValueError):
         return None
     return found if found.tzinfo else found.astimezone()
 
@@ -192,7 +196,8 @@ def freshness(root, result):
 
     The files are the agent's, eval_agents.py, and each case's case.json, work file and brief. One counts
     as changed when its date is later than "saved": its last commit's, or for one with uncommitted
-    changes, when it was last written."""
+    changes or that git ignores, when it was last written. One that doesn't exist and was never
+    committed has no date, so it can't count as changed."""
     root = Path(root).resolve()
     unknown = {"stale": True, "changed": [], "newest_change": None}
     saved = when(result.get("saved"))
@@ -205,7 +210,9 @@ def freshness(root, result):
         cases = []
     if not cases:
         return dict(unknown, why="folder missing")
-    files = [root / "agents" / (result["reviewer"] + ".md"), root / "scripts" / "eval_agents.py"]
+    reviewer = result.get("reviewer")
+    files = [root / "agents" / (reviewer + ".md")] if isinstance(reviewer, str) and reviewer else []
+    files.append(root / "scripts" / "eval_agents.py")
     for case in cases:
         files += [case["folder"] / "case.json", case["work"]]
         if isinstance(case.get("brief"), str) and case["brief"]:
@@ -219,7 +226,7 @@ def freshness(root, result):
         if name not in paths:
             paths.append(name)
     prefix = git(root, "rev-parse", "--show-prefix")
-    status = git(root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *paths)
+    status = git(root, "status", "--porcelain", "-z", "--untracked-files=all", "--ignored", "--", *paths)
     # Newest commit first, each as a NUL, its date, then the names it touched, one per line.
     log = git(root, "-c", "core.quotePath=false", "log", "--format=%x00%cI", "--name-only", "--", *paths)
     if prefix is None or status is None or log is None:

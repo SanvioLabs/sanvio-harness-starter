@@ -238,7 +238,9 @@ class StaleEvals(Harness):
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "change", date=date)
         # The tests turn on this date, so a commit git dated otherwise fails here rather than as a fresh result.
-        self.assertEqual(self.git("log", "-1", "--format=%cI").strip(), date)
+        # Some versions of git print UTC as Z and others as +00:00, so the times are compared, not the text.
+        self.assertEqual(dashboard_data.when(self.git("log", "-1", "--format=%cI").strip()),
+                         dashboard_data.when(date))
 
     def save(self, reviewer, **fields):
         result = {"reviewer": reviewer, "folder": "evals", "saved": self.SAVED, "cases": {"01-x": {"status": "stable"}}}
@@ -283,9 +285,40 @@ class StaleEvals(Harness):
         self.assertEqual(self.stale("security-reviewer"),
                          {"stale": True, "changed": [], "newest_change": None, "why": "no saved time"})
 
+    def test_a_commit_dated_with_z_after_it_was_saved_makes_it_stale(self):
+        # git prints Z on some versions, and fromisoformat() before Python 3.11 refuses it.
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-26T09:00:00Z")
+        self.assertEqual(self.stale(), {"stale": True, "changed": ["briefs/proposal.md"],
+                                        "newest_change": "2026-10-26T09:00:00+00:00"})
+
+    def test_a_brief_git_ignores_written_after_it_was_saved_makes_it_stale(self):
+        write(self.root, ".gitignore", "briefs/\n")
+        self.git("rm", "-r", "-q", "--cached", "briefs")
+        self.commit("2026-10-21T09:00:00+00:00")
+        brief = self.root / "briefs" / "proposal.md"
+        written = datetime.datetime(2026, 10, 26, 12, 0, tzinfo=datetime.timezone.utc)
+        os.utime(brief, (written.timestamp(), written.timestamp()))
+        found = self.stale()
+        self.assertEqual((found["stale"], found["changed"]), (True, ["briefs/proposal.md"]))
+
+    def test_a_reviewer_that_isnt_a_string_doesnt_stop_the_check(self):
+        found = dashboard_data.freshness(self.root, {"reviewer": ["a"], "folder": "evals", "saved": self.SAVED})
+        self.assertEqual(found, {"stale": False, "changed": [], "newest_change": None})
+
     def test_without_git_stale_is_null(self):
         shutil.rmtree(self.root / ".git")
         self.assertEqual(self.stale(), {"stale": None, "changed": [], "newest_change": None, "why": "no git"})
+
+
+class When(unittest.TestCase):
+    def test_a_trailing_z_is_utc_on_every_python(self):
+        self.assertEqual(dashboard_data.when("2026-10-20T09:00:00Z"),
+                         datetime.datetime(2026, 10, 20, 9, 0, tzinfo=datetime.timezone.utc))
+
+    def test_anything_else_that_isnt_a_time_is_none(self):
+        for text in (None, 3, "", "Z", "not a time"):
+            self.assertIsNone(dashboard_data.when(text), text)
 
 
 class MissingOrCorrupt(Harness):
