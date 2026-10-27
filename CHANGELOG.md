@@ -41,6 +41,20 @@ Older `usage.json` and `status.json` files still load, and their entries show as
 **Do:** nothing, unless something of yours reads the `USAGE` line or the Usage table by position:
 allow for the model after the round, and the new column.
 
+## 2026-10-26: CI fails a mod change without a new version
+
+A pull request that changes what a mod under [`examples/mods/`](examples/mods/) does now fails CI's `checks` job unless it
+raises `version` in that mod's `.claude-plugin/plugin.json`. `/plugin update` keeps an installed copy
+whose version hasn't changed, so without a new version the change never reaches anyone who already has
+the mod. A change only to the mod's Markdown or to its `*.test.ts` and `*.test.tsx` files doesn't count, and a
+mod that's new or removed in the pull request is skipped. Versions are three whole numbers, compared as
+numbers, so 0.10.0 is higher than 0.9.0. The check runs on pull requests only, not in the pre-commit hook.
+
+Files: [`scripts/check_mod_versions.py`](scripts/check_mod_versions.py), [`tests/test_mod_versions.py`](tests/test_mod_versions.py), [`.github/workflows/ci.yml`](.github/workflows/ci.yml),
+the READMEs of [`examples/mods/harness-lens/`](examples/mods/harness-lens/), [`examples/mods/loop-pane/`](examples/mods/loop-pane/) and [`examples/mods/github-status/`](examples/mods/github-status/).
+
+**Do:** raise a mod's version in any pull request that changes what it does.
+
 ## 2026-10-26: The issue window shows each tool call
 
 While a `claude` agent run by [`scripts/loop.py`](scripts/loop.py) works, `.loop/issue-N/agent.log` now gets a line for

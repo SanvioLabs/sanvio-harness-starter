@@ -93,6 +93,8 @@ inside a session, at the root:
 
 Or load it for one session with `claude --plugin-dir examples/mods/loop-pane`.
 
+A change to what the mod does raises `version` in its [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), because `/plugin update` keeps an installed copy whose version hasn't changed, and CI checks this on every pull request with [`scripts/check_mod_versions.py`](../../../scripts/check_mod_versions.py).
+
 On a machine that already knew this marketplace from another copy of the
 harness, the first session in a new copy can miss it: Claude Code installs
 the enabled mods before it re-reads the marketplace. The second session has

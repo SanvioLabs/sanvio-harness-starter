@@ -31,6 +31,8 @@ Don't see it? Install it from inside a session, at the root:
 It's active as soon as the install says so, no restart. Or load it for one
 session with `claude --plugin-dir examples/mods/harness-lens`.
 
+A change to what the mod does raises `version` in its [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), because `/plugin update` keeps an installed copy whose version hasn't changed, and CI checks this on every pull request with [`scripts/check_mod_versions.py`](../../../scripts/check_mod_versions.py).
+
 To turn it off just for you, without changing the file everyone shares:
 
 ```bash
