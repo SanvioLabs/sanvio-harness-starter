@@ -120,6 +120,14 @@ class Repeats(Harness):
         write(self.transcripts, "proj/s1.jsonl", [line, line, entry(self.root, id="msg_same", req="req_other")])
         self.assertEqual(len(token_report.read(self.transcripts, SINCE)), 2)
 
+    def test_read_file_keeps_every_line_and_date_for_read_to_sort_out(self):
+        line = entry(self.root, id="msg_same", req="req_same", ts="2026-09-01T00:00:00Z")
+        path = write(self.transcripts, "proj/s1.jsonl", [line, line, "not json"])
+        found = token_report.read_file(path, nested=True)
+        self.assertEqual(len(found), 2)
+        self.assertTrue(all(e["_subagent"] for e in found))
+        self.assertEqual(token_report.read(self.transcripts, SINCE), [])
+
 
 class Since(Harness):
     def test_replies_before_the_date_are_left_out(self):

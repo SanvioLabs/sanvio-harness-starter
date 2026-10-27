@@ -2,15 +2,18 @@
 import datetime
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import dashboard_data  # noqa: E402 (needs scripts/ on the path first)
+import token_report  # noqa: E402 (same reason)
 from usage_report import log_path  # noqa: E402 (same reason)
 
 TODAY = datetime.date(2026, 10, 27)
@@ -40,6 +43,7 @@ class Harness(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name).resolve() / ("harness-" + LEAK)
         self.root.mkdir()
+        self.transcripts = Path(tmp.name).resolve() / "transcripts"  # not there until a test writes one
 
     def fill(self):
         write(self.root, ".loop/issue-7/usage.json", [
@@ -85,12 +89,13 @@ class Harness(unittest.TestCase):
         write(self.root, ".harness/evals/2026-10-27T0900-broken.json", "not json")
 
     def build(self, since=SINCE):
-        return dashboard_data.build(self.root, since, TODAY)
+        return dashboard_data.build(self.root, since, TODAY, projects_dir=self.transcripts)
 
     def main(self, *args):
         out = io.StringIO()
         with redirect_stdout(out):
-            code = dashboard_data.main(["--json", "--since", SINCE, *args], root=self.root)
+            code = dashboard_data.main(["--json", "--since", SINCE, *args], root=self.root,
+                                       projects_dir=self.transcripts)
         return code, out.getvalue()
 
 
@@ -100,7 +105,8 @@ class Layout(Harness):
         code, out = self.main()
         self.assertEqual(code, 0)
         found = json.loads(out)
-        self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals"])
+        self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals",
+                                       "conversations"])
         self.assertEqual(found["since"], SINCE)
         self.assertIsNotNone(datetime.datetime.fromisoformat(found["generated"]).tzinfo)
 
@@ -211,6 +217,7 @@ class MissingOrCorrupt(Harness):
         self.assertEqual(found["loop_throughput"], {"value": None, "why": "no status.json"})
         self.assertEqual(found["activity"], {"value": None, "why": "no usage log"})
         self.assertEqual(found["evals"], {"value": None, "why": "no saved evals"})
+        self.assertEqual(found["conversations"], {"value": None, "why": "no transcripts"})
 
     def test_every_source_corrupt_gives_null_and_why_and_exits_0(self):
         write(self.root, ".loop/issue-7/usage.json", "not json")
@@ -231,6 +238,108 @@ class MissingOrCorrupt(Harness):
         spend = self.build()["loop_spend"]
         self.assertEqual(spend["since"], {"tokens": None, "cost_usd": None})
         self.assertEqual(spend["by_issue"], {})
+
+
+def reply(cwd, n, id, session, model="m-a", ts="2026-10-20T12:00:00Z", sidechain=False):
+    """One transcript line for a reply, the shape Claude Code writes, with n, 2n, 3n and 4n tokens."""
+    return {"type": "assistant", "cwd": str(cwd), "sessionId": session, "timestamp": ts, "requestId": "req_" + id,
+            "isSidechain": sidechain,
+            "message": {"id": "msg_" + id, "model": model, "role": "assistant",
+                        "usage": {"input_tokens": n, "output_tokens": 2 * n, "cache_creation_input_tokens": 3 * n,
+                                  "cache_read_input_tokens": 4 * n},
+                        "content": [{"type": "text", "text": "reply " + LEAK}]}}
+
+
+def lines(folder, relative, entries):
+    return write(folder, relative, "".join(json.dumps(e) + "\n" for e in entries))
+
+
+class Conversations(Harness):
+    """Transcripts beside the harness, and the loop's worktrees in a folder set by loop.json."""
+
+    def setUp(self):
+        super().setUp()
+        self.loop = self.root.parent / "loop-checkouts"
+        write(self.root, "loop.json", {"worktree_dir": str(self.loop)})
+        self.cache = self.root / ".harness" / "cache" / "conversations.json"
+        prompt = {"type": "user", "cwd": str(self.root), "sessionId": "s1", "timestamp": "2026-10-20T11:00:00Z",
+                  "message": {"role": "user", "content": "prompt " + LEAK}}
+        first = reply(self.root, 1, "1", "s1")
+        lines(self.transcripts, "a/s1.jsonl", [
+            prompt, first, first, reply(self.root / "projects" / "app", 10, "2", "s1", model="m-b"),
+            reply(self.root, 7, "old", "s1", ts="2026-10-01T12:00:00Z"),
+            reply(self.root.parent / "elsewhere", 5, "out", "s9")])
+        lines(self.transcripts, "a/s1/subagents/agent-x.jsonl", [reply(self.root, 100, "3", "s1", sidechain=True)])
+        # The same reply again, as a resumed session copies it, then one from the loop.
+        self.other = lines(self.transcripts, "b/s2.jsonl", [
+            dict(first, sessionId="s3"), reply(self.loop / "issue-7" / "src", 1000, "4", "s2")])
+
+    def conversations(self):
+        return dashboard_data.conversations(self.root, SINCE, self.transcripts, self.cache)
+
+    def from_token_report(self):
+        """What token_report.read() and group() make of the same transcripts, in the same shape."""
+        by_model, sessions = {"harness": {}, "loop": {}}, {"harness": set(), "loop": set()}
+        for entry in token_report.read(self.transcripts, SINCE):
+            found = token_report.group(entry, self.root, self.loop)
+            if found is None:
+                continue
+            side = "loop" if found[0] == "Loop" else "harness"
+            model = entry["message"]["model"]
+            by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0, 0, 0, 0]),
+                                                           token_report.tokens(entry))]
+            sessions[side].add(entry["sessionId"])
+        return {side: {"by_model": {m: dict(zip(dashboard_data.COUNTS, v), total=sum(v))
+                                    for m, v in sorted(by_model[side].items())},
+                       "sessions": len(sessions[side])} for side in by_model}
+
+    def test_tokens_by_side_and_model_counted_as_token_report_counts_them(self):
+        found = self.conversations()
+        self.assertEqual(found, {
+            "harness": {"by_model": {"m-a": {"input": 101, "output": 202, "cache_writes": 303, "cache_reads": 404,
+                                             "total": 1010},
+                                     "m-b": {"input": 10, "output": 20, "cache_writes": 30, "cache_reads": 40,
+                                             "total": 100}},
+                        "sessions": 1},
+            "loop": {"by_model": {"m-a": {"input": 1000, "output": 2000, "cache_writes": 3000, "cache_reads": 4000,
+                                          "total": 10000}},
+                     "sessions": 1}})
+        self.assertEqual(found, self.from_token_report())
+
+    def test_a_second_run_reads_only_the_transcript_that_changed(self):
+        first = self.conversations()
+        stat = self.other.stat()
+        os.utime(self.other, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        with mock.patch.object(dashboard_data, "read_file", wraps=token_report.read_file) as reading:
+            self.assertEqual(self.conversations(), first)
+        self.assertEqual([call.args[0] for call in reading.call_args_list], [self.other])
+
+    def test_a_cache_that_cant_be_read_or_has_the_wrong_shape_is_rebuilt(self):
+        for junk in ("not json", "[1, 2]", json.dumps({str(self.other): {"size": "big", "replies": [[1]]}})):
+            write(self.cache.parent, self.cache.name, junk)
+            self.assertEqual(self.conversations(), self.from_token_report(), junk)
+            self.assertIn(str(self.other), json.loads(self.cache.read_text()))
+
+    def test_a_deleted_transcript_drops_out_of_the_cache_and_the_counts(self):
+        self.conversations()
+        self.other.unlink()
+        found = self.conversations()
+        self.assertNotIn(str(self.other), json.loads(self.cache.read_text()))
+        self.assertEqual(found["loop"], {"by_model": {}, "sessions": 0})
+        self.assertEqual(found, self.from_token_report())
+
+    def test_a_missing_transcripts_folder_gives_null_and_why(self):
+        self.assertEqual(dashboard_data.conversations(self.root, SINCE, self.transcripts / "missing", self.cache),
+                         {"value": None, "why": "no transcripts"})
+
+    def test_no_prompt_reply_or_folder_reaches_the_output_or_the_cache(self):
+        code, out = self.main()
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["conversations"]["loop"]["sessions"], 1)
+        cache = self.cache.read_text()
+        for text in (out, cache):
+            for leak in (LEAK, str(self.root), str(self.loop)):
+                self.assertNotIn(leak, text)
 
 
 class Privacy(Harness):
