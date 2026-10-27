@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Loop rework in the dashboard numbers
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains a `loop_rework` section: how many of the loop's pull requests
+(branch `loop/issue-N`) merged since `--since`, how many gained a commit without the loop's
+`Loop: issue #` line, and each of those with its number, title, merges from main and other commits.
+It reads them through `gh`, and is `null` with a `why` when `gh` fails. Each pull request's commits are
+fetched once and cached in `.harness/cache/loop_rework.json`. Its pull request titles are the one
+place the script prints a title. Touches [`scripts/dashboard_data.py`](scripts/dashboard_data.py),
+[`tests/test_dashboard_data.py`](tests/test_dashboard_data.py).
+
+**Do:** nothing.
+
 ## 2026-10-27: Dashboard numbers as JSON
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` prints the numbers a dashboard needs as one JSON object: the

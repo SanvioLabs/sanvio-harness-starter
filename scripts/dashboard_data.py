@@ -20,17 +20,26 @@
                      slash commands by name, guard refusals by rule, and how many times it asked
     evals            the newest file in .harness/evals/ for each reviewer: when it was saved, how
                      many cases were stable, flaky and failing, and the failing cases' names
+    loop_rework      the loop's pull requests (branch loop/issue-N) merged since --since, read through
+                     gh: how many, how many gained a commit without the loop's "Loop: issue #" line,
+                     and each of those with its number, title, merges from main and other commits.
+                     A pull request's commits are cached in .harness/cache/loop_rework.json, so
+                     each is asked for once
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the why names
 the kind of problem, never a path or an error's text. The script still exits 0. status.json keeps
 only the loop's 20 most recent issues, so throughput covers those whatever --since says, and
-cost_per_pr leaves out an issue that ran in the period but has dropped off the list. Nothing it prints holds a title, a note, a pull request's address, a
+cost_per_pr leaves out an issue that ran in the period but has dropped off the list. loop_rework reads
+the 200 most recently merged pull requests, so a --since far enough back can undercount it. Nothing it
+prints holds a title, except loop_rework's pull request titles, nor a note, a pull request's address, a
 prompt, an eval's reasons or a file path: counts, dollars, dates, issue names, step, model, skill,
 agent, rule and case names. The dollars are the loop's estimate at API prices, not what was billed.
 """
 import argparse
 import datetime
 import json
+import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -42,6 +51,9 @@ from token_report import loop_runs, natural, usage_files  # noqa: E402 (same rea
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
 
 WEEK = 7  # days in the last-7-days window, today included
+REWORK_CACHE = Path(".harness") / "cache" / "loop_rework.json"
+LOOP_BRANCH = re.compile(r"^loop/issue-\d+$")
+BASE_MERGES = ("Merge branch 'main'", "Merge remote-tracking branch 'origin/main'")
 
 
 def missing(why):
@@ -187,13 +199,89 @@ def evals(root):
     return {name: out[name] for name in sorted(out)} if out else missing("unreadable")
 
 
+def gh(root, *args):
+    """The JSON values gh prints, run in root so it reaches root's repo, or None when gh is missing, fails
+    or prints anything else. A list with --paginate is printed a page at a time, one array after another."""
+    try:
+        done = subprocess.run(["gh", *args], cwd=root, capture_output=True, text=True)
+    except OSError:
+        return None
+    if done.returncode != 0:
+        return None
+    decoder, text, at, values = json.JSONDecoder(), done.stdout, 0, []
+    while True:
+        while at < len(text) and text[at].isspace():
+            at += 1
+        if at == len(text):
+            return values
+        try:
+            value, at = decoder.raw_decode(text, at)
+        except ValueError:
+            return None
+        values.append(value)
+
+
+def commit_kind(item):
+    """{loop, merge_from_base} for one commit from the REST API, keeping nothing else of it."""
+    item = item if isinstance(item, dict) else {}
+    commit = item.get("commit") if isinstance(item.get("commit"), dict) else {}
+    message = commit.get("message") if isinstance(commit.get("message"), str) else ""
+    parents = item.get("parents") if isinstance(item.get("parents"), list) else []
+    return {"loop": any(line.startswith("Loop: issue #") for line in message.splitlines()),
+            "merge_from_base": len(parents) > 1 and message.startswith(BASE_MERGES)}
+
+
+def loop_rework(root, since):
+    """The loop's merged pull requests since since, and the ones a commit without the loop's line reached.
+
+    A merged pull request's commits don't change, so each one's are fetched once and cached for good.
+    """
+    pages = gh(root, "pr", "list", "--state", "merged", "--json", "number,title,headRefName,mergedAt",
+               "--limit", "200")
+    if pages is None or not all(isinstance(page, list) for page in pages):
+        return missing("gh failed")
+    prs = [pr for page in pages for pr in page
+           if isinstance(pr, dict) and isinstance(number(pr.get("number")), int)
+           and isinstance(pr.get("headRefName"), str) and LOOP_BRANCH.match(pr["headRefName"])
+           and isinstance(pr.get("mergedAt"), str) and pr["mergedAt"][:10] >= since]
+    path = Path(root) / REWORK_CACHE
+    try:
+        cache = json.loads(path.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    cache = cache if isinstance(cache, dict) else {}
+    fetched = {}
+    out = []
+    for pr in sorted(prs, key=lambda pr: pr["number"]):
+        key = str(pr["number"])
+        kinds = cache.get(key)
+        if not (isinstance(kinds, list) and all(isinstance(k, dict) for k in kinds)):
+            pages = gh(root, "api", "repos/{owner}/{repo}/pulls/" + key + "/commits", "--paginate")
+            if pages is None or not all(isinstance(page, list) for page in pages):
+                return missing("gh failed")
+            kinds = fetched[key] = [commit_kind(item) for page in pages for item in page]
+        added = [k for k in kinds if not k.get("loop")]
+        if added:
+            merges = sum(1 for k in added if k.get("merge_from_base"))
+            out.append({"number": pr["number"], "title": pr["title"] if isinstance(pr.get("title"), str) else None,
+                        "merges_from_base": merges, "other_commits": len(added) - merges})
+    if fetched:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(dict(cache, **fetched), indent=2))
+        except OSError:
+            pass  # the counts stand without the cache; the next run asks gh again
+    return {"merged": len(prs), "reworked": len(out), "pull_requests": out}
+
+
 def build(root, since, today, now=None):
     now = now or datetime.datetime.now().astimezone()
     return {"generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
-            "evals": evals(root)}
+            "evals": evals(root),
+            "loop_rework": loop_rework(root, since)}
 
 
 def main(argv=None, root=ROOT):
