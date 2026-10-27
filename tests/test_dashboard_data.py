@@ -3,6 +3,8 @@ import datetime
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -201,11 +203,126 @@ class Activity(Harness):
 class Evals(Harness):
     def test_the_newest_file_for_each_reviewer(self):
         self.fill()
+        gone = {"stale": True, "changed": [], "newest_change": None, "why": "folder missing"}
         self.assertEqual(self.build()["evals"], {
-            "reviewer": {"saved": "2026-10-25T09:00:00+00:00", "stable": 1, "flaky": 1, "failing": 1,
-                         "failing_cases": ["03-c"]},
-            "security-reviewer": {"saved": "2026-10-26T09:00:00+00:00", "stable": 1, "flaky": 0, "failing": 0,
-                                  "failing_cases": []}})
+            "reviewer": dict(gone, saved="2026-10-25T09:00:00+00:00", stable=1, flaky=1, failing=1,
+                             failing_cases=["03-c"]),
+            "security-reviewer": dict(gone, saved="2026-10-26T09:00:00+00:00", stable=1, flaky=0, failing=0,
+                                      failing_cases=[])})
+
+
+class StaleEvals(Harness):
+    """A saved result in a git repo holding the files its one case rests on, all committed before it was saved."""
+
+    SAVED = "2026-10-25T09:00:00+00:00"
+
+    def setUp(self):
+        super().setUp()
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        patched = mock.patch.dict(os.environ, env, clear=True)
+        patched.start()
+        self.addCleanup(patched.stop)
+        self.git("init", "-q")
+        write(self.root, "agents/reviewer.md", "the reviewer\n")
+        write(self.root, "scripts/eval_agents.py", "# the eval\n")
+        write(self.root, "briefs/proposal.md", "the brief\n")
+        write(self.root, "evals/01-x/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
+        write(self.root, "evals/01-x/work.md", "the work\n")
+        write(self.root, "notes.md", "read by no case\n")
+        self.commit("2026-10-20T09:00:00+00:00")
+        self.save("reviewer")
+
+    def git(self, *args, date=None):
+        env = dict(os.environ, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date) if date else None
+        return subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.com",
+                               *args], check=True, capture_output=True, text=True, env=env).stdout
+
+    def commit(self, date):
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "change", date=date)
+        # The tests turn on this date, so a commit git dated otherwise fails here rather than as a fresh result.
+        # Some versions of git print UTC as Z and others as +00:00, so the times are compared, not the text.
+        self.assertEqual(dashboard_data.when(self.git("log", "-1", "--format=%cI").strip()),
+                         dashboard_data.when(date))
+
+    def save(self, reviewer, **fields):
+        result = {"reviewer": reviewer, "folder": "evals", "saved": self.SAVED, "cases": {"01-x": {"status": "stable"}}}
+        write(self.root, ".harness/evals/2026-10-25T0900-{}.json".format(reviewer), dict(result, **fields))
+
+    def stale(self, reviewer="reviewer"):
+        found = self.build()["evals"][reviewer]
+        return {k: found[k] for k in ("stale", "changed", "newest_change", "why") if k in found}
+
+    def test_files_last_committed_before_it_was_saved_leave_it_fresh(self):
+        write(self.root, "notes.md", "changed, but no case reads it\n")
+        self.commit("2026-10-26T09:00:00+00:00")
+        self.assertEqual(self.stale(), {"stale": False, "changed": [], "newest_change": None})
+
+    def test_a_commit_to_the_brief_after_it_was_saved_makes_it_stale(self):
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-26T09:00:00+00:00")
+        self.assertEqual(self.stale(), {"stale": True, "changed": ["briefs/proposal.md"],
+                                        "newest_change": "2026-10-26T09:00:00+00:00"})
+
+    def test_an_uncommitted_edit_to_the_work_makes_it_stale(self):
+        work = write(self.root, "evals/01-x/work.md", "the work, edited\n")
+        written = datetime.datetime(2026, 10, 26, 12, 0, tzinfo=datetime.timezone.utc)
+        os.utime(work, (written.timestamp(), written.timestamp()))
+        found = self.stale()
+        self.assertEqual((found["stale"], found["changed"]), (True, ["evals/01-x/work.md"]))
+        self.assertEqual(datetime.datetime.fromisoformat(found["newest_change"]), written)
+
+    def test_changed_names_each_file_from_the_root_and_newest_change_the_latest_commit(self):
+        write(self.root, "evals/01-x/work.md", "the work, edited\n")
+        self.commit("2026-10-26T09:00:00+00:00")
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-27T09:00:00+00:00")
+        self.assertEqual(self.stale(), {"stale": True, "changed": ["briefs/proposal.md", "evals/01-x/work.md"],
+                                        "newest_change": "2026-10-27T09:00:00+00:00"})
+        self.assertNotIn(str(self.root), json.dumps(self.build()))
+
+    def test_a_missing_folder_or_saved_time_stays_with_its_why(self):
+        self.save("reviewer", folder="nowhere")
+        self.save("security-reviewer", saved=None)
+        self.assertEqual(self.stale(), {"stale": True, "changed": [], "newest_change": None, "why": "folder missing"})
+        self.assertEqual(self.stale("security-reviewer"),
+                         {"stale": True, "changed": [], "newest_change": None, "why": "no saved time"})
+
+    def test_a_commit_dated_with_z_after_it_was_saved_makes_it_stale(self):
+        # git prints Z on some versions, and fromisoformat() before Python 3.11 refuses it.
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-26T09:00:00Z")
+        self.assertEqual(self.stale(), {"stale": True, "changed": ["briefs/proposal.md"],
+                                        "newest_change": "2026-10-26T09:00:00+00:00"})
+
+    def test_a_brief_git_ignores_written_after_it_was_saved_makes_it_stale(self):
+        write(self.root, ".gitignore", "briefs/\n")
+        self.git("rm", "-r", "-q", "--cached", "briefs")
+        self.commit("2026-10-21T09:00:00+00:00")
+        brief = self.root / "briefs" / "proposal.md"
+        written = datetime.datetime(2026, 10, 26, 12, 0, tzinfo=datetime.timezone.utc)
+        os.utime(brief, (written.timestamp(), written.timestamp()))
+        found = self.stale()
+        self.assertEqual((found["stale"], found["changed"]), (True, ["briefs/proposal.md"]))
+
+    def test_a_reviewer_that_isnt_a_string_doesnt_stop_the_check(self):
+        found = dashboard_data.freshness(self.root, {"reviewer": ["a"], "folder": "evals", "saved": self.SAVED})
+        self.assertEqual(found, {"stale": False, "changed": [], "newest_change": None})
+
+    def test_without_git_stale_is_null(self):
+        shutil.rmtree(self.root / ".git")
+        self.assertEqual(self.stale(), {"stale": None, "changed": [], "newest_change": None, "why": "no git"})
+
+
+class When(unittest.TestCase):
+    def test_a_trailing_z_is_utc_on_every_python(self):
+        self.assertEqual(dashboard_data.when("2026-10-20T09:00:00Z"),
+                         datetime.datetime(2026, 10, 20, 9, 0, tzinfo=datetime.timezone.utc))
+
+    def test_anything_else_that_isnt_a_time_is_none(self):
+        for text in (None, 3, "", "Z", "not a time"):
+            self.assertIsNone(dashboard_data.when(text), text)
 
 
 class MissingOrCorrupt(Harness):
