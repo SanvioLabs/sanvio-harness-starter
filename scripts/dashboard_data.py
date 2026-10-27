@@ -13,7 +13,10 @@
                      up, then the --since totals by issue, step and model. A run that recorded no
                      model is under "null". cost_per_pr is, over the issues that ran since --since
                      and are in status.json, their cost over how many have a pull request,
-                     or null when none has one
+                     or null when none has one. by_day lists every day from --since to today, oldest
+                     first, each with its tokens and cost_usd, 0 and 0.0 on a day with no run. A run
+                     dated after today, as a wrong clock can make, counts in since but has no day.
+                     first_run is the earliest day a run was counted since --since, or null
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
@@ -31,7 +34,9 @@
     conversations    Claude Code's tokens since --since from ~/.claude/projects, counted as
                      token_report.py counts them: "harness" for conversations at the root and in
                      projects/, "loop" for the loop's worktrees, each by model (input, output, cache
-                     writes, cache reads and total) with how many sessions. What each transcript
+                     writes, cache reads and total) with how many sessions, and by_day, every day
+                     from --since to today, oldest first, with its total tokens, 0 on a day with no
+                     reply. A reply dated after today counts in by_model but has no day. What each transcript
                      held is kept in .harness/cache/conversations.json and read again only when the
                      file's size or time changes: per reply, its message and request ids, day, side,
                      model, session id and counts, under the transcript's path, and nothing else
@@ -106,6 +111,12 @@ def totals(entries):
     return {"tokens": tokens, "cost_usd": None if cost is None else round(cost, 4)}
 
 
+def days(since, today):
+    """Every YYYY-MM-DD from since to today, oldest first."""
+    first = datetime.date.fromisoformat(since)
+    return [(first + datetime.timedelta(days=n)).isoformat() for n in range((today - first).days + 1)]
+
+
 def readable(path):
     try:
         return isinstance(json.loads(path.read_text()), list)
@@ -167,6 +178,12 @@ def loop_spend(root, since, today):
            "by_model": by(lambda issue, e: named(e.get("model")))}
     for name, value in out["by_model"].items():
         value["label"] = "model not recorded" if name == "null" else name
+    on = {}
+    for _, e in counted:
+        on.setdefault(e["run_started"][:10], []).append(e)
+    out["by_day"] = [dict(day=d, **(totals(on[d]) if d in on else {"tokens": 0, "cost_usd": 0.0}))
+                     for d in days(since, today)]
+    out["first_run"] = min(on) if on else None
     # Both sides over the same issues: ones that ran in the period and status.json still lists.
     rows = status_rows(root)[0] or {}
     tracked = {issue for issue in out["by_issue"] if issue in rows}
@@ -454,7 +471,7 @@ def save(path, data):
                 os.unlink(temp)
 
 
-def conversations(root, since, projects_dir, cache_path):
+def conversations(root, since, today, projects_dir, cache_path):
     """Tokens since `since` in the transcripts under projects_dir, by side and model, the way token_report.py
     counts them: each reply once, the first copy in path order, judged by the folder it ran in.
 
@@ -489,6 +506,7 @@ def conversations(root, since, projects_dir, cache_path):
 
     by_model = {"harness": {}, "loop": {}}
     sessions = {"harness": set(), "loop": set()}
+    by_day = {side: dict.fromkeys(days(since, today), 0) for side in ("harness", "loop")}
     seen = set()
     for entry in fresh.values():
         for message_id, request_id, day, side, model, session, *counts in entry["replies"]:
@@ -499,11 +517,14 @@ def conversations(root, since, projects_dir, cache_path):
                     continue
                 seen.add((message_id, request_id))
             by_model[side][model] = [a + b for a, b in zip(by_model[side].get(model, [0] * len(COUNTS)), counts)]
+            if day in by_day[side]:
+                by_day[side][day] += sum(counts)
             if session:
                 sessions[side].add(session)
     return {side: {"by_model": {model: dict(zip(COUNTS, values), total=sum(values))
                                 for model, values in sorted(by_model[side].items(), key=lambda kv: natural(kv[0]))},
-                   "sessions": len(sessions[side])}
+                   "sessions": len(sessions[side]),
+                   "by_day": [{"day": day, "tokens": n} for day, n in by_day[side].items()]}
             for side in ("harness", "loop")}
 
 
@@ -587,7 +608,7 @@ def build(root, since, today, now=None, projects_dir=TRANSCRIPTS):
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),
             "evals": evals(root),
-            "conversations": conversations(root, since, projects_dir, Path(root) / CACHE),
+            "conversations": conversations(root, since, today, projects_dir, Path(root) / CACHE),
             "waiting": waiting(root, now),
             "loop_rework": loop_rework(root, since)}
 
