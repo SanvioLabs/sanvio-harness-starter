@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, usage, waiting, waitingOn, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, modelName, page, parseStatus, sameSeen, usage, waiting, waitingOn, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -353,6 +353,31 @@ group('the clock', () => {
     expect(clipped.startsWith('started 14:22 · running 6m 12s')).toBe(true)
     expect(clipped.endsWith('…')).toBe(true)
     expect(clipped).not.toContain('~$')
+  })
+  test('the model follows the usage, without its claude- prefix', () => {
+    const run = { ...ROW, started: local(START), tokens: 840_000, cost_usd: 3.4 }
+    expect(clock({ ...run, model: 'claude-opus-5-5' }, true, START + 372_000)).toBe('started 14:22 · running 6m 12s · 840k tokens · ~$3.40 · opus-5-5')
+    expect(clock({ ...run, model: 'llama3.1:8b' }, true, START + 372_000)).toBe('started 14:22 · running 6m 12s · 840k tokens · ~$3.40 · llama3.1:8b')
+  })
+  test('a model with no tokens still shows after the time', () => {
+    const run = { ...ROW, started: local(START), model: 'claude-opus-5-5' }
+    expect(clock(run, true, START + 372_000)).toBe('started 14:22 · running 6m 12s · opus-5-5')
+  })
+  test('no model leaves the line as it was', () => {
+    const run = { ...ROW, started: local(START), tokens: 840_000, cost_usd: 3.4 }
+    expect(clock({ ...run, model: undefined }, true, START + 372_000)).toBe('started 14:22 · running 6m 12s · 840k tokens · ~$3.40')
+    expect(modelName(ROW)).toBeNull()
+  })
+  test('only a leading claude- is dropped', () => {
+    expect(modelName({ ...ROW, model: 'claude' })).toBe('claude')
+    expect(modelName({ ...ROW, model: 'my-claude-opus' })).toBe('my-claude-opus')
+    expect(modelName({ ...ROW, model: 'claude-sonnet-5-5' })).toBe('sonnet-5-5')
+  })
+  test('the model survives the status file only as a non-empty string', () => {
+    const read = (extra: object) => parseStatus(JSON.stringify({ issues: [{ ...ROW, ...extra }] }))?.issues[0]
+    expect(read({ model: 'claude-opus-5-5' })?.model).toBe('claude-opus-5-5')
+    expect(read({})?.model).toBeUndefined()
+    for (const bad of [null, '', 5, {}, [], true]) expect(read({ model: bad })?.model).toBeUndefined()
   })
   test('the start survives the status file', () => {
     const text = JSON.stringify({ issues: [{ ...ROW, started: '2026-10-15T14:22:05' }] })

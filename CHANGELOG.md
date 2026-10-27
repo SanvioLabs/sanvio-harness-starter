@@ -27,6 +27,17 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-26: Loop pane shows each job's model
+
+In the [loop pane](examples/mods/loop-pane/), each job's clock line now ends with the model its
+latest step ran on, with `claude-` dropped, for example `840k tokens · ~$3.40 · opus-5-5`. Any other
+model, an ollama one say, shows whole. A job with no model recorded, as from a loop.py older than the
+entry below, shows the line as before, and a narrow pane cuts the model first. The pane is now 0.5.0.
+
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/)
+
+**Do:** nothing. `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-26: The loop records which model each step ran on
 
 Each agent run by [`scripts/loop.py`](scripts/loop.py) now records its model: the one `claude`'s `init` event
