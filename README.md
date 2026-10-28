@@ -93,6 +93,9 @@ extension in VS Code 1.143.0, and Claude Desktop 3.6556.2 on macOS:
 | Claude Desktop, Code tab | The same: the trust prompt, the setup message, the guard, `/whats-new`, the plugins in `/plugin`, both lines above the prompt and `/loop-pane`. Pick the repo's root under **Local**, then **Open folder…** |
 | Claude Desktop, chat | None of it. Chat opens no folder, so no hooks, guard, skills, mods or `company/` load. Asked, it can read this repo's [`AGENTS.md`](AGENTS.md) as text, but nothing enforces it. Use the Code tab |
 
+[`/harness-dashboard`](examples/mods/harness-dashboard/) came after those tries. It's off by default and has only been
+seen in the terminal.
+
 Two clones of the starter on one machine share one set of mods: the
 marketplace is registered under one name for the whole machine, so the mods
 load from whichever clone registered it first. `claude plugin list` says which

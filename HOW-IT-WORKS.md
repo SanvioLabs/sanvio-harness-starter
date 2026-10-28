@@ -114,6 +114,11 @@ In Claude Code, `/loop-pane` draws it in a pane beside the conversation
 `.loop/watch.command`, and the pane's **Watch it** button opens it: a new
 Terminal window attached to the session, read-only.
 
+What the loop cost, day by day and by issue, and how many of its pull requests
+needed someone's commit before merging, come from `python3 scripts/dashboard_data.py --json`.
+In Claude Code, `/harness-dashboard` draws them in a pane, off by default
+([`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/)).
+
 **What an issue used.** When the agent is `claude`, each run's tokens and cost
 go in `.loop/issue-N/usage.json`: one entry per run (plan, each build round,
 each review) with its `step`, `round`, the four token counts and `cost_usd`.
