@@ -11,9 +11,10 @@ docs/harness-dashboard.svg and as the text inside the README's <details>. Run it
 pane draws, or after sample.ts is written again: tests/test_draw_dashboard.py
 fails while either is out of date.
 
-The tests run with TZ=UTC, since the header's time is local. Needs Claude Code
-(claude) on the PATH. Exits 1 when the tests fail or print no rows, and writes
-nothing then.
+The tests run in the machine's own time zone whatever TZ says, so picture()
+reads at local noon. Needs Claude Code (claude) on the PATH. Exits 1 when the
+tests fail or print no rows, or when its test file is already there, and
+writes nothing then.
 """
 import base64
 import json
@@ -69,11 +70,18 @@ def pane_rows():
 
     A test has no console and no file system, so the only way out is a failing
     test's message. This writes a test of its own beside picture.test.ts that
-    fails with the rows, runs the mod's tests, and deletes it again.
+    fails with the rows, runs the mod's tests, and deletes it again. One already
+    there is another run's, or left by one that was killed: it's left alone, as
+    deleting it could break a run still going. .gitignore keeps it out of a commit.
     """
     command = ["claude", "plugin", "test", MOD]
     try:
-        OUT_TEST.write_text(OUT_TEST_SOURCE)
+        with OUT_TEST.open("x") as out:
+            out.write(OUT_TEST_SOURCE)
+    except FileExistsError:
+        raise RuntimeError("{} is already there: another run is drawing, or one was killed before it could "
+                           "delete it. Delete it once no run is going".format(OUT_TEST.relative_to(ROOT)))
+    try:
         done = subprocess.run(command, cwd=MODS, capture_output=True, text=True, timeout=TIMEOUT,
                               env=dict(os.environ, TZ="UTC"))
     finally:
