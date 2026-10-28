@@ -342,6 +342,7 @@ export const SAMPLE: Doc = {
       "issue-9": 3
     }
   },
+  "schema": 1,
   "since": "2026-10-15",
   "waiting": {
     "blocked": [

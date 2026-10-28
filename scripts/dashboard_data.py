@@ -6,6 +6,8 @@
 
 --json is the only output, and the script refuses to run without it. It prints one object:
 
+    schema           the document's shape, an integer. It goes up when a section's shape changes in a
+                     way an older pane would misread. Adding a field doesn't change it
     generated        when it ran, an ISO time with the local offset
     since            the first day counted
     loop_spend       tokens and estimated dollars from the loop's .loop/**/usage.json records: today,
@@ -89,6 +91,7 @@ from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (same reason)
 from token_report import group, loop_dir, loop_runs, natural, read_file, tokens, usage_files  # noqa: E402 (same reason)
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
 
+SCHEMA = 1  # the document's shape; see "schema" above
 WEEK = 7  # days in the last-7-days window, today included
 TRANSCRIPTS = Path.home() / ".claude" / "projects"
 CACHE = Path(".harness") / "cache" / "conversations.json"
@@ -621,7 +624,7 @@ def loop_rework(root, since):
 
 def build(root, since, today, now=None, projects_dir=TRANSCRIPTS):
     now = now or datetime.datetime.now().astimezone()
-    return {"generated": now.isoformat(timespec="seconds"), "since": since,
+    return {"schema": SCHEMA, "generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
             "activity": activity(root, since),

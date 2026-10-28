@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { activity, argv, conversations, day, evals, findRoot, missing, money, outcome, parseDoc, sections, sinceFor, spend, state, throughput, tokens, waiting } from './logic'
+import { activity, argv, conversations, day, evals, findRoot, missing, money, newer, outcome, parseDoc, sections, sinceFor, spend, state, throughput, tokens, waiting } from './logic'
 import type { Doc, Seen } from '../types'
 
 // The shape scripts/dashboard_data.py --json prints, with every section filled. The numbers and
@@ -74,6 +74,21 @@ group('the document', () => {
   })
   test('a document from an older script, with none of the sections, still draws', () => {
     for (const s of sections({ generated: 'x' })) expect(s.lines.length).toBeGreaterThan(0)
+  })
+})
+
+group('newer', () => {
+  test('a document from a newer script says so in yellow', () => {
+    const found = newer({ ...DOC, schema: 2 })
+    expect(found?.tone).toBe('now')
+    expect(found?.text).toContain('dashboard_data.py is newer')
+  })
+  test('one with no schema, or the one this pane reads, says nothing', () => {
+    expect(newer(DOC)).toBeNull()
+    expect(newer({ ...DOC, schema: 1 })).toBeNull()
+  })
+  test('a newer document still draws every section', () => {
+    expect(sections({ ...DOC, schema: 2 })).toEqual(sections(DOC))
   })
 })
 
