@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Dashboard tables stack in a narrow pane
+
+In a pane too narrow to leave 8 columns for a table's names, the harness dashboard puts each row's
+figures on a line under its name, in the row's colour, instead of cutting the name to a few letters.
+Wider panes look as they did. The mod goes to 0.1.1. Touches [`examples/mods/harness-dashboard/hooks/register.tsx`](examples/mods/harness-dashboard/hooks/register.tsx)
+and [`examples/mods/harness-dashboard/.claude-plugin/plugin.json`](examples/mods/harness-dashboard/.claude-plugin/plugin.json).
+
+**Do:** nothing.
+
 ## 2026-10-27: Harness dashboard pane
 
 A new mod, [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/): `/harness-dashboard` opens a pane that draws
