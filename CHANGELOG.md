@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-27: Harness dashboard pane
+
+A new mod, [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/): `/harness-dashboard` opens a pane that draws
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` as tables, with what's waiting on you first, then the loop's spend,
+throughput and rework, evals and whether they're stale, Claude Code's tokens and the harness's activity.
+Loop spend and Conversations start with a bar chart a day, each day's figures under its bar, which needs
+the script from "Spend and conversation tokens by day". It reads when it opens and every five minutes
+while it's open, and **Refresh** reads now; a refresh that fails keeps the last numbers and says so. It
+spends no model tokens, calls GitHub through `gh` on each read, and writes only the script's caches in
+`.harness/cache/`. It's off by default, and starts at 0.1.0.
+
+Files: [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`AGENTS.md`](AGENTS.md)
+
+**Do:** nothing to keep things as they are. To try it, `claude --plugin-dir examples/mods/harness-dashboard`
+from the root, or the two `/plugin` commands in its README's *Open it*.
+
 ## 2026-10-27: Spend and conversation tokens by day
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) gains `by_day` in `loop_spend` and in each side of `conversations`:

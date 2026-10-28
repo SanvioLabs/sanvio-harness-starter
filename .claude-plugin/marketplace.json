@@ -21,6 +21,11 @@
       "description": "A line above the prompt with the repo's running actions, open pull requests and open issues"
     },
     {
+      "name": "harness-dashboard",
+      "source": "./examples/mods/harness-dashboard",
+      "description": "A pane with the harness's numbers: what's waiting on you, the loop's spend and rework, evals and tokens"
+    },
+    {
       "name": "stelliad",
       "source": {
         "source": "github",
