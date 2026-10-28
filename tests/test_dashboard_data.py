@@ -1,4 +1,5 @@
 """Run with: python3 -m unittest discover -s tests"""
+import contextlib
 import datetime
 import io
 import json
@@ -24,6 +25,13 @@ SINCE = "2026-10-15"
 LEAK = "sentinel-zq7"  # put in every field the output must never carry
 NOW = datetime.datetime(2026, 10, 27, 12, 0, tzinfo=datetime.timezone.utc)
 SYSTEM_PATH = "/usr/bin:/bin"  # for the fake gh's own commands; the real gh isn't on it
+# A real run of build(), kept in the dashboard mod for its tests to draw. Sample checks it and rewrites it.
+SAMPLE = ROOT / "examples" / "mods" / "harness-dashboard" / "hooks" / "sample.ts"
+UPDATE_SAMPLE = "UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample"
+SAMPLE_HEAD = ("// What scripts/dashboard_data.py's build() printed in tests/test_dashboard_data.py's Sample. Don't edit it:\n"
+               "// " + UPDATE_SAMPLE + " writes it again.\n"
+               "import type { Doc } from '../types'\n\n"
+               "export const SAMPLE: Doc = ")
 
 
 def check_run(status, conclusion):
@@ -60,8 +68,9 @@ def fake_gh(folder, script):
     path.write_text("#!/bin/sh\n" + script + "\n")
     path.chmod(0o755)
 
-# A stand-in for gh, found on PATH. It logs each call, answers pr list from prs.json ([] when there's
-# none) and pulls/<n>/commits from commits.json's pages for n, and exits 1 while a file named fail exists.
+# A stand-in for gh, found on PATH. It logs each call, answers pr list from prs-<state>.json for its
+# --state, or prs.json when there's none ([] when neither is there), and pulls/<n>/commits from
+# commits.json's pages for n, and exits 1 while a file named fail exists.
 GH = """#!PYTHON
 import json, os, sys
 folder = FOLDER
@@ -71,7 +80,10 @@ with open(os.path.join(folder, "calls"), "a") as f:
 if os.path.exists(os.path.join(folder, "fail")):
     sys.exit(1)
 if args[:2] == ["pr", "list"]:
-    path = os.path.join(folder, "prs.json")
+    state = args[args.index("--state") + 1] if "--state" in args else ""
+    path = os.path.join(folder, "prs-" + state + ".json")
+    if not os.path.exists(path):
+        path = os.path.join(folder, "prs.json")
     print(open(path).read() if os.path.exists(path) else "[]")
 elif args[:1] == ["api"]:
     for page in json.load(open(os.path.join(folder, "commits.json")))[args[1].split("/")[-2]]:
@@ -115,6 +127,12 @@ class Harness(unittest.TestCase):
         """Make gh print prs as gh pr list --json would."""
         write(self.bin, "prs.json", prs)
         fake_gh(self.bin, 'cat "{}"'.format(self.bin / "prs.json"))
+
+    def answer_gh(self):
+        """Put GH in place of the gh that fails, answering from files in self.bin and logging each call there."""
+        fake = self.bin / "gh"
+        fake.write_text(GH.replace("PYTHON", sys.executable).replace("FOLDER", repr(str(self.bin))))
+        fake.chmod(0o755)
 
     def fill(self):
         write(self.root, ".loop/issue-7/usage.json", [
@@ -320,10 +338,8 @@ class Evals(Harness):
                                       failing_cases=[])})
 
 
-class StaleEvals(Harness):
-    """A saved result in a git repo holding the files its one case rests on, all committed before it was saved."""
-
-    SAVED = "2026-10-25T09:00:00+00:00"
+class GitHarness(Harness):
+    """A harness root that is a git repo, with git's own settings and the machine's left out."""
 
     def setUp(self):
         super().setUp()
@@ -333,14 +349,6 @@ class StaleEvals(Harness):
         patched.start()
         self.addCleanup(patched.stop)
         self.git("init", "-q")
-        write(self.root, "agents/reviewer.md", "the reviewer\n")
-        write(self.root, "scripts/eval_agents.py", "# the eval\n")
-        write(self.root, "briefs/proposal.md", "the brief\n")
-        write(self.root, "evals/01-x/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
-        write(self.root, "evals/01-x/work.md", "the work\n")
-        write(self.root, "notes.md", "read by no case\n")
-        self.commit("2026-10-20T09:00:00+00:00")
-        self.save("reviewer")
 
     def git(self, *args, date=None):
         env = dict(os.environ, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date) if date else None
@@ -354,6 +362,23 @@ class StaleEvals(Harness):
         # Some versions of git print UTC as Z and others as +00:00, so the times are compared, not the text.
         self.assertEqual(dashboard_data.when(self.git("log", "-1", "--format=%cI").strip()),
                          dashboard_data.when(date))
+
+
+class StaleEvals(GitHarness):
+    """A saved result in a git repo holding the files its one case rests on, all committed before it was saved."""
+
+    SAVED = "2026-10-25T09:00:00+00:00"
+
+    def setUp(self):
+        super().setUp()
+        write(self.root, "agents/reviewer.md", "the reviewer\n")
+        write(self.root, "scripts/eval_agents.py", "# the eval\n")
+        write(self.root, "briefs/proposal.md", "the brief\n")
+        write(self.root, "evals/01-x/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
+        write(self.root, "evals/01-x/work.md", "the work\n")
+        write(self.root, "notes.md", "read by no case\n")
+        self.commit("2026-10-20T09:00:00+00:00")
+        self.save("reviewer")
 
     def save(self, reviewer, **fields):
         result = {"reviewer": reviewer, "folder": "evals", "saved": self.SAVED, "cases": {"01-x": {"status": "stable"}}}
@@ -517,10 +542,7 @@ def commit(message, parents=1):
 class Rework(Harness):
     def setUp(self):
         super().setUp()
-        # A gh that answers from files in self.bin and logs each call there, in place of the one that fails.
-        fake = self.bin / "gh"
-        fake.write_text(GH.replace("PYTHON", sys.executable).replace("FOLDER", repr(str(self.bin))))
-        fake.chmod(0o755)
+        self.answer_gh()
         loop = commit("Build it\n\nLoop: issue #1, round 1.")
         write(self.bin, "prs.json", [
             {"number": 101, "title": "All the loop's", "headRefName": "loop/issue-1", "mergedAt": "2026-10-20T12:00:00Z"},
@@ -803,6 +825,99 @@ class Conversations(Harness):
         for text in (out, cache):
             for leak in (LEAK, str(self.root), str(self.loop)):
                 self.assertNotIn(leak, text)
+
+
+@contextlib.contextmanager
+def zone(name):
+    """Run in the time zone given, whatever the machine's, and put the old one back after."""
+    was = os.environ.get("TZ")
+    os.environ["TZ"] = name
+    time.tzset()
+    try:
+        yield
+    finally:
+        if was is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = was
+        time.tzset()
+
+
+def read_sample():
+    """The document in SAMPLE, or None when the file is missing or doesn't start with SAMPLE_HEAD."""
+    text = SAMPLE.read_text() if SAMPLE.is_file() else ""
+    return json.loads(text[len(SAMPLE_HEAD):]) if text.startswith(SAMPLE_HEAD) else None
+
+
+class Sample(GitHarness):
+    """build() with every section filled, which must match the sample the dashboard's tests draw."""
+
+    def setUp(self):
+        super().setUp()
+        self.fill()
+        # Each reviewer's saved result reads a folder of cases committed before it was saved. The reviewer's
+        # brief is committed again after, so the reviewer is stale with the file that changed and the other fresh.
+        for name, folder in (("2026-10-25T0900-reviewer", "reviewer-cases"),
+                             ("2026-10-26T0900-security-reviewer", "security-cases")):
+            path = self.root / ".harness" / "evals" / (name + ".json")
+            write(path.parent, path.name, dict(json.loads(path.read_text()), folder=folder))
+        write(self.root, "agents/reviewer.md", "the reviewer\n")
+        write(self.root, "agents/security-reviewer.md", "the security reviewer\n")
+        write(self.root, "scripts/eval_agents.py", "# the eval\n")
+        write(self.root, "briefs/proposal.md", "the brief\n")
+        write(self.root, "reviewer-cases/01-a/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
+        write(self.root, "reviewer-cases/01-a/work.md", "the work\n")
+        write(self.root, "security-cases/01-x/case.json", {"agent": "security-reviewer"})
+        write(self.root, "security-cases/01-x/work.md", "the code\n")
+        self.commit("2026-10-20T09:00:00+00:00")
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-26T12:00:00+00:00")
+        # gh answers the open pull requests for waiting and the merged ones for loop_rework from their own files.
+        self.answer_gh()
+        write(self.bin, "prs-open.json", PRS)
+        write(self.bin, "prs-merged.json", [
+            {"number": 101, "title": "Built by the loop", "headRefName": "loop/issue-7",
+             "mergedAt": "2026-10-20T12:00:00Z"},
+            {"number": 102, "title": "Fixed by hand", "headRefName": "loop/issue-12",
+             "mergedAt": "2026-10-21T12:00:00Z"}])
+        loop = commit("Build it\n\nLoop: issue #7, round 1.")
+        write(self.bin, "commits.json", {
+            "101": [[loop]],
+            "102": [[loop, commit("Merge branch 'main' into loop/issue-12", parents=2), commit("fix the test")]]})
+        # Replies at noon UTC fall on the same day in UTC and in Los Angeles.
+        checkouts = self.root.parent / "loop-checkouts"
+        write(self.root, "loop.json", {"worktree_dir": str(checkouts)})
+        lines(self.transcripts, "a/s1.jsonl", [
+            reply(self.root, 1, "1", "s1"),
+            reply(self.root, 10, "2", "s1", model="m-b", ts="2026-10-24T12:00:00Z")])
+        lines(self.transcripts, "b/s2.jsonl", [reply(checkouts / "issue-7", 1000, "3", "s2", ts="2026-10-26T12:00:00Z")])
+
+    def build_afresh(self):
+        # The cache keeps each reply's local day, so a second zone would read the first zone's days.
+        (self.root / dashboard_data.CACHE).unlink(missing_ok=True)
+        return self.build()
+
+    def test_the_sample_is_what_build_prints(self):
+        if os.environ.get("UPDATE_SAMPLE"):
+            with zone("UTC"):
+                SAMPLE.write_text(SAMPLE_HEAD + json.dumps(self.build_afresh(), indent=2, sort_keys=True) + "\n")
+        for name in ("UTC", "America/Los_Angeles"):
+            with self.subTest(zone=name), zone(name):
+                self.assertEqual(read_sample(), self.build_afresh(),
+                                 "build() no longer prints the dashboard's sample. run: " + UPDATE_SAMPLE)
+
+    def test_every_section_is_filled(self):
+        found = read_sample()
+        self.assertIsNotNone(found, "no sample. run: " + UPDATE_SAMPLE)
+        parts = {name: found[name] for name in found if name not in ("generated", "since")}
+        parts.update({"waiting." + half: found["waiting"][half] for half in ("pull_requests", "blocked")})
+        for name, value in parts.items():
+            self.assertTrue(value, name)
+            self.assertFalse(isinstance(value, dict) and "value" in value and value["value"] is None, name)
+        # Each reviewer's freshness came from its files, not a why, and one has a file changed since it was saved.
+        rows = found["evals"].values()
+        self.assertEqual([r["why"] for r in rows if "why" in r], [])
+        self.assertTrue(any(r["changed"] and r["newest_change"] for r in rows))
 
 
 class Privacy(Harness):
