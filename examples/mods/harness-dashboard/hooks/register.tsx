@@ -142,23 +142,42 @@ export const register: Register = on => {
     const top = state(seen)
 
     // A table: the name column takes what's left, each number column the width of its widest cell,
-    // right-aligned, one space between. A name too long for what's left is cut, not wrapped.
+    // right-aligned, one space between. A name too long for what's left is cut, not wrapped. When
+    // fewer than 8 columns are left for the name, each row goes on two lines: the name across the
+    // whole pane, then its figures right-aligned under it, both in the row's colour.
     const table = (t: Table) => {
       const widths = t.head.map((h, i) => Math.max(h.length, ...t.rows.map(r => (r[i] ?? '').length)))
       const numbers = widths.slice(1).reduce((a, w) => a + w + 1, 0)
+      const stacked = width - numbers < 8
       const name = Math.max(4, width - numbers)
-      const row = (cells: string[], key: string, head: boolean, tone: Tone = 'plain') => (
-        <Box key={key} flexDirection="row">
-          <Box flexGrow={1} flexShrink={1}>
-            <Text {...(head ? COLORS.quiet : COLORS[tone])}>{wraps ? (cells[0] ?? '') : clip(cells[0] ?? '', name)}</Text>
+      const row = (cells: string[], key: string, head: boolean, tone: Tone = 'plain') => {
+        const colors = head ? COLORS.quiet : COLORS[tone]
+        const figures = cells.slice(1).map((c, i) => (
+          <Box key={`${key}-${i}`} width={(widths[i + 1] ?? 0) + 1} justifyContent="flex-end" flexShrink={0}>
+            <Text {...colors}>{c}</Text>
           </Box>
-          {cells.slice(1).map((c, i) => (
-            <Box key={`${key}-${i}`} width={(widths[i + 1] ?? 0) + 1} justifyContent="flex-end" flexShrink={0}>
-              <Text {...(head ? COLORS.quiet : COLORS[tone])}>{c}</Text>
+        ))
+        if (stacked) {
+          return (
+            <Box key={key} flexDirection="column">
+              <Box key={`${key}-name`} flexDirection="row">
+                <Text {...colors}>{wraps ? (cells[0] ?? '') : clip(cells[0] ?? '', width)}</Text>
+              </Box>
+              <Box key={`${key}-figures`} flexDirection="row" justifyContent="flex-end">
+                {figures}
+              </Box>
             </Box>
-          ))}
-        </Box>
-      )
+          )
+        }
+        return (
+          <Box key={key} flexDirection="row">
+            <Box flexGrow={1} flexShrink={1}>
+              <Text {...colors}>{wraps ? (cells[0] ?? '') : clip(cells[0] ?? '', name)}</Text>
+            </Box>
+            {figures}
+          </Box>
+        )
+      }
       return (
         <Box key={t.key} flexDirection="column" marginBottom={1}>
           {row(t.head, `${t.key}-head`, true)}
