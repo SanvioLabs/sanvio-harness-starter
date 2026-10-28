@@ -27,6 +27,14 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Guard lets code read a key property
+
+[`.claude/hooks/guard.py`](.claude/hooks/guard.py) no longer refuses a shell command for code like `s.key)`: a `.key` file named with
+one character counts only in a path. `server.key`, `config/a.key` and the like are still refused.
+Files: [`.claude/hooks/guard.py`](.claude/hooks/guard.py), [`tests/test_agent_hooks.py`](tests/test_agent_hooks.py).
+
+**Do:** nothing.
+
 ## 2026-10-28: Dashboard picture keeps to its own run
 
 [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py) stops, naming the file, when the test file it writes for a run is

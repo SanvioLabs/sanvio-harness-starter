@@ -49,6 +49,16 @@ class Guard(unittest.TestCase):
         self.assertDenied(call("Bash", command="printenv"))
         self.assertDenied(call("Bash", command="aws secretsmanager get-secret-value --secret-id x"))
 
+    def test_a_key_file_is_refused_and_a_key_property_in_code_is_not(self):
+        for command in ("cat server.key", "cat ca.key", "cat .key", "cat config/a.key", "git show main:a.key",
+                        "openssl rsa -in tls.key -noout"):
+            self.assertDenied(call("Bash", command=command))
+        for command in ("python3 - <<'EOF'\nrows.sort(key=lambda s: s.key)\nEOF",
+                        "node -e \"const k = e.key; f(k)\""):
+            self.assertIsNone(call("Bash", command=command), command)
+        # A file tool checks the path once resolved too, so a one-character name is refused there.
+        self.assertDenied(call("Read", file_path="a.key"))
+
     def test_checking_a_credential_exists_is_allowed(self):
         for command in ("test -e .env && echo yes", "test -f .env.local", "[ -e .env ] && echo yes",
                         "[[ -s .env ]] || echo missing"):

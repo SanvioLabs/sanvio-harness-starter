@@ -53,7 +53,8 @@ import traceback
 CREDENTIAL = re.compile(
     r"(^|[\s/'\"=<:])("  # : as well, for git show HEAD:.env
     r"\.env(\.(?!example\b|sample\b|template\b)[\w.-]+)?"  # .env, .env.local, not .env.example
-    r"|[\w.-]*\.pem|[\w.-]*\.key|id_(rsa|ed25519|ecdsa)[\w.-]*"
+    # A .key named with one character counts only in a path: in a command, s.key is code's property access
+    r"|[\w.-]*\.pem|(?:[\w.-]{2,})?\.key|(?<=[/:])[\w.-]\.key|id_(rsa|ed25519|ecdsa)[\w.-]*"
     r"|\.aws/credentials|\.ssh/[\w.-]+|\.netrc|\.npmrc|\.pypirc"
     r"|[\w.-]*\.(p12|pfx|jks|keystore)|\.kube/config|service-account[\w.-]*\.json"
     r"|\.htpasswd|\.docker/config\.json|\.gnupg/[\w.-]+"
