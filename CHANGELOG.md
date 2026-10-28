@@ -39,7 +39,8 @@ reads when it opens and every five minutes while it's open, and **Refresh** read
 spends no model tokens, calls GitHub through `gh` on each read, and writes only the script's caches in
 `.harness/cache/`. It's off by default, and starts at 0.1.0.
 
-Files: [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`AGENTS.md`](AGENTS.md)
+Files: [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/), [`docs/harness-dashboard.svg`](docs/harness-dashboard.svg), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json),
+[`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
 
 **Do:** nothing to keep things as they are. To try it, `claude --plugin-dir examples/mods/harness-dashboard`
 from the root, or the two `/plugin` commands in its README's *Open it*.

@@ -3,15 +3,21 @@
 The harness's numbers are spread across the loop's records, your usage log,
 saved evals, Claude Code's transcripts and GitHub. This mod opens a pane
 beside the conversation that brings them together, with what needs you first.
-In a pane 66 columns wide, with made-up numbers:
+In a terminal pane 66 columns wide, with made-up numbers:
+
+<img src="../../../docs/harness-dashboard.svg" width="480" alt="The Harness pane in a terminal. Under the header, the buttons Refresh, 7 days, 14 days in orange as the one chosen, and 30 days. Waiting on you: a pull request whose checks pass, one in yellow whose checks are still running, and a blocked issue in red with why. Loop spend: a bar a day from Oct 22 to Oct 27, today's in orange, each with its day, cost and tokens under it, then tables of the spend by period, issue and model. Throughput and rework, with the 40% that needed a commit in yellow. Evals, with a stale reviewer in yellow. Conversations: a bar a day for 14 days with Oct 20 and Oct 27 under them, then tokens by side and model. Activity: the skills and agents used most.">
+
+<details>
+<summary>The same pane as text</summary>
 
 ```
 starter                                              Updated 11:43
 [ Refresh ] [ 7 days ] [ 14 days ] [ 30 days ]
 ──────────────────────────────────────────────────────────────────
 Waiting on you
-Pull request                              Waiting Checks Conflicts
-#41 Gate: check the fee total                3.2h   pass   unknown
+Pull request                             Waiting  Checks Conflicts
+#41 Gate: check the fee total               3.2h    pass        no
+#43 Loop: retry a flaky test once           0.5h pending   unknown
 
 Blocked issue                                                Since
 #38 README: link the loop section                           Oct 26
@@ -68,6 +74,7 @@ Needed a commit first                                      4 (40%)
 Evals
 Reviewer                         Stable Flaky Failing  Saved Stale
 reviewer                             10     0       0 Oct 24   yes
+security-reviewer                     9     0       0 Oct 26    no
 
 reviewer stale: 1 file changed, newest Oct 26. Run it again
 
@@ -106,6 +113,8 @@ security-reviewer                                                2
 
 Guard asked 2 times, since Oct 14
 ```
+
+</details>
 
 A line separates each section. A section with a chart starts with it, then its
 tables: names on the left, figures in right-aligned columns. A row that needs
