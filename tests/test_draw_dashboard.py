@@ -32,7 +32,7 @@ class Picture(unittest.TestCase):
 
     def test_the_svg_holds_no_path_or_user(self):
         for leak in (str(ROOT), str(Path.home()), getpass.getuser(), "/Users/", "/home/"):
-            self.assertNotIn(leak, self.svg)
+            self.assertNotIn(leak, self.svg, "docs/harness-dashboard.svg names a path or user: " + leak)
 
 
 if __name__ == "__main__":

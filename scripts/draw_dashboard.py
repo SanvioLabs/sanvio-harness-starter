@@ -3,10 +3,11 @@
 
     python3 scripts/draw_dashboard.py
 
-Runs the dashboard mod's tests. Its hooks/picture.test.ts mounts the pane on
-the terminal, 66 columns wide, drawing hooks/sample.ts, and prints what it drew
-as one line, PANE-ROWS <json>. This writes that as docs/harness-dashboard.svg
-and as the text inside the README's <details>. Run it after changing how the
+Runs the dashboard mod's tests with one more test of its own, which takes the
+rows picture() in hooks/picture.test.ts lays out (the pane on the terminal, 66
+columns wide, drawing hooks/sample.ts) and fails with them as one line,
+PANE-ROWS <json>: a test has no console. This writes those rows as
+docs/harness-dashboard.svg and as the text inside the README's <details>. Run it after changing how the
 pane draws, or after sample.ts is written again: tests/test_draw_dashboard.py
 fails while either is out of date.
 
@@ -31,6 +32,18 @@ SVG = ROOT / "docs" / "harness-dashboard.svg"
 README = MODS / MOD / "README.md"
 MARK = "PANE-ROWS "
 TIMEOUT = 120
+# The test pane_rows() writes for the length of one run, failing with the rows as its message.
+OUT_TEST = MODS / MOD / "hooks" / "draw-picture.test.ts"
+OUT_NAME = "rows for scripts/draw_dashboard.py"
+OUT_TEST_SOURCE = """import {{ test }} from 'claude-code/testing'
+
+import {{ picture }} from './picture.test'
+
+// Written by scripts/draw_dashboard.py for one run, and deleted after it.
+test('{name}', async ($, on) => {{
+  throw new Error('{mark}' + JSON.stringify(await picture($, on)))
+}})
+""".format(name=OUT_NAME, mark=MARK)
 # The text version: the code block inside the README's <details>.
 DETAILS = re.compile(r"(<details>\s*<summary>[^<]*</summary>\s*```\n)(.*?)(\n```)", re.DOTALL)
 
@@ -52,17 +65,31 @@ BLOCKS = "▁▂▃▄▅▆▇█"
 
 
 def pane_rows():
-    """The rows picture.test.ts printed, as it printed them."""
+    """The rows picture() in picture.test.ts lays out, as JSON.
+
+    A test has no console and no file system, so the only way out is a failing
+    test's message. This writes a test of its own beside picture.test.ts that
+    fails with the rows, runs the mod's tests, and deletes it again.
+    """
     command = ["claude", "plugin", "test", MOD]
-    done = subprocess.run(command, cwd=MODS, capture_output=True, text=True, timeout=TIMEOUT,
-                          env=dict(os.environ, TZ="UTC"))
-    if done.returncode != 0:
-        tail = "\n".join((done.stdout + done.stderr).splitlines()[-40:])
-        raise RuntimeError("{} failed (exit {}):\n{}".format(" ".join(command), done.returncode, tail))
-    for line in done.stdout.splitlines():
-        if MARK + "{" in line:
-            return json.loads(line[line.index(MARK) + len(MARK):])
-    raise RuntimeError("{} printed no {}line: did picture.test.ts run?".format(" ".join(command), MARK))
+    try:
+        OUT_TEST.write_text(OUT_TEST_SOURCE)
+        done = subprocess.run(command, cwd=MODS, capture_output=True, text=True, timeout=TIMEOUT,
+                              env=dict(os.environ, TZ="UTC"))
+    finally:
+        OUT_TEST.unlink(missing_ok=True)
+    output = done.stdout + "\n" + done.stderr
+    # Its own test fails on purpose, so the exit is never 0: the rows are what counts.
+    found = [line for line in output.splitlines() if MARK + "{" in line]
+    if len(found) != 1:
+        tail = "\n".join(output.splitlines()[-40:])
+        raise RuntimeError("{} gave {} {}lines, not 1 (exit {}):\n{}".format(
+            " ".join(command), len(found), MARK, done.returncode, tail))
+    line = found[0]
+    try:
+        return json.loads(line[line.index(MARK) + len(MARK):].strip())
+    except ValueError as e:
+        raise RuntimeError("the {}line came back cut or changed: {}".format(MARK, e))
 
 
 def cells(raster):

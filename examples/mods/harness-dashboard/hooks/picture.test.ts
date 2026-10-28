@@ -1,10 +1,13 @@
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+import type { On } from 'claude-code'
 
 import { SAMPLE } from './sample'
 
-// The README's picture: the pane on the terminal, 66 columns wide, drawing SAMPLE with 14 days chosen.
-// This lays the drawn tree out as rows of text and prints them on one line, PANE-ROWS <json>, for
-// scripts/draw_dashboard.py to draw. Run it with TZ=UTC: the header's time is local.
+// The README's picture: the pane on the terminal, 66 columns wide, drawing SAMPLE with 14 days chosen,
+// its drawn tree laid out as rows of text. A test has no console and no file system, so
+// scripts/draw_dashboard.py gets the rows out through a test of its own that imports picture() and
+// fails with them as its message. It runs the tests with TZ=UTC: the header's time is local.
 const COLUMNS = 66
 
 type Node = { type: string; props?: Record<string, unknown>; children?: (Node | string)[] }
@@ -89,7 +92,10 @@ function draw(n: Node | string, width: number): Block {
   return out
 }
 
-test('the README picture fits 66 columns, and is printed for scripts/draw_dashboard.py', async ($, on) => {
+// The pane as the README pictures it, laid out as rows.
+export type Picture = Block & { columns: number }
+
+export async function picture($: Engine, on: On): Promise<Picture> {
   on('state.get', async (_$, e, next) =>
     e.plugin === 'harness-dashboard' && e.key === 'seen'
       ? { value: { value: { root: '/h/starter', doc: SAMPLE, readAt: Date.parse(String(SAMPLE.generated)), isReading: false, failedAt: null, failure: null }, version: 1 } }
@@ -99,13 +105,15 @@ test('the README picture fits 66 columns, and is printed for scripts/draw_dashbo
     props: { title: 'Harness', isFocused: true, bodyColumns: COLUMNS, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
   } as const)
   const pane = draw((await ui.drawn()) as unknown as Node, COLUMNS)
+  await ui.unmount()
+  return { columns: COLUMNS, ...pane }
+}
+
+test('the README picture fits 66 columns, with both charts', async ($, on) => {
+  const pane = await picture($, on)
+  expect(pane.rows.length).toBeGreaterThan(0)
   for (const segs of pane.rows) for (const s of segs) expect(s.col + length(s.text)).toBeLessThanOrEqual(COLUMNS)
   for (const r of pane.rasters) expect(r.col + r.columns).toBeLessThanOrEqual(COLUMNS)
   // Loop spend's chart and Conversations'.
   expect(pane.rasters).toHaveLength(2)
-  // Through globalThis, as the API's types don't promise a console; without one nothing is printed,
-  // and scripts/draw_dashboard.py says it found no rows.
-  const out = (globalThis as { console?: { log?: (line: string) => void } }).console
-  out?.log?.(`PANE-ROWS ${JSON.stringify({ columns: COLUMNS, ...pane })}`)
-  await ui.unmount()
 })
