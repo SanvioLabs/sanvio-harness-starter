@@ -36,6 +36,14 @@ Files: [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py), [`tests/test_dr
 
 **Do:** if it says the file is already there and no run is going, delete it.
 
+## 2026-10-28: Tickets check a tool claim first
+
+[`steering/tickets.md`](steering/tickets.md) now says to check, by running it, any claim a ticket makes about how a tool or
+runtime behaves before the ticket rests on it, and to say in the ticket how it was checked.
+Files: [`steering/tickets.md`](steering/tickets.md).
+
+**Do:** nothing.
+
 ## 2026-10-28: Dashboard picture from the pane
 
 [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py) redraws the harness dashboard README's picture, [`docs/harness-dashboard.svg`](docs/harness-dashboard.svg),
