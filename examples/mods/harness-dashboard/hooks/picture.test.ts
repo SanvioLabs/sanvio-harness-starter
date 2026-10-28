@@ -95,10 +95,14 @@ function draw(n: Node | string, width: number): Block {
 // The pane as the README pictures it, laid out as rows.
 export type Picture = Block & { columns: number }
 
+// Noon on the sample's day in this machine's own zone, so the header reads 12:00 wherever it's drawn:
+// the tests run in the machine's zone whatever TZ says.
+const READ_AT = new Date(2026, 9, 27, 12, 0).getTime()
+
 export async function picture($: Engine, on: On): Promise<Picture> {
   on('state.get', async (_$, e, next) =>
     e.plugin === 'harness-dashboard' && e.key === 'seen'
-      ? { value: { value: { root: '/h/starter', doc: SAMPLE, readAt: Date.parse(String(SAMPLE.generated)), isReading: false, failedAt: null, failure: null }, version: 1 } }
+      ? { value: { value: { root: '/h/starter', doc: SAMPLE, readAt: READ_AT, isReading: false, failedAt: null, failure: null }, version: 1 } }
       : next(e))
   const ui = await $.ui.mount({
     plugin: 'harness-dashboard', surface: 'terminal', component: 'Pane', requestId: 'dashboard',

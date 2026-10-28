@@ -44,9 +44,9 @@ def commit_status(state):
             "targetUrl": "https://github.com/o/r/status?" + LEAK}
 
 
-def pr(number, created, branch, draft=False, mergeable="MERGEABLE", rollup=()):
+def pr(number, created, branch, draft=False, mergeable="MERGEABLE", rollup=(), title=None):
     """One row of gh pr list --json, with the fields dashboard_data asks for."""
-    return {"number": number, "title": "PR {} {}".format(number, LEAK), "createdAt": created,
+    return {"number": number, "title": title or "PR {} {}".format(number, LEAK), "createdAt": created,
             "headRefName": branch, "isDraft": draft, "mergeable": mergeable, "statusCheckRollup": list(rollup)}
 
 
@@ -855,18 +855,94 @@ def read_sample():
     return json.loads(text[len(SAMPLE_HEAD):]) if text.startswith(SAMPLE_HEAD) else None
 
 
+OPUS = "claude-opus-5-5"
+SONNET = "claude-sonnet-5-5"
+HAIKU = "claude-haiku-5-5"
+
+
 class Sample(GitHarness):
-    """build() with every section filled, which must match the sample the dashboard's tests draw."""
+    """build() with every section filled, which must match the sample the dashboard's tests draw.
+
+    Its inputs are its own, not fill()'s: the dashboard README's picture is drawn from this sample, so its
+    titles, models and token counts read like a harness at work, a few weeks in. All of it is made up."""
 
     def setUp(self):
         super().setUp()
-        self.fill()
+        # The loop's runs: plans and reviews on Sonnet, builds on Opus, weekdays only.
+        runs = {
+            "issue-31": [("2026-10-16T09:00:00", "plan", SONNET, 610_000, 0.90),
+                         ("2026-10-16T09:20:00", "build", OPUS, 1_480_000, 2.20),
+                         ("2026-10-16T10:10:00", "review", SONNET, 350_000, 0.55)],
+            "issue-32": [("2026-10-19T09:00:00", "plan", SONNET, 720_000, 1.05),
+                         ("2026-10-19T09:30:00", "build", OPUS, 2_100_000, 3.10),
+                         ("2026-10-20T09:00:00", "review", SONNET, 400_000, 0.60)],
+            "issue-33": [("2026-10-20T11:00:00", "plan", SONNET, 540_000, 0.80),
+                         ("2026-10-20T11:30:00", "build", OPUS, 1_750_000, 2.60),
+                         ("2026-10-21T09:00:00", "build", OPUS, 1_620_000, 2.40),
+                         ("2026-10-21T10:00:00", "review", SONNET, 330_000, 0.50)],
+            "issue-34": [("2026-10-22T09:00:00", "plan", SONNET, 470_000, 0.70),
+                         ("2026-10-22T09:30:00", "build", OPUS, 2_560_000, 3.80),
+                         ("2026-10-23T09:00:00", "build", OPUS, 2_760_000, 4.10),
+                         ("2026-10-23T10:30:00", "review", SONNET, 370_000, 0.55)],
+            "issue-36": [("2026-10-26T09:00:00", "plan", SONNET, 570_000, 0.85),
+                         ("2026-10-26T09:30:00", "build", OPUS, 1_950_000, 2.90),
+                         ("2026-10-26T10:40:00", "review", SONNET, 300_000, 0.45)],
+            "issue-38": [("2026-10-26T13:00:00", "plan", SONNET, 470_000, 0.70),
+                         ("2026-10-27T08:00:00", "build", OPUS, 2_150_000, 3.20),
+                         ("2026-10-27T08:40:00", "review", SONNET, 400_000, 0.60)],
+            "issue-40": [("2026-10-27T10:00:00", "plan", SONNET, 500_000, 0.75)],
+        }
+        for issue, entries in runs.items():
+            write(self.root, ".loop/{}/usage.json".format(issue), [run(*e) for e in entries])
+        write(self.root, ".loop/projects/app/issue-3/usage.json", [
+            run("2026-10-22T14:00:00", "build", OPUS, 880_000, 1.30)])
+
+        def issue(number, title, state, round, note="", pull=None):
+            return {"number": number, "title": title, "state": state, "round": round, "note": note,
+                    "pr": "https://github.com/o/r/pull/{}".format(pull) if pull else None,
+                    "updated": "2026-10-23T16:00:00Z" if state == "blocked" else None}
+
+        write(self.root, ".loop/status.json", {"queue": [], "issues": [
+            issue(31, "Dashboard: stack narrow tables", "pr", 1, pull=39),
+            issue(32, "Loop: say which round a review was", "pr", 1, pull=41),
+            issue(33, "Gate: name the section that's empty", "pr", 2, pull=43),
+            issue(34, "README: link the loop section", "blocked", 5, "the link check still fails after 5 rounds"),
+            issue(36, "Loop: retry a flaky test once", "pr", 1, pull=44),
+            issue(38, "Gate: check the fee total", "pr", 1, pull=45),
+            issue(40, "Steering: when a ticket needs a spec", "building", 1)]})
+        write(self.root, ".loop/projects/app/status.json", {"issues": [
+            {"number": 3, "title": "Add a health check", "state": "pr", "round": 1, "pr": "https://github.com/o/app/pull/4"}]})
+
+        events = []
+        for day, names in (("15", ["standup", "review-pr"]), ("16", ["standup", "review-pr", "learn"]),
+                           ("19", ["standup", "review-pr"]), ("20", ["standup", "review-pr", "review-pr"]),
+                           ("21", ["standup", "learn"]), ("22", ["standup", "review-pr"]),
+                           ("23", ["standup"]), ("26", ["standup", "review-pr", "review-pr"]),
+                           ("27", ["standup", "review-pr"])):
+            ts = "2026-10-{}T10:00:00Z".format(day)
+            events += [{"ts": ts, "event": "command" if n == "standup" else "skill", "name": n} for n in names]
+        events += [{"ts": "2026-10-20T11:00:00Z", "event": "agent", "name": "reviewer"},
+                   {"ts": "2026-10-26T11:00:00Z", "event": "agent", "name": "reviewer"},
+                   {"ts": "2026-10-26T11:30:00Z", "event": "agent", "name": "security-reviewer"},
+                   {"ts": "2026-10-21T15:00:00Z", "event": "guard_deny", "rule": "credential-file"},
+                   {"ts": "2026-10-22T15:00:00Z", "event": "guard_ask", "rule": "connector-write",
+                    "tool": "mcp__github__create_pull_request"},
+                   {"ts": "2026-10-26T15:00:00Z", "event": "guard_ask", "rule": "connector-write",
+                    "tool": "mcp__github__create_pull_request"}]
+        write(log_path(self.root).parent, log_path(self.root).name, "".join(json.dumps(e) + "\n" for e in events))
+
         # Each reviewer's saved result reads a folder of cases committed before it was saved. The reviewer's
         # brief is committed again after, so the reviewer is stale with the file that changed and the other fresh.
-        for name, folder in (("2026-10-25T0900-reviewer", "reviewer-cases"),
-                             ("2026-10-26T0900-security-reviewer", "security-cases")):
-            path = self.root / ".harness" / "evals" / (name + ".json")
-            write(path.parent, path.name, dict(json.loads(path.read_text()), folder=folder))
+        stable = {"status": "stable", "reasons": []}
+        for name, reviewer, saved, cases in (
+                ("2026-10-25T0900-reviewer", "reviewer", "2026-10-25T09:00:00+00:00",
+                 dict({"{:02}".format(i): stable for i in range(1, 10)},
+                      **{"10": {"status": "flaky", "reasons": ["missed: the fee total"]}})),
+                ("2026-10-26T0900-security-reviewer", "security-reviewer", "2026-10-26T09:00:00+00:00",
+                 {"{:02}".format(i): stable for i in range(1, 9)})):
+            write(self.root, ".harness/evals/{}.json".format(name),
+                  {"agent": "claude", "reviewer": reviewer, "saved": saved, "cases": cases,
+                   "folder": "reviewer-cases" if reviewer == "reviewer" else "security-cases"})
         write(self.root, "agents/reviewer.md", "the reviewer\n")
         write(self.root, "agents/security-reviewer.md", "the security reviewer\n")
         write(self.root, "scripts/eval_agents.py", "# the eval\n")
@@ -880,23 +956,40 @@ class Sample(GitHarness):
         self.commit("2026-10-26T12:00:00+00:00")
         # gh answers the open pull requests for waiting and the merged ones for loop_rework from their own files.
         self.answer_gh()
-        write(self.bin, "prs-open.json", PRS)
+        write(self.bin, "prs-open.json", [
+            pr(45, "2026-10-27T08:48:00Z", "loop/issue-38", title="Gate: check the fee total",
+               rollup=[check_run("COMPLETED", "SUCCESS")]),
+            pr(44, "2026-10-26T11:00:00Z", "loop/issue-36", mergeable="UNKNOWN", title="Loop: retry a flaky test once",
+               rollup=[check_run("COMPLETED", "SUCCESS"), check_run("IN_PROGRESS", "")]),
+            pr(42, "2026-10-25T12:00:00Z", "response-style", draft=True, mergeable="CONFLICTING",
+               title="Steering: shorter replies", rollup=[check_run("COMPLETED", "FAILURE")]),
+            pr(46, "2026-10-27T11:00:00Z", "go-example", title="Examples: a Go project")])
         write(self.bin, "prs-merged.json", [
-            {"number": 101, "title": "Built by the loop", "headRefName": "loop/issue-7",
+            {"number": 39, "title": "Dashboard: stack narrow tables", "headRefName": "loop/issue-31",
+             "mergedAt": "2026-10-17T12:00:00Z"},
+            {"number": 41, "title": "Loop: say which round a review was", "headRefName": "loop/issue-32",
              "mergedAt": "2026-10-20T12:00:00Z"},
-            {"number": 102, "title": "Fixed by hand", "headRefName": "loop/issue-12",
-             "mergedAt": "2026-10-21T12:00:00Z"}])
-        loop = commit("Build it\n\nLoop: issue #7, round 1.")
+            {"number": 43, "title": "Gate: name the section that's empty", "headRefName": "loop/issue-33",
+             "mergedAt": "2026-10-22T12:00:00Z"}])
+        loop = commit("Build it\n\nLoop: issue #31, round 1.")
         write(self.bin, "commits.json", {
-            "101": [[loop]],
-            "102": [[loop, commit("Merge branch 'main' into loop/issue-12", parents=2), commit("fix the test")]]})
-        # Replies at noon UTC fall on the same day in UTC and in Los Angeles.
+            "39": [[loop]],
+            "41": [[loop, commit("fix the test")]],
+            "43": [[loop, commit("Merge branch 'main' into loop/issue-33", parents=2)]]})
+        # Replies at noon UTC fall on the same day in UTC and in Los Angeles. reply() gives 10n tokens a reply.
         checkouts = self.root.parent / "loop-checkouts"
         write(self.root, "loop.json", {"worktree_dir": str(checkouts)})
-        lines(self.transcripts, "a/s1.jsonl", [
-            reply(self.root, 1, "1", "s1"),
-            reply(self.root, 10, "2", "s1", model="m-b", ts="2026-10-24T12:00:00Z")])
-        lines(self.transcripts, "b/s2.jsonl", [reply(checkouts / "issue-7", 1000, "3", "s2", ts="2026-10-26T12:00:00Z")])
+        harness = {"15": 150_000, "16": 420_000, "19": 380_000, "20": 610_000, "21": 520_000, "22": 700_000,
+                   "23": 450_000, "24": 90_000, "26": 820_000, "27": 560_000}
+        for day, n in harness.items():
+            ts = "2026-10-{}T12:00:00Z".format(day)
+            lines(self.transcripts, "harness/s{}.jsonl".format(day), [
+                reply(self.root, n, "h" + day, "s" + day, model=OPUS, ts=ts),
+                reply(self.root, n // 20, "k" + day, "s" + day, model=HAIKU, ts=ts)])
+        for issue, day, n in (("issue-31", "16", 210_000), ("issue-32", "19", 280_000), ("issue-33", "21", 330_000),
+                              ("issue-34", "23", 520_000), ("issue-36", "26", 240_000), ("issue-38", "27", 260_000)):
+            lines(self.transcripts, "loop/{}.jsonl".format(issue), [
+                reply(checkouts / issue, n, "l" + issue, issue, model=OPUS, ts="2026-10-{}T12:00:00Z".format(day))])
 
     def build_afresh(self):
         # The cache keeps each reply's local day, so a second zone would read the first zone's days.
