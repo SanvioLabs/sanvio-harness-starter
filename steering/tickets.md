@@ -30,6 +30,15 @@ Write a criterion as behaviour you can observe, and let the test prove it:
 "`run --issue 12` returns once #12 has a pull request, proved by a new test in
 [`tests/test_loop.py`](../tests/test_loop.py)", not "add `test_issue_exits`".
 
+**Check a claim about a tool before a ticket rests on it.** Where Context or
+Requirements says how a tool or runtime behaves (what a test runner passes
+through, what a command prints, what an API allows), run it first and say in
+the ticket how you checked. The loop builds on the claim with nobody watching,
+and finds out it's wrong only after the rounds it took.
+Learned 2026-10-28: #279 said a mod test could print, and under
+`claude plugin test` its output never reached the caller. The loop spent its
+whole token budget finding out.
+
 **One change per ticket.** If the acceptance criteria hold two unrelated
 outcomes, it's two tickets. If it can't fit one pull request, split it so each
 part can be tested on its own.
