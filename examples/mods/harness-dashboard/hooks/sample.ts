@@ -162,17 +162,18 @@ export const SAMPLE: Doc = {
   },
   "evals": {
     "reviewer": {
-      "changed": [],
+      "changed": [
+        "briefs/proposal.md"
+      ],
       "failing": 1,
       "failing_cases": [
         "03-c"
       ],
       "flaky": 1,
-      "newest_change": null,
+      "newest_change": "2026-10-26T12:00:00+00:00",
       "saved": "2026-10-25T09:00:00+00:00",
       "stable": 1,
-      "stale": true,
-      "why": "folder missing"
+      "stale": true
     },
     "security-reviewer": {
       "changed": [],
@@ -182,8 +183,7 @@ export const SAMPLE: Doc = {
       "newest_change": null,
       "saved": "2026-10-26T09:00:00+00:00",
       "stable": 1,
-      "stale": true,
-      "why": "folder missing"
+      "stale": false
     }
   },
   "generated": "2026-10-27T12:00:00+00:00",

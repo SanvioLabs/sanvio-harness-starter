@@ -30,7 +30,7 @@ fine).
 ## 2026-10-27: Dashboard sample from a real run
 
 The harness dashboard's tests now also draw [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts), a real run of
-[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `build()` with every section filled. `tests/test_dashboard_data.py`'s `Sample`
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `build()` with every section filled. [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py)'s `Sample`
 fails when `build()` no longer prints that sample, so a renamed or moved field can't reach the pane
 unnoticed, and `sample.test.ts` fails when the pane can't read one. The mod is now 0.1.1.
 Files: [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py), [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts),
@@ -39,7 +39,7 @@ Files: [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py), [`example
 
 **Do:** after changing what `dashboard_data.py` prints, run
 `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample` to write the sample again,
-then `claude plugin test harness-dashboard` from `examples/mods/`.
+then `claude plugin test harness-dashboard` from [`examples/mods/`](examples/mods/).
 
 ## 2026-10-27: Harness dashboard pane
 

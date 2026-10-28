@@ -338,10 +338,8 @@ class Evals(Harness):
                                       failing_cases=[])})
 
 
-class StaleEvals(Harness):
-    """A saved result in a git repo holding the files its one case rests on, all committed before it was saved."""
-
-    SAVED = "2026-10-25T09:00:00+00:00"
+class GitHarness(Harness):
+    """A harness root that is a git repo, with git's own settings and the machine's left out."""
 
     def setUp(self):
         super().setUp()
@@ -351,14 +349,6 @@ class StaleEvals(Harness):
         patched.start()
         self.addCleanup(patched.stop)
         self.git("init", "-q")
-        write(self.root, "agents/reviewer.md", "the reviewer\n")
-        write(self.root, "scripts/eval_agents.py", "# the eval\n")
-        write(self.root, "briefs/proposal.md", "the brief\n")
-        write(self.root, "evals/01-x/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
-        write(self.root, "evals/01-x/work.md", "the work\n")
-        write(self.root, "notes.md", "read by no case\n")
-        self.commit("2026-10-20T09:00:00+00:00")
-        self.save("reviewer")
 
     def git(self, *args, date=None):
         env = dict(os.environ, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date) if date else None
@@ -372,6 +362,23 @@ class StaleEvals(Harness):
         # Some versions of git print UTC as Z and others as +00:00, so the times are compared, not the text.
         self.assertEqual(dashboard_data.when(self.git("log", "-1", "--format=%cI").strip()),
                          dashboard_data.when(date))
+
+
+class StaleEvals(GitHarness):
+    """A saved result in a git repo holding the files its one case rests on, all committed before it was saved."""
+
+    SAVED = "2026-10-25T09:00:00+00:00"
+
+    def setUp(self):
+        super().setUp()
+        write(self.root, "agents/reviewer.md", "the reviewer\n")
+        write(self.root, "scripts/eval_agents.py", "# the eval\n")
+        write(self.root, "briefs/proposal.md", "the brief\n")
+        write(self.root, "evals/01-x/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
+        write(self.root, "evals/01-x/work.md", "the work\n")
+        write(self.root, "notes.md", "read by no case\n")
+        self.commit("2026-10-20T09:00:00+00:00")
+        self.save("reviewer")
 
     def save(self, reviewer, **fields):
         result = {"reviewer": reviewer, "folder": "evals", "saved": self.SAVED, "cases": {"01-x": {"status": "stable"}}}
@@ -799,12 +806,29 @@ def read_sample():
     return json.loads(text[len(SAMPLE_HEAD):]) if text.startswith(SAMPLE_HEAD) else None
 
 
-class Sample(Harness):
+class Sample(GitHarness):
     """build() with every section filled, which must match the sample the dashboard's tests draw."""
 
     def setUp(self):
         super().setUp()
         self.fill()
+        # Each reviewer's saved result reads a folder of cases committed before it was saved. The reviewer's
+        # brief is committed again after, so the reviewer is stale with the file that changed and the other fresh.
+        for name, folder in (("2026-10-25T0900-reviewer", "reviewer-cases"),
+                             ("2026-10-26T0900-security-reviewer", "security-cases")):
+            path = self.root / ".harness" / "evals" / (name + ".json")
+            write(path.parent, path.name, dict(json.loads(path.read_text()), folder=folder))
+        write(self.root, "agents/reviewer.md", "the reviewer\n")
+        write(self.root, "agents/security-reviewer.md", "the security reviewer\n")
+        write(self.root, "scripts/eval_agents.py", "# the eval\n")
+        write(self.root, "briefs/proposal.md", "the brief\n")
+        write(self.root, "reviewer-cases/01-a/case.json", {"agent": "reviewer", "brief": "briefs/proposal.md"})
+        write(self.root, "reviewer-cases/01-a/work.md", "the work\n")
+        write(self.root, "security-cases/01-x/case.json", {"agent": "security-reviewer"})
+        write(self.root, "security-cases/01-x/work.md", "the code\n")
+        self.commit("2026-10-20T09:00:00+00:00")
+        write(self.root, "briefs/proposal.md", "the brief, rewritten\n")
+        self.commit("2026-10-26T12:00:00+00:00")
         # gh answers the open pull requests for waiting and the merged ones for loop_rework from their own files.
         self.answer_gh()
         write(self.bin, "prs-open.json", PRS)
@@ -847,6 +871,10 @@ class Sample(Harness):
         for name, value in parts.items():
             self.assertTrue(value, name)
             self.assertFalse(isinstance(value, dict) and "value" in value and value["value"] is None, name)
+        # Each reviewer's freshness came from its files, not a why, and one has a file changed since it was saved.
+        rows = found["evals"].values()
+        self.assertEqual([r["why"] for r in rows if "why" in r], [])
+        self.assertTrue(any(r["changed"] and r["newest_change"] for r in rows))
 
 
 class Privacy(Harness):

@@ -11,6 +11,8 @@ const UNREAD = ["couldn't read", 'not in this script', "doesn't give them yet"]
 // Every why the script gives a missing section, and the one missing() gives when it has none.
 const WHYS = ['no loop records', 'unreadable', 'no status.json', 'no usage log', 'no saved evals', 'no transcripts',
   'gh unavailable', 'gh failed', 'unavailable']
+// Every why the script gives when it can't tell whether a reviewer's saved result is stale.
+const STALE_WHYS = ['folder missing', 'no saved time', 'no git']
 
 const texts = () => sections(SAMPLE).flatMap(s => s.lines.map(l => l.text))
 
@@ -30,5 +32,8 @@ group("the script's own document", () => {
   })
   test('no line is only the reason a section is missing', () => {
     for (const text of texts()) expect(WHYS.some(why => text === why || text.endsWith(`: ${why}`))).toBe(false)
+  })
+  test("no reviewer's staleness is only a why", () => {
+    for (const text of texts()) for (const why of STALE_WHYS) expect(text).not.toContain(why)
   })
 })
