@@ -1,4 +1,4 @@
-import { describe as group, expect, test } from 'claude-code/testing'
+import { describe as group, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { sinceFor } from './logic'
@@ -42,6 +42,75 @@ function seed(on: On, seen: Seen | null): { now: () => Seen | null } {
 async function drain(): Promise<void> {
   for (let i = 0; i < 40; i++) await Promise.resolve()
 }
+
+// A session started in the harness root, with the pane open or not, counting the script's runs and
+// how often the pane asks which panes are open.
+function session(on: On, open: { now: boolean }): { runs: () => number; asks: () => number } {
+  let runs = 0
+  let asks = 0
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', async (_$, e) => ({ value: { command: e.name } }))
+  on('fs.exists', async (_$, e) => ({ value: e.path === '/h/starter/scripts/dashboard_data.py' }))
+  on('ui.panes', async () => {
+    asks += 1
+    return { value: open.now ? [{ id: 'dashboard', title: 'Harness', isShown: true, isPlaced: true } as never] : [] }
+  })
+  on('process.run', async () => {
+    runs += 1
+    return { value: { exitCode: 0, stdout: JSON.stringify(DOC), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  return { runs: () => runs, asks: () => asks }
+}
+
+const START = { cwd: '/h/starter', surface: null, isInteractive: true } as const
+const PERIOD = 300_000
+
+group('the timer', () => {
+  test('a reload with the pane open starts it, and each period reads once', async ($, on) => {
+    const clock = mock.clock(on, { now: 1_800_000_000_000 })
+    const s = session(on, { now: true })
+    await $.session.start(START)
+    await clock.settle()
+    expect(s.runs()).toBe(0)
+    await clock.advance(PERIOD)
+    expect(s.runs()).toBe(1)
+    await clock.advance(PERIOD)
+    expect(s.runs()).toBe(2)
+  })
+  test('once the pane is closed, the next period reads nothing and later ones stop asking', async ($, on) => {
+    const clock = mock.clock(on, { now: 1_800_000_000_000 })
+    const open = { now: true }
+    const s = session(on, open)
+    await $.session.start(START)
+    await clock.advance(PERIOD)
+    open.now = false
+    await clock.advance(PERIOD)
+    const asked = s.asks()
+    await clock.advance(PERIOD)
+    await clock.advance(PERIOD)
+    expect(s.runs()).toBe(1)
+    expect(s.asks()).toBe(asked)
+  })
+  test('a reload with the pane closed starts no timer', async ($, on) => {
+    const clock = mock.clock(on, { now: 1_800_000_000_000 })
+    const s = session(on, { now: false })
+    await $.session.start(START)
+    await clock.settle()
+    const asked = s.asks()
+    await clock.advance(PERIOD)
+    await clock.advance(PERIOD)
+    expect(s.runs()).toBe(0)
+    expect(s.asks()).toBe(asked)
+  })
+  test('a reload clears a read saved as running, so Refresh works again', async ($, on) => {
+    mock.clock(on, { now: 1_800_000_000_000 })
+    session(on, { now: false })
+    const state = seed(on, SEEN({ isReading: true }))
+    await $.session.start(START)
+    await drain()
+    expect(state.now()?.isReading).toBe(false)
+  })
+})
 
 group('the pane', () => {
   test('draws each section, what is waiting first, and a missing one with its why', async ($, on) => {
