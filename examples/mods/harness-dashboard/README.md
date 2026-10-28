@@ -5,113 +5,121 @@ saved evals, Claude Code's transcripts and GitHub. This mod opens a pane
 beside the conversation that brings them together, with what needs you first.
 In a terminal pane 66 columns wide, with made-up numbers:
 
-<img src="../../../docs/harness-dashboard.svg" width="480" alt="The Harness pane in a terminal. Under the header, the buttons Refresh, 7 days, 14 days in orange as the one chosen, and 30 days. Waiting on you: a pull request whose checks pass, one in yellow whose checks are still running, and a blocked issue in red with why. Loop spend: a bar a day from Oct 22 to Oct 27, today's in orange, each with its day, cost and tokens under it, then tables of the spend by period, issue and model. Throughput and rework, with the 40% that needed a commit in yellow. Evals, with a stale reviewer in yellow. Conversations: a bar a day for 14 days with Oct 20 and Oct 27 under them, then tokens by side and model. Activity: the skills and agents used most.">
+<img src="../../../docs/harness-dashboard.svg" width="480" alt="The Harness pane in a terminal. Under the header, the buttons Refresh, 7 days, 14 days in orange as the one chosen, and 30 days. Waiting on you: four pull requests, one in yellow whose checks are still running and a draft in red whose checks fail and that conflicts, then a blocked issue in red with why. Loop spend: a bar a day from Oct 16 to Oct 27, today's in orange, with Oct 20 and Oct 27 under them, then tables of the spend by period, issue and model. Throughput and rework, with the 67% that needed a commit in yellow. Evals, with a stale reviewer in yellow. Conversations: a bar a day from Oct 15 to Oct 27, then tokens by side and model. Activity: the skills, agents and commands used, and the guard's one refusal in yellow.">
 
 <details>
 <summary>The same pane as text</summary>
 
 ```
-starter                                              Updated 11:43
+starter                                              Updated 12:00
 [ Refresh ] [ 7 days ] [ 14 days ] [ 30 days ]
 ──────────────────────────────────────────────────────────────────
 Waiting on you
 Pull request                             Waiting  Checks Conflicts
-#41 Gate: check the fee total               3.2h    pass        no
-#43 Loop: retry a flaky test once           0.5h pending   unknown
+#45 Gate: check the fee total               3.2h    pass        no
+#44 Loop: retry a flaky test once            25h pending   unknown
+#42 (draft) Steering: shorter replies        48h    fail       yes
+#46 Examples: a Go project                    1h    none        no
 
 Blocked issue                                                Since
-#38 README: link the loop section                           Oct 26
+#34 README: link the loop section                           Oct 23
 
-#38: still failing after 5 rounds
+#34: the link check still fails after 5 rounds
 
 ──────────────────────────────────────────────────────────────────
 
 Loop spend
-Daily, Oct 22 to Oct 27: most $6.40 on Oct 25
-                      ▄▄▄▄▄▄▄▄▄▄ ██████████
-                      ██████████ ██████████ ▂▂▂▂▂▂▂▂▂▂
-                      ██████████ ██████████ ██████████ ▇▇▇▇▇▇▇▇▇▇
-           ▆▆▆▆▆▆▆▆▆▆ ██████████ ██████████ ██████████ ██████████
-▇▇▇▇▇▇▇▇▇▇ ██████████ ██████████ ██████████ ██████████ ██████████
-  Oct 22     Oct 23     Oct 24     Oct 25     Oct 26     Oct 27
-  $1.20      $2.30      $5.80      $6.40      $4.20      $3.60
-   900k       1.7M       4.3M       4.9M       3.1M       2.6M
+Daily, Oct 16 to Oct 27: most $5.80 on Oct 22
+                                 ████                ▂▂▂▂
+   ▁▁▁▁           ▅▅▅▅ ▄▄▄▄      ████ ████           ████ ▇▇▇▇
+   ████           ████ ████ ▄▄▄▄ ████ ████           ████ ████
+   ████           ████ ████ ████ ████ ████           ████ ████
+   ████           ████ ████ ████ ████ ████           ████ ████
+                      Oct 20                             Oct 27
 
                                                        Cost Tokens
-Today                                                 $3.60   2.6M
-7 days                                               $23.50  17.5M
-Since Oct 14                                         $23.50  17.5M
-Per pull request                                     ~$2.35
+Today                                                 $4.55   3.0M
+7 days                                               $22.80  15.3M
+Since Oct 15                                         $34.60  23.3M
+Per pull request                                     ~$5.77
 
 Costliest issues                                       Cost Tokens
-#38                                                   $5.40   4.0M
-#36                                                   $3.10   2.3M
-#41                                                   $2.20   1.6M
+#34                                                   $9.15   6.2M
+#33                                                   $6.30   4.2M
+#32                                                   $4.75   3.2M
+#38                                                   $4.50   3.0M
+#36                                                   $4.20   2.8M
 
 Model                                                  Cost Tokens
-opus-5-5                                             $19.00  14.0M
-sonnet-5-5                                            $4.50   3.5M
+opus-5-5                                             $25.60  17.3M
+sonnet-5-5                                            $9.00   6.0M
 
-The loop's records start Oct 22
+The loop's records start Oct 16
 Claude Code's estimate at API prices, not a bill
 
 ──────────────────────────────────────────────────────────────────
 
 Throughput and rework
-12 recent issues                                             Count
-Opened a pull request                                           10
-Blocked                                                          2
-Took more than one round                                         3
+8 recent issues                                              Count
+Blocked                                                          1
+Building                                                         1
+Opened a pull request                                            6
+Took more than one round                                         2
 
 Merged loop pull requests                                    Count
-Merged                                                          10
-Needed a commit first                                      4 (40%)
-  with a fix                                                     3
+Merged                                                           3
+Needed a commit first                                      2 (67%)
+  with a fix                                                     1
   only a merge from main                                         1
 
 ──────────────────────────────────────────────────────────────────
 
 Evals
 Reviewer                         Stable Flaky Failing  Saved Stale
-reviewer                             10     0       0 Oct 24   yes
-security-reviewer                     9     0       0 Oct 26    no
+reviewer                              9     1       0 Oct 25   yes
+security-reviewer                     8     0       0 Oct 26    no
 
 reviewer stale: 1 file changed, newest Oct 26. Run it again
 
 ──────────────────────────────────────────────────────────────────
 
 Conversations
-Daily, Oct 14 to Oct 27: most 9.4M tokens on Oct 24
-                                             ███ ▅▅▅
-                                         ▂▂▂ ███ ███
-                             ▁▁▁ ▁▁▁ ▆▆▆ ███ ███ ███     ▁▁▁
-     ▅▅▅             ▄▄▄ ▆▆▆ ███ ███ ███ ███ ███ ███ ▆▆▆ ███
-     ███ ▅▅▅         ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
-                           Oct 20                      Oct 27
+Daily, Oct 15 to Oct 27: most 11.0M tokens on Oct 26
+                                        ▄▄▄▄           ████
+                    ▁▁▁▁      ████ ▃▃▃▃ ████           ████ ▇▇▇▇
+     ████           ████ ▇▇▇▇ ████ ████ ████           ████ ████
+     ████           ████ ████ ████ ████ ████           ████ ████
+▆▆▆▆ ████           ████ ████ ████ ████ ████ ▃▃▃▃      ████ ████
+                        Oct 20                             Oct 27
 
                                                    Tokens Sessions
-Harness                                             42.5M       31
-Loop worktrees                                      12.2M       40
+Harness                                             49.4M       10
+Loop worktrees                                      18.4M        6
 
 Model                                                Harness  Loop
-opus-5-5                                               40.3M 12.2M
-haiku-5-5                                               2.2M     0
+opus-5-5                                               47.0M 18.4M
+haiku-5-5                                               2.4M     0
 
-Since Oct 14, cache reads included
+Since Oct 15, cache reads included
 
 ──────────────────────────────────────────────────────────────────
 
 Activity
 Skill                                                        Times
-review-pr                                                        6
+review-pr                                                        9
 learn                                                            2
-loop-control                                                     2
 
 Agent                                                        Times
-reviewer                                                         6
-security-reviewer                                                2
+reviewer                                                         2
+security-reviewer                                                1
 
-Guard asked 2 times, since Oct 14
+Command                                                      Times
+standup                                                          9
+
+Guard refused                                                Times
+credential-file                                                  1
+
+Guard asked 2 times, since Oct 15
 ```
 
 </details>
@@ -206,3 +214,5 @@ claude plugin test harness-dashboard
 ```
 
 `python3 -m unittest discover -s tests`, and so the loop, runs these wherever Claude Code is installed. CI doesn't install Claude Code, so it skips them.
+
+After changing how the pane draws, run `python3 scripts/draw_dashboard.py` from the root. It redraws the picture above and its text from [`hooks/sample.ts`](hooks/sample.ts), and [`tests/test_draw_dashboard.py`](../../../tests/test_draw_dashboard.py) fails until you do.

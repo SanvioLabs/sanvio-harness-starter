@@ -5,18 +5,19 @@ import type { Doc } from '../types'
 export const SAMPLE: Doc = {
   "activity": {
     "agents": {
-      "reviewer": 1
+      "reviewer": 2,
+      "security-reviewer": 1
     },
-    "asks": 1,
+    "asks": 2,
     "commands": {
-      "standup": 1
+      "standup": 9
     },
     "guard_refusals": {
-      "credential-file": 2
+      "credential-file": 1
     },
     "skills": {
-      "learn": 1,
-      "review-pr": 2
+      "learn": 2,
+      "review-pr": 9
     }
   },
   "conversations": {
@@ -24,11 +25,11 @@ export const SAMPLE: Doc = {
       "by_day": [
         {
           "day": "2026-10-15",
-          "tokens": 0
+          "tokens": 1575000
         },
         {
           "day": "2026-10-16",
-          "tokens": 0
+          "tokens": 4410000
         },
         {
           "day": "2026-10-17",
@@ -40,27 +41,27 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-19",
-          "tokens": 0
+          "tokens": 3990000
         },
         {
           "day": "2026-10-20",
-          "tokens": 10
+          "tokens": 6405000
         },
         {
           "day": "2026-10-21",
-          "tokens": 0
+          "tokens": 5460000
         },
         {
           "day": "2026-10-22",
-          "tokens": 0
+          "tokens": 7350000
         },
         {
           "day": "2026-10-23",
-          "tokens": 0
+          "tokens": 4725000
         },
         {
           "day": "2026-10-24",
-          "tokens": 100
+          "tokens": 945000
         },
         {
           "day": "2026-10-25",
@@ -68,30 +69,30 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-26",
-          "tokens": 0
+          "tokens": 8610000
         },
         {
           "day": "2026-10-27",
-          "tokens": 0
+          "tokens": 5880000
         }
       ],
       "by_model": {
-        "m-a": {
-          "cache_reads": 4,
-          "cache_writes": 3,
-          "input": 1,
-          "output": 2,
-          "total": 10
+        "claude-haiku-5-5": {
+          "cache_reads": 940000,
+          "cache_writes": 705000,
+          "input": 235000,
+          "output": 470000,
+          "total": 2350000
         },
-        "m-b": {
-          "cache_reads": 40,
-          "cache_writes": 30,
-          "input": 10,
-          "output": 20,
-          "total": 100
+        "claude-opus-5-5": {
+          "cache_reads": 18800000,
+          "cache_writes": 14100000,
+          "input": 4700000,
+          "output": 9400000,
+          "total": 47000000
         }
       },
-      "sessions": 1
+      "sessions": 10
     },
     "loop": {
       "by_day": [
@@ -101,7 +102,7 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-16",
-          "tokens": 0
+          "tokens": 2100000
         },
         {
           "day": "2026-10-17",
@@ -113,7 +114,7 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-19",
-          "tokens": 0
+          "tokens": 2800000
         },
         {
           "day": "2026-10-20",
@@ -121,7 +122,7 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-21",
-          "tokens": 0
+          "tokens": 3300000
         },
         {
           "day": "2026-10-22",
@@ -129,7 +130,7 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-23",
-          "tokens": 0
+          "tokens": 5200000
         },
         {
           "day": "2026-10-24",
@@ -141,23 +142,23 @@ export const SAMPLE: Doc = {
         },
         {
           "day": "2026-10-26",
-          "tokens": 10000
+          "tokens": 2400000
         },
         {
           "day": "2026-10-27",
-          "tokens": 0
+          "tokens": 2600000
         }
       ],
       "by_model": {
-        "m-a": {
-          "cache_reads": 4000,
-          "cache_writes": 3000,
-          "input": 1000,
-          "output": 2000,
-          "total": 10000
+        "claude-opus-5-5": {
+          "cache_reads": 7360000,
+          "cache_writes": 5520000,
+          "input": 1840000,
+          "output": 3680000,
+          "total": 18400000
         }
       },
-      "sessions": 1
+      "sessions": 6
     }
   },
   "evals": {
@@ -165,14 +166,12 @@ export const SAMPLE: Doc = {
       "changed": [
         "briefs/proposal.md"
       ],
-      "failing": 1,
-      "failing_cases": [
-        "03-c"
-      ],
+      "failing": 0,
+      "failing_cases": [],
       "flaky": 1,
       "newest_change": "2026-10-26T12:00:00+00:00",
       "saved": "2026-10-25T09:00:00+00:00",
-      "stable": 1,
+      "stable": 9,
       "stale": true
     },
     "security-reviewer": {
@@ -182,22 +181,28 @@ export const SAMPLE: Doc = {
       "flaky": 0,
       "newest_change": null,
       "saved": "2026-10-26T09:00:00+00:00",
-      "stable": 1,
+      "stable": 8,
       "stale": false
     }
   },
   "generated": "2026-10-27T12:00:00+00:00",
   "loop_rework": {
-    "merged": 2,
+    "merged": 3,
     "pull_requests": [
       {
-        "merges_from_base": 1,
-        "number": 102,
+        "merges_from_base": 0,
+        "number": 41,
         "other_commits": 1,
-        "title": "Fixed by hand"
+        "title": "Loop: say which round a review was"
+      },
+      {
+        "merges_from_base": 1,
+        "number": 43,
+        "other_commits": 0,
+        "title": "Gate: name the section that's empty"
       }
     ],
-    "reworked": 1
+    "reworked": 2
   },
   "loop_spend": {
     "by_day": [
@@ -207,9 +212,9 @@ export const SAMPLE: Doc = {
         "tokens": 0
       },
       {
-        "cost_usd": 2.0,
+        "cost_usd": 3.65,
         "day": "2026-10-16",
-        "tokens": 1000
+        "tokens": 2440000
       },
       {
         "cost_usd": 0.0,
@@ -222,29 +227,29 @@ export const SAMPLE: Doc = {
         "tokens": 0
       },
       {
-        "cost_usd": 0.0,
+        "cost_usd": 4.15,
         "day": "2026-10-19",
-        "tokens": 0
+        "tokens": 2820000
       },
       {
-        "cost_usd": 0.0,
+        "cost_usd": 4.0,
         "day": "2026-10-20",
-        "tokens": 0
+        "tokens": 2690000
       },
       {
-        "cost_usd": 0.0,
+        "cost_usd": 2.9,
         "day": "2026-10-21",
-        "tokens": 0
+        "tokens": 1950000
       },
       {
-        "cost_usd": 0.25,
+        "cost_usd": 5.8,
         "day": "2026-10-22",
-        "tokens": 10
+        "tokens": 3910000
       },
       {
-        "cost_usd": 0.0,
+        "cost_usd": 4.65,
         "day": "2026-10-23",
-        "tokens": 0
+        "tokens": 3130000
       },
       {
         "cost_usd": 0.0,
@@ -257,89 +262,108 @@ export const SAMPLE: Doc = {
         "tokens": 0
       },
       {
-        "cost_usd": 0.0,
+        "cost_usd": 4.9,
         "day": "2026-10-26",
-        "tokens": 0
+        "tokens": 3290000
       },
       {
-        "cost_usd": 1.75,
+        "cost_usd": 4.55,
         "day": "2026-10-27",
-        "tokens": 305
+        "tokens": 3050000
       }
     ],
     "by_issue": {
       "app/issue-3": {
-        "cost_usd": 0.25,
-        "tokens": 5
+        "cost_usd": 1.3,
+        "tokens": 880000
       },
-      "issue-7": {
-        "cost_usd": 1.75,
-        "tokens": 310
+      "issue-31": {
+        "cost_usd": 3.65,
+        "tokens": 2440000
       },
-      "issue-9": {
-        "cost_usd": 2.0,
-        "tokens": 1000
+      "issue-32": {
+        "cost_usd": 4.75,
+        "tokens": 3220000
+      },
+      "issue-33": {
+        "cost_usd": 6.3,
+        "tokens": 4240000
+      },
+      "issue-34": {
+        "cost_usd": 9.15,
+        "tokens": 6160000
+      },
+      "issue-36": {
+        "cost_usd": 4.2,
+        "tokens": 2820000
+      },
+      "issue-38": {
+        "cost_usd": 4.5,
+        "tokens": 3020000
+      },
+      "issue-40": {
+        "cost_usd": 0.75,
+        "tokens": 500000
       }
     },
     "by_model": {
-      "claude-a": {
-        "cost_usd": 1.5,
-        "label": "claude-a",
-        "tokens": 115
+      "claude-opus-5-5": {
+        "cost_usd": 25.6,
+        "label": "claude-opus-5-5",
+        "tokens": 17250000
       },
-      "claude-b": {
-        "cost_usd": 2.0,
-        "label": "claude-b",
-        "tokens": 1000
-      },
-      "null": {
-        "cost_usd": 0.5,
-        "label": "model not recorded",
-        "tokens": 200
+      "claude-sonnet-5-5": {
+        "cost_usd": 9.0,
+        "label": "claude-sonnet-5-5",
+        "tokens": 6030000
       }
     },
     "by_step": {
       "build": {
-        "cost_usd": 0.5,
-        "tokens": 200
+        "cost_usd": 25.6,
+        "tokens": 17250000
       },
       "plan": {
-        "cost_usd": 3.25,
-        "tokens": 1110
+        "cost_usd": 5.75,
+        "tokens": 3880000
       },
       "review": {
-        "cost_usd": 0.25,
-        "tokens": 5
+        "cost_usd": 3.25,
+        "tokens": 2150000
       }
     },
-    "cost_per_pr": 2.0,
+    "cost_per_pr": 5.7667,
     "first_run": "2026-10-16",
     "last_7_days": {
-      "cost_usd": 2.0,
-      "tokens": 315
+      "cost_usd": 22.8,
+      "tokens": 15330000
     },
     "since": {
-      "cost_usd": 4.0,
-      "tokens": 1315
+      "cost_usd": 34.6,
+      "tokens": 23280000
     },
     "today": {
-      "cost_usd": 1.75,
-      "tokens": 305
+      "cost_usd": 4.55,
+      "tokens": 3050000
     }
   },
   "loop_throughput": {
     "by_state": {
       "blocked": 1,
       "building": 1,
-      "pr": 2
+      "pr": 6
     },
-    "issues": 4,
+    "issues": 8,
     "more_than_one_round": 2,
     "rounds": {
       "app/issue-3": 1,
-      "issue-12": 1,
-      "issue-7": 2,
-      "issue-9": 3
+      "issue-31": 1,
+      "issue-32": 1,
+      "issue-33": 2,
+      "issue-34": 5,
+      "issue-36": 1,
+      "issue-38": 1,
+      "issue-40": 1
     }
   },
   "schema": 1,
@@ -347,11 +371,11 @@ export const SAMPLE: Doc = {
   "waiting": {
     "blocked": [
       {
-        "issue": "issue-9",
-        "note": "sentinel-zq7",
-        "number": 9,
-        "title": "sentinel-zq7",
-        "updated": null
+        "issue": "issue-34",
+        "note": "the link check still fails after 5 rounds",
+        "number": 34,
+        "title": "README: link the loop section",
+        "updated": "2026-10-23T16:00:00Z"
       }
     ],
     "pull_requests": [
@@ -359,11 +383,21 @@ export const SAMPLE: Doc = {
         "checks": "pass",
         "conflicts": false,
         "draft": false,
-        "hours_waited": 2.5,
-        "loop_issue": 264,
-        "number": 41,
-        "opened": "2026-10-27T09:30:00Z",
-        "title": "PR 41 sentinel-zq7"
+        "hours_waited": 3.2,
+        "loop_issue": 38,
+        "number": 45,
+        "opened": "2026-10-27T08:48:00Z",
+        "title": "Gate: check the fee total"
+      },
+      {
+        "checks": "pending",
+        "conflicts": null,
+        "draft": false,
+        "hours_waited": 25.0,
+        "loop_issue": 36,
+        "number": 44,
+        "opened": "2026-10-26T11:00:00Z",
+        "title": "Loop: retry a flaky test once"
       },
       {
         "checks": "fail",
@@ -373,37 +407,7 @@ export const SAMPLE: Doc = {
         "loop_issue": null,
         "number": 42,
         "opened": "2026-10-25T12:00:00Z",
-        "title": "PR 42 sentinel-zq7"
-      },
-      {
-        "checks": "pending",
-        "conflicts": null,
-        "draft": false,
-        "hours_waited": 1.0,
-        "loop_issue": null,
-        "number": 43,
-        "opened": "2026-10-27T11:00:00Z",
-        "title": "PR 43 sentinel-zq7"
-      },
-      {
-        "checks": "pending",
-        "conflicts": false,
-        "draft": false,
-        "hours_waited": 1.0,
-        "loop_issue": 8,
-        "number": 44,
-        "opened": "2026-10-27T11:00:00Z",
-        "title": "PR 44 sentinel-zq7"
-      },
-      {
-        "checks": "fail",
-        "conflicts": false,
-        "draft": false,
-        "hours_waited": 1.0,
-        "loop_issue": null,
-        "number": 45,
-        "opened": "2026-10-27T11:00:00Z",
-        "title": "PR 45 sentinel-zq7"
+        "title": "Steering: shorter replies"
       },
       {
         "checks": null,
@@ -413,7 +417,7 @@ export const SAMPLE: Doc = {
         "loop_issue": null,
         "number": 46,
         "opened": "2026-10-27T11:00:00Z",
-        "title": "PR 46 sentinel-zq7"
+        "title": "Examples: a Go project"
       }
     ]
   }

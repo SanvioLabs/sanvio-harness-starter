@@ -27,6 +27,22 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Dashboard picture from the pane
+
+[`scripts/draw_dashboard.py`](scripts/draw_dashboard.py) redraws the harness dashboard README's picture, [`docs/harness-dashboard.svg`](docs/harness-dashboard.svg),
+and its text version from what the pane draws for [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts). [`tests/test_draw_dashboard.py`](tests/test_draw_dashboard.py)
+fails when either is out of date, and skips without Claude Code, as CI does. So the picture reads like a
+harness at work, [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py)'s `Sample` now builds the sample from made-up inputs of its
+own, with titles, model names and token counts of a real size, rather than the leak checks' fixtures.
+The picture's header time is noon wherever it's drawn. The mod is now 0.1.4.
+Files: [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py), [`tests/test_draw_dashboard.py`](tests/test_draw_dashboard.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py),
+[`examples/mods/harness-dashboard/hooks/picture.test.ts`](examples/mods/harness-dashboard/hooks/picture.test.ts), [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts),
+[`examples/mods/harness-dashboard/README.md`](examples/mods/harness-dashboard/README.md), [`examples/mods/harness-dashboard/.claude-plugin/plugin.json`](examples/mods/harness-dashboard/.claude-plugin/plugin.json),
+[`docs/harness-dashboard.svg`](docs/harness-dashboard.svg).
+
+**Do:** after changing how the dashboard pane draws, or writing its sample again, run
+`python3 scripts/draw_dashboard.py` from the root.
+
 ## 2026-10-28: Dashboard says when its script is newer
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) now prints `"schema": 1` first, a number that goes up when a section's shape
