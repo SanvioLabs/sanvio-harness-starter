@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Build agent says why before each step
+
+The loop's build agent now says, in a line, what it's about to do and why before each step, so an
+issue's window shows its reasoning as well as its tool calls. `claude -p` sends no thinking text, so
+this is the way to see it.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py).
+
+**Do:** restart a running loop (`python3 scripts/loop.py stop`, then start it again) to use it.
+
 ## 2026-10-28: Guard lets code read a key property
 
 [`.claude/hooks/guard.py`](.claude/hooks/guard.py) no longer refuses a shell command for code like `s.key)`: a `.key` file named with
