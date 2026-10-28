@@ -139,8 +139,8 @@ export const register: Register = on => {
     const arg = e.args.trim()
     if (arg) {
       // Another repo, read once now. The line above the prompt stays the harness's.
-      const root = await read($, launchAtom)
-      if (!root) return { text: 'This session has no folder yet.' }
+      // The session's root when nothing was saved at session.start: a /clear starts a new session without one.
+      const root = (await read($, launchAtom)) ?? (await $.session.root())
       if (arg === 'all') return { text: await allProjects($, root) }
       const picked = projectName(arg)
       if ('why' in picked) return { text: picked.why }

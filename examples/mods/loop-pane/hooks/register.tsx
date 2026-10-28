@@ -69,9 +69,12 @@ async function move($: EngineInterface, by: number): Promise<boolean> {
   return true
 }
 
+// The folder saved at session.start first, then the session's root: a /clear starts a new session
+// without a session.start, so the saved folder can be missing or the last session's.
 async function rootOf($: EngineInterface): Promise<string | null> {
+  const exists = (path: string) => $.fs.exists(path)
   const launch = await read($, launchAtom)
-  return launch ? findRoot(launch, path => $.fs.exists(path)) : null
+  return (launch && (await findRoot(launch, exists))) || findRoot(await $.session.root(), exists)
 }
 
 // Whether the process named in the lock is alive. A killed run leaves its lock behind.
@@ -152,7 +155,7 @@ export const register: Register = on => {
   on('command.run', { command: COMMAND }, async $ => {
     try {
       const root = await rootOf($)
-      if (!root) return { text: 'No scripts/loop.py at or above the folder this session started in, so there is no loop to show.' }
+      if (!root) return { text: `No scripts/loop.py at or above ${await $.session.root()}, so there is no loop to show.` }
       await refresh($)
       const opened = await $.ui.open({ id: PANE, title: 'Loop' })
       startPolling($)

@@ -71,8 +71,10 @@ async function names($: EngineInterface, root: string, patterns: readonly string
 }
 
 async function load($: EngineInterface): Promise<void> {
+  // The folder saved at session.start first, then the session's root: a /clear starts a new session
+  // without a session.start, so the saved folder can be missing or the last session's.
   const launch = await read($, launchAtom)
-  const root = launch ? await findRoot($, launch) : null
+  const root = (launch && (await findRoot($, launch))) || (await findRoot($, await $.session.root()))
   if (!root) {
     await update($, lensAtom, () => null)
     return
