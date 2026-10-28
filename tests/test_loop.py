@@ -165,6 +165,21 @@ class TestPureParts(unittest.TestCase):
         self.assertIn("keeps polling until stopped", text)
         self.assertIn("--for", text)
 
+    def test_top_level_help_ends_with_an_example_for_each_subcommand(self):
+        examples = ["python3 scripts/loop.py run --once", "python3 scripts/loop.py review --once",
+                    "python3 scripts/loop.py stop"]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as exited:
+            loop.main(["--help"])
+        self.assertEqual(exited.exception.code, 0)
+        self.assertIn("examples:", out.getvalue())
+        lines = [line.strip() for line in out.getvalue().splitlines() if line.strip()]
+        self.assertEqual(lines[-3:], examples)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            loop.main(["run", "--help"])
+        self.assertNotIn("examples:", out.getvalue())
+
     def test_hours_take_days_ranges_and_lists_and_a_window_past_midnight(self):
         self.assertEqual(loop.parse_hours("Mon-Fri 09:00-17:00"), (frozenset({0, 1, 2, 3, 4}), 540, 1020))
         self.assertEqual(loop.parse_hours("Sat,Sun 10:00-12:00"), (frozenset({5, 6}), 600, 720))
