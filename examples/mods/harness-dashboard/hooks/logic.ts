@@ -1,7 +1,7 @@
 // The pane's decisions as plain functions, so they can be tested without a session.
 import { peak, series, sum } from './charts'
 import type { Chart, Point } from './charts'
-import type { Doc, Seen } from '../types'
+import type { Doc, Range, Seen } from '../types'
 
 export type Tone = 'pass' | 'fail' | 'now' | 'quiet' | 'plain'
 export type Line = { tone: Tone; text: string }
@@ -12,7 +12,22 @@ export type Table = { key: string; head: string[]; rows: string[][]; tones?: Ton
 export type Section = { key: string; title: string; lines: Line[]; tables?: Table[]; chart?: Chart }
 
 export const SCRIPT = 'scripts/dashboard_data.py'
-export const ARGV = ['python3', SCRIPT, '--json'] as const
+
+export const RANGES: Range[] = [7, 14, 30]
+export const DEFAULT_RANGE: Range = 14
+
+// The first day a range counts, YYYY-MM-DD: today and the days before it, in local time, as the
+// script counts its days.
+export function sinceFor(days: number, now: number): string {
+  const at = new Date(now)
+  at.setDate(at.getDate() - (days - 1))
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+}
+
+// The script's command line for the days from `since` to today.
+export function argv(since: string): string[] {
+  return ['python3', SCRIPT, '--json', '--since', since]
+}
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : null)
@@ -61,7 +76,9 @@ export function money(n: number | null): string {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const pad = (n: number): string => String(n).padStart(2, '0')
+function pad(n: number): string {
+  return String(n).padStart(2, '0')
+}
 
 // Oct 13, from a YYYY-MM-DD or an ISO time. Read as a calendar date, not a moment, so no zone moves it.
 export function day(text: string | null): string {

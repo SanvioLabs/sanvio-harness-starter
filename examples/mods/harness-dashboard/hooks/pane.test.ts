@@ -1,6 +1,7 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { sinceFor } from './logic'
 import type { Doc, Seen } from '../types'
 
 // Made-up numbers and titles, in the shape the script prints.
@@ -129,25 +130,28 @@ group('the daily charts', () => {
     expect(await ui.find({ key: 'spend-chart-days' })).toBeUndefined()
     await ui.unmount()
   })
-  test("shows a table of the days instead when the pane is too narrow for the labels", async ($, on) => {
+  test("labels every 7th bar with its day, counting back from today's, when each bar's labels don't fit", async ($, on) => {
     const many: Doc = { ...daily, loop_spend: { ...(daily.loop_spend as object),
       by_day: Array.from({ length: 10 }, (_, i) => ({ day: `2026-10-${10 + i}`, tokens: 1, cost_usd: i + 1 })) } }
     seed(on, SEEN({ doc: many }))
     const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 30 } })
     expect(await ui.find({ key: 'spend-chart-under-0' })).toBeUndefined()
-    expect(JSON.stringify(await ui.find({ key: 'spend-chart-days' }))).toContain('Oct 19')
+    const shown = JSON.stringify(await ui.find({ key: 'spend-chart-ticks' }))
+    expect(shown).toContain('Oct 19')
+    expect(shown).toContain('Oct 12')
+    expect(shown).not.toContain('Oct 15')
     await ui.unmount()
   })
-  test('with more days than columns, the days at either end are the ones the bars show', async ($, on) => {
+  test('with more days than columns, the labelled days are among the ones the bars show', async ($, on) => {
     const at = (i: number) => new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10)
     const many: Doc = { ...daily, loop_spend: { ...(daily.loop_spend as object),
       by_day: Array.from({ length: 40 }, (_, i) => ({ day: at(i), tokens: 1, cost_usd: 1 })) } }
     seed(on, SEEN({ doc: many }))
     const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 30 } })
-    // 40 days in 30 columns: the oldest 10 drop off, so the left end is Sep 11, not Sep 1.
-    const ends = JSON.stringify(await ui.find({ key: 'spend-chart-ends' }))
-    expect(ends).toContain('Sep 11')
-    expect(ends).toContain('Oct 10')
+    // 40 days in 30 columns: the oldest 10 drop off, so the bars run Sep 11 to Oct 10.
+    const shown = JSON.stringify(await ui.find({ key: 'spend-chart-ticks' }))
+    expect(shown).toContain('Oct 10')
+    expect(shown).not.toContain('Sep 5')
     await ui.unmount()
   })
   test('Claude Desktop draws them as an Svg that says each day on hover', async ($, on) => {
@@ -158,6 +162,30 @@ group('the daily charts', () => {
     expect(chart?.type).toBe('Svg')
     expect(String(chart?.props.source)).toContain('<title>2026-10-27 $2.00</title>')
     expect(chart?.props.isInteractive).toBe(true)
+    await ui.unmount()
+  })
+})
+
+group('the range buttons', () => {
+  test('14 days is the one chosen until another is picked', async ($, on) => {
+    seed(on, SEEN())
+    const ui = await $.ui.mount(PANE)
+    expect((await ui.find({ key: 'range-14' }))?.props.variant).toBe('primary')
+    expect((await ui.find({ key: 'range-30' }))?.props.variant).toBeUndefined()
+    await ui.unmount()
+  })
+  test('picking 30 days reads the days from 29 days ago to today, and keeps the choice', async ($, on) => {
+    const ran: string[][] = []
+    on('process.run', async (_$, e) => {
+      ran.push([...e.argv])
+      return { value: { exitCode: 0, stdout: JSON.stringify(DOC), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    seed(on, SEEN())
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'range-30' })
+    await drain()
+    expect(ran).toEqual([['python3', 'scripts/dashboard_data.py', '--json', '--since', sinceFor(30, Date.now())]])
+    expect((await ui.find({ key: 'range-30' }))?.props.variant).toBe('primary')
     await ui.unmount()
   })
 })
@@ -174,7 +202,7 @@ group('the Refresh button', () => {
     const ui = await $.ui.mount(PANE)
     await ui.press({ key: 'refresh' })
     await drain()
-    expect(ran).toEqual([{ argv: ['python3', 'scripts/dashboard_data.py', '--json'], cwd: '/h/starter' }])
+    expect(ran).toEqual([{ argv: ['python3', 'scripts/dashboard_data.py', '--json', '--since', sinceFor(14, Date.now())], cwd: '/h/starter' }])
     expect(state.now()?.doc).toEqual(fresh)
     expect(state.now()?.isReading).toBe(false)
     await ui.unmount()

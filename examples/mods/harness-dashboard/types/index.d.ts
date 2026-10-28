@@ -2,6 +2,9 @@
 // in logic.ts, so an older script, or a section that's { value: null, why }, still draws.
 export type Doc = Record<string, unknown>
 
+// How many days the pane counts, today among them: the buttons beside Refresh.
+export type Range = 7 | 14 | 30
+
 // What the pane draws from. readAt and failedAt are Date.now() values.
 export type Seen = {
   root: string
@@ -17,6 +20,6 @@ export type Seen = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'harness-dashboard': { launch: string | null; seen: Seen | null }
+    'harness-dashboard': { launch: string | null; seen: Seen | null; range: Range | null }
   }
 }

@@ -7,7 +7,7 @@ In a pane 66 columns wide, with made-up numbers:
 
 ```
 starter                                              Updated 11:43
-[ Refresh ]
+[ Refresh ] [ 7 days ] [ 14 days ] [ 30 days ]
 ──────────────────────────────────────────────────────────────────
 Waiting on you
 Pull request                              Waiting Checks Conflicts
@@ -34,7 +34,7 @@ Daily, Oct 22 to Oct 27: most $6.40 on Oct 25
                                                        Cost Tokens
 Today                                                 $3.60   2.6M
 7 days                                               $23.50  17.5M
-Since Oct 13                                         $23.50  17.5M
+Since Oct 14                                         $23.50  17.5M
 Per pull request                                     ~$2.35
 
 Costliest issues                                       Cost Tokens
@@ -74,40 +74,23 @@ reviewer stale: 1 file changed, newest Oct 26. Run it again
 ──────────────────────────────────────────────────────────────────
 
 Conversations
-Daily, Oct 13 to Oct 27: most 9.4M tokens on Oct 24
-                                               ███ ▅▅▅
-                                           ▂▂▂ ███ ███
-                               ▁▁▁ ▁▁▁ ▆▆▆ ███ ███ ███     ▁▁▁
-   ▁▁▁ ▅▅▅             ▄▄▄ ▆▆▆ ███ ███ ███ ███ ███ ███ ▆▆▆ ███
-   ███ ███ ▅▅▅         ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
-Oct 13                                                      Oct 27
-
-Day                                                         Tokens
-Oct 13                                                        2.1M
-Oct 14                                                        3.0M
-Oct 15                                                        1.2M
-Oct 16                                                           0
-Oct 17                                                           0
-Oct 18                                                        2.8M
-Oct 19                                                        3.3M
-Oct 20                                                        4.0M
-Oct 21                                                        3.9M
-Oct 22                                                        5.1M
-Oct 23                                                        6.0M
-Oct 24                                                        9.4M
-Oct 25                                                        8.8M
-Oct 26                                                        3.2M
-Oct 27                                                        4.0M
+Daily, Oct 14 to Oct 27: most 9.4M tokens on Oct 24
+                                             ███ ▅▅▅
+                                         ▂▂▂ ███ ███
+                             ▁▁▁ ▁▁▁ ▆▆▆ ███ ███ ███     ▁▁▁
+     ▅▅▅             ▄▄▄ ▆▆▆ ███ ███ ███ ███ ███ ███ ▆▆▆ ███
+     ███ ▅▅▅         ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
+                           Oct 20                      Oct 27
 
                                                    Tokens Sessions
-Harness                                             44.6M       31
+Harness                                             42.5M       31
 Loop worktrees                                      12.2M       40
 
 Model                                                Harness  Loop
-opus-5-5                                               42.4M 12.2M
+opus-5-5                                               40.3M 12.2M
 haiku-5-5                                               2.2M     0
 
-Since Oct 13, cache reads included
+Since Oct 14, cache reads included
 
 ──────────────────────────────────────────────────────────────────
 
@@ -121,7 +104,7 @@ Agent                                                        Times
 reviewer                                                         6
 security-reviewer                                                2
 
-Guard asked 2 times, since Oct 13
+Guard asked 2 times, since Oct 14
 ```
 
 A line separates each section. A section with a chart starts with it, then its
@@ -165,24 +148,25 @@ A change to what the mod does raises `version` in its [`.claude-plugin/plugin.js
 
 | Section | Shows |
 |---|---|
-| The header | The harness's folder, and when the numbers were read. **Reading…** until the first read ends. That can take a minute, because the first read goes through every Claude Code transcript once and keeps what it found in `.harness/cache/`; later reads took about two seconds here. **Refresh failed** in red when the last refresh didn't work, with the time of the numbers still shown and why under it |
+| The header | The harness's folder, and when the numbers were read. **7 days**, **14 days** and **30 days** pick how many days it counts, today among them: 14 until you pick another, and the pick is kept across reloads. Picking one reads straight away. A range you haven't read before takes a few seconds more the first time. **Reading…** until the first read ends. That can take a minute, because the first read goes through every Claude Code transcript once and keeps what it found in `.harness/cache/`; later reads took about two seconds here. **Refresh failed** in red when the last refresh didn't work, with the time of the numbers still shown and why under it |
 | **Waiting on you** | Each open pull request, how long it has waited, whether it's a draft, its checks and whether it conflicts with its base, then each issue the loop blocked, with why. Red when checks fail or it conflicts, yellow while they run. **conflicts unknown** while GitHub hasn't worked it out. Without `gh`, signed out, or a list in a shape it doesn't know, it says in red that it couldn't read them: never that nothing is waiting |
 | **Loop spend** | Three tables: the loop's estimated dollars and tokens today, over the last 7 days, since the date the numbers start and per pull request it opened; the five issues that cost most; and each model, costliest first. Runs that recorded no model show as **model not recorded**. When the loop's records start later than that date, it says when, and the chart starts there |
 | **Throughput and rework** | How the loop's recent issues ended and how many took more than one round, then how many of its merged pull requests needed someone else's commit before merging, split into fixes and merges from main |
 | **Evals** | Each reviewer's newest saved eval: stable, flaky and failing cases, which ones fail, and **stale** when the agent, a brief, a case or the eval script changed after it was saved. **stale: unknown** when git couldn't say |
-| The daily charts | At the top of **Loop spend** and **Conversations**: one bar per day, today in orange, under a line naming the busiest day. The terminal draws them in coloured blocks the width of the pane, with each day and its figures under its bar when the pane has 7 columns a day: cost and tokens for spend, tokens for conversations. Narrower, it shows the first and last day under the bars and the same figures as a table, as Conversations does above. A day whose runs recorded no cost shows **?**, not $0.00. On other surfaces it draws them as a picture whose bars say their day and value when you hover; the tests cover Claude Desktop's, and nobody has looked at it in VS Code or the mobile app yet. A `dashboard_data.py` that doesn't give daily figures says so instead |
+| The daily charts | At the top of **Loop spend** and **Conversations**: one bar per day, today in orange, under a line naming the busiest day. The terminal draws them in coloured blocks the width of the pane, with each day and its figures under its bar when the pane has 7 columns a day: cost and tokens for spend, tokens for conversations. Narrower, as for Conversations above, it writes only the day, under every 7th bar counting back from today's. A day whose runs recorded no cost shows **?**, not $0.00. On other surfaces it draws them as a picture whose bars say their day and value when you hover, with every bar's figures under it up to 14 days and every 7th bar's day beyond that; the tests cover Claude Desktop's, and nobody has looked at it in VS Code or the mobile app yet. A `dashboard_data.py` that doesn't give daily figures says so instead |
 | **Conversations** | Claude Code's tokens in the harness and in the loop's worktrees, with sessions and the four biggest models. Cache reads are most of it. Its chart covers every day counted, since the harness's own sessions start before the loop's |
 | **Activity** | The skills, agents and slash commands you used most, what the guard refused and how often it asked, from your usage log |
 
 A section whose source is missing or can't be read says why, dimmed, and the
-rest still show. The numbers count from 14 days back, but the loop's spend only
-goes back as far as the loop's own records: a run before the loop recorded its
-usage isn't in it, so **Since** can match **7 days** in a young harness.
+rest still show. The range sets every section but **Throughput and rework**'s
+issues, which are always the loop's 20 most recent. The loop's spend only goes
+back as far as the loop's own records: a run before the loop recorded its usage
+isn't in it, so **Since** can match **7 days** in a young harness.
 
 ## What it costs and touches
 
 It spends no model tokens: it runs a Python script and draws what it prints.
-It runs `python3 scripts/dashboard_data.py --json` once when it opens, then
+It runs `python3 scripts/dashboard_data.py --json --since <the range's first day>` once when it opens, then
 every five minutes while it's open, and **Refresh** reads now. One read runs at
 a time, and a refresh that fails keeps the last numbers it had. After you close
 the pane it stops at the next five-minute mark; a read already running then

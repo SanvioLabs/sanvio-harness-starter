@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { bars, encode, layout, svg, under } from './charts'
+import { bars, encode, svg, ticks, under } from './charts'
 import type { Chart } from './charts'
-import { ARGV, clip, day, findRoot, money, outcome, sections, state, tokens } from './logic'
+import { DEFAULT_RANGE, RANGES, argv, clip, findRoot, money, outcome, sections, sinceFor, state, tokens } from './logic'
 import type { Table, Tone } from './logic'
-import type { Seen } from '../types'
+import type { Range, Seen } from '../types'
 
 const PANE = 'dashboard'
 const COMMAND = 'harness-dashboard'
@@ -19,6 +19,9 @@ const CHART_ROWS = 5
 
 const launchAtom = atom({ plugin: 'harness-dashboard', key: 'launch' } as const, null)
 const seenAtom = atom({ plugin: 'harness-dashboard', key: 'seen' } as const, null)
+const rangeAtom = atom({ plugin: 'harness-dashboard', key: 'range' } as const, null)
+// More days than this and the Svg labels every 7th bar, as the terminal does when it runs out of room.
+const SVG_EVERY_DAY = 14
 
 const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean }> = {
   pass: { color: 'green' },
@@ -37,6 +40,11 @@ async function rootOf($: EngineInterface): Promise<string | null> {
   return launch ? findRoot(launch, path => $.fs.exists(path)) : null
 }
 
+// The first day the chosen range counts.
+async function since($: EngineInterface): Promise<string> {
+  return sinceFor((await read($, rangeAtom)) ?? DEFAULT_RANGE, Date.now())
+}
+
 // Run the script and keep what it printed. A failure keeps the last good document and says when.
 function refresh($: EngineInterface, root: string): Promise<void> {
   reading ??= (async () => {
@@ -47,8 +55,13 @@ function refresh($: EngineInterface, root: string): Promise<void> {
     $.ui.invalidate('ui.render')
     let done = false
     try {
-      const run = await $.process.run(ARGV, { cwd: root, timeoutMs: TIMEOUT_MS }).catch(() => null)
-      const got = outcome(run)
+      // A range picked while a read runs is read straight after it.
+      let from = await since($)
+      let got = outcome(await $.process.run(argv(from), { cwd: root, timeoutMs: TIMEOUT_MS }).catch(() => null))
+      while (from !== (await since($))) {
+        from = await since($)
+        got = outcome(await $.process.run(argv(from), { cwd: root, timeoutMs: TIMEOUT_MS }).catch(() => null))
+      }
       const at = Date.now()
       await update($, seenAtom, prev => {
         const base = prev ?? { root, doc: null, readAt: null, failedAt: null, failure: null, isReading: false }
@@ -69,7 +82,7 @@ function refresh($: EngineInterface, root: string): Promise<void> {
   return reading
 }
 
-// Read once a minute, and only while the pane is up, so a session that never opens it runs nothing.
+// Read every five minutes, and only while the pane is up, so a session that never opens it runs nothing.
 function startPolling($: EngineInterface, root: string): void {
   if (stopPolling) return
   // every() hands back a timer, not a function: the loop pane learned that calling it throws.
@@ -121,6 +134,7 @@ export const register: Register = on => {
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     const seen: Seen | null = await read($, seenAtom)
+    const range: Range = (await read($, rangeAtom)) ?? DEFAULT_RANGE
     const width = Math.max(10, e.props.bodyColumns)
     // Claude Desktop and VS Code wrap text, so there a long line shows whole instead of being cut.
     const wraps = e.surface === 'desktop' || e.surface === 'vscode'
@@ -159,42 +173,36 @@ export const register: Register = on => {
       const values = c.points.map(p => p.value)
       const label = c.unit === 'money' ? money : (n: number | null) => `${tokens(n)} tokens`
       const columns = Math.min(512, width)
-      // The same figures as a table, for a pane too narrow to write them under the bars.
-      const days = table({ key: `${c.key}-days`, head: c.columns, rows: c.labels })
+      const dates = c.labels.map(l => l[0] ?? '')
       // By surface, not by what resolve() hands back: a surface without an element still resolves it,
       // to a placeholder that draws nothing.
       if (e.surface === 'terminal' && 'Raster' in elements) {
         const { Raster } = elements
-        // The days the bars actually show: a pane narrower than the days drops the oldest.
-        const drawn = c.points.slice(c.points.length - layout(c.points.length, columns).count)
-        // The first and last of them at either end, where the bars carry no labels of their own.
-        const ends = (
-          <Box key={`${c.key}-ends`} flexDirection="row" justifyContent="space-between">
-            <Text dimColor>{day(drawn[0]?.date ?? null)}</Text>
-            <Text dimColor>{day(drawn[drawn.length - 1]?.date ?? null)}</Text>
-          </Box>
-        )
-        // Each label row under the bars: the days, then the figures. All of them fit, or the table.
+        // Each label row under the bars: the days, then the figures. When they don't all fit, the
+        // day alone under every 7th bar, counting back from today's.
         const rows = c.columns.map((_, i) => under(c.labels.map(l => l[i] ?? ''), columns))
         const fits = rows.every((r): r is string => r !== null)
         return (
           <Box key={`${c.key}-box`} flexDirection="column">
             <Raster key={c.key} columns={columns} rows={CHART_ROWS} cells={encode(bars(values, columns, CHART_ROWS))} />
-            {fits ? rows.map((r, i) => <Box key={`${c.key}-under-${i}`}><Text dimColor={i > 0}>{r || ' '}</Text></Box>) : ends}
-            {fits ? null : days}
+            {fits
+              ? rows.map((r, i) => <Box key={`${c.key}-under-${i}`}><Text dimColor={i > 0}>{r || ' '}</Text></Box>)
+              : <Box key={`${c.key}-ticks`}><Text>{ticks(dates, columns) || ' '}</Text></Box>}
           </Box>
         )
       }
       if ('Svg' in elements) {
         const { Svg } = elements
+        const sparse = c.points.length > SVG_EVERY_DAY
+        const source = sparse ? svg(c.points, label, dates.map(d => [d]), 7) : svg(c.points, label, c.labels)
         return (
           <Box key={`${c.key}-box`} flexDirection="column">
-            <Svg key={c.key} source={svg(c.points, label, c.labels)} alt={c.alt} isInteractive />
+            <Svg key={c.key} source={source} alt={c.alt} isInteractive />
           </Box>
         )
       }
       // A terminal without Raster: the figures, as a table.
-      return days
+      return table({ key: `${c.key}-days`, head: c.columns, rows: c.labels })
     }
 
     return (
@@ -212,6 +220,21 @@ export const register: Register = on => {
               if (seen && !seen.isReading) void refresh($, seen.root).catch(() => {})
             }}
           />
+          {/* The days counted. Picking one reads now; a read already running reads it straight after. */}
+          {RANGES.map(n => (
+            <Button
+              key={`range-${n}`}
+              label={`${n} days`}
+              variant={n === range ? 'primary' : undefined}
+              dimColor={n !== range}
+              onPress={() => {
+                void (async () => {
+                  await update($, rangeAtom, () => n)
+                  if (seen) await refresh($, seen.root)
+                })().catch(() => {})
+              }}
+            />
+          ))}
         </Box>
         {seen?.failure ? <Text key="failure" color="red">{fit(`Last refresh: ${seen.failure}`)}</Text> : null}
         <Text dimColor>{'─'.repeat(width)}</Text>

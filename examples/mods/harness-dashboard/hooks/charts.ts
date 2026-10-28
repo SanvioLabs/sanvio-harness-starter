@@ -98,6 +98,25 @@ export function under(labels: string[], columns: number): string | null {
   return out.join('').replace(/\s+$/, '')
 }
 
+// The days alone, under every `every`-th bar counting back from today's, for a pane too narrow to
+// write each bar's day and figures under it. Placed from today's back, so a day that would run into
+// the newer one beside it is the one left out, and today's always shows.
+export function ticks(labels: string[], columns: number, every = 7): string {
+  const { count, slot, width, offset } = layout(labels.length, columns)
+  const shown = labels.slice(labels.length - count)
+  const out = Array.from({ length: columns }, () => ' ')
+  let limit = columns + 1
+  for (let day = shown.length - 1; day >= 0; day -= every) {
+    const l = shown[day]!
+    const centre = offset + day * slot + Math.floor(width / 2)
+    const start = Math.max(0, Math.min(columns - l.length, centre - Math.floor(l.length / 2)))
+    if (l.length > columns || start + l.length >= limit) continue
+    for (let i = 0; i < l.length; i++) out[start + i] = l[i]!
+    limit = start
+  }
+  return out.join('').replace(/\s+$/, '')
+}
+
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 // The cells as a Raster takes them: little-endian u32s, as padded base64.
@@ -121,10 +140,11 @@ const escape = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&l
 
 // An Svg bar chart of the same days, each bar titled with its day and value, so hovering one in an
 // interactive frame says what it is, and with `lines` written under it, one row of text each.
-// `label` writes a value the way the pane does.
-export function svg(points: Point[], label: (n: number | null) => string, lines: string[][] = []): string {
+// `label` writes a value the way the pane does. With `every` above 1, only every `every`-th bar
+// counting back from today's gets its lines, and the bars sit closer.
+export function svg(points: Point[], label: (n: number | null) => string, lines: string[][] = [], every = 1): string {
   const widest = Math.max(0, ...lines.flat().map(l => l.length))
-  const slot = Math.max(20, widest * 7)
+  const slot = Math.max(20, Math.ceil((widest * 7) / every))
   const height = 80
   const rows = Math.max(0, ...lines.map(l => l.length))
   const max = Math.max(0, ...points.map(p => p.value ?? 0))
@@ -133,7 +153,7 @@ export function svg(points: Point[], label: (n: number | null) => string, lines:
     const fill = hex(i === points.length - 1 ? TODAY : BAR)
     return `<rect x="${i * slot + slot / 2 - 8}" y="${height - h}" width="16" height="${h}" fill="${fill}"><title>${escape(`${p.date} ${label(p.value)}`)}</title></rect>`
   })
-  const text = lines.flatMap((l, i) => l.map((t, row) =>
+  const text = lines.flatMap((l, i) => ((points.length - 1 - i) % every ? [] : l).map((t, row) =>
     `<text x="${i * slot + slot / 2}" y="${height + 14 + row * 13}" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#888">${escape(t)}</text>`))
   const width = Math.max(slot, points.length * slot)
   const tall = height + 1 + (rows ? rows * 13 + 4 : 0)

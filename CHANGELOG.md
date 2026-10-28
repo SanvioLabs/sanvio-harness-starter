@@ -33,8 +33,9 @@ A new mod, [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) `--json` as tables, with what's waiting on you first, then the loop's spend,
 throughput and rework, evals and whether they're stale, Claude Code's tokens and the harness's activity.
 Loop spend and Conversations start with a bar chart a day, each day's figures under its bar, which needs
-the script from "Spend and conversation tokens by day". It reads when it opens and every five minutes
-while it's open, and **Refresh** reads now; a refresh that fails keeps the last numbers and says so. It
+the script from "Spend and conversation tokens by day"; a pane too narrow for each bar's figures labels
+every 7th bar with its day. **7 days**, **14 days** and **30 days** pick the range, 14 by default. It
+reads when it opens and every five minutes while it's open, and **Refresh** reads now; a refresh that fails keeps the last numbers and says so. It
 spends no model tokens, calls GitHub through `gh` on each read, and writes only the script's caches in
 `.harness/cache/`. It's off by default, and starts at 0.1.0.
 

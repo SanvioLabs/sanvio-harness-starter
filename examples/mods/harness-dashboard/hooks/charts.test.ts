@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { BAR, TODAY, bars, encode, layout, peak, series, sum, svg, under } from './charts'
+import { BAR, TODAY, bars, encode, layout, peak, series, sum, svg, ticks, under } from './charts'
 
 // The cells back from a Raster's base64, as [character, foreground] per cell.
 function decode(text: string): [string, number][] {
@@ -73,6 +73,16 @@ group('the labels under the bars', () => {
   test('are null when the pane is narrower than the days, since the bars then touch', () => {
     expect(under(['a', 'b', 'c'], 2)).toBeNull()
   })
+  test("without room for each bar's, every 7th bar gets its day, counting back from today's", () => {
+    const labels = Array.from({ length: 15 }, (_, i) => String.fromCharCode(97 + i))
+    // 15 days in 30 columns: slots of 2, bars 2 wide, so a bar's middle is at its slot's second column.
+    expect(ticks(labels, 30)).toBe(' a' + ' '.repeat(13) + 'h' + ' '.repeat(13) + 'o')
+  })
+  test("leaves out a day that would run into the newer one, so today's always shows", () => {
+    // Three days in 12 columns, every one labelled: Oct 2 would touch Oct 3, so it goes.
+    expect(ticks(['Oct 1', 'Oct 2', 'Oct 3'], 12, 1)).toBe('Oct 1  Oct 3')
+    expect(ticks(['Oct 1'], 3)).toBe('')
+  })
 })
 
 group('the Svg bars', () => {
@@ -89,6 +99,14 @@ group('the Svg bars', () => {
     expect(drawn).toContain('<title>2026-10-27 $2.00</title>')
     expect(drawn).toContain('#dd8452')
     expect(drawn).not.toContain('<script')
+  })
+  test('with every 7, only every 7th bar back from today has its lines, and the bars sit closer', () => {
+    const points = Array.from({ length: 15 }, (_, i) => ({ date: `2026-10-${13 + i}`, value: 1 }))
+    const drawn = svg(points, n => `${n}`, points.map(p => [p.date.slice(5)]), 7)
+    expect(drawn.match(/<text/g)?.length).toBe(3)
+    expect(drawn).toContain('>10-27</text>')
+    expect(drawn).toContain('>10-20</text>')
+    expect(drawn).toContain('viewBox="0 0 300 ')
   })
   test('escapes a label so it stays text', () => {
     expect(svg([{ date: '2026-10-27', value: 1 }], () => '<b>&')).toContain('&lt;b&gt;&amp;')

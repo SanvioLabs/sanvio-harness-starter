@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { activity, conversations, day, evals, findRoot, missing, money, outcome, parseDoc, sections, spend, state, throughput, tokens, waiting } from './logic'
+import { activity, argv, conversations, day, evals, findRoot, missing, money, outcome, parseDoc, sections, sinceFor, spend, state, throughput, tokens, waiting } from './logic'
 import type { Doc, Seen } from '../types'
 
 // The shape scripts/dashboard_data.py --json prints, with every section filled. The numbers and
@@ -262,6 +262,16 @@ group('activity', () => {
     expect(section.tables?.[0]?.rows).toEqual([['review-pr', '5'], ['learn', '1']])
     expect(section.tables?.[2]?.rows).toEqual([['credential-file', '3']])
     expect(text(section.lines)).toBe('Guard asked 2 times, since Oct 13')
+  })
+})
+
+group('the range', () => {
+  test('counts today and the days before it, in local time, and asks the script for them', () => {
+    const noon = new Date(2026, 9, 27, 12).getTime()
+    expect(sinceFor(7, noon)).toBe('2026-10-21')
+    expect(sinceFor(14, noon)).toBe('2026-10-14')
+    expect(sinceFor(30, noon)).toBe('2026-09-28')
+    expect(argv('2026-10-21')).toEqual(['python3', 'scripts/dashboard_data.py', '--json', '--since', '2026-10-21'])
   })
 })
 
