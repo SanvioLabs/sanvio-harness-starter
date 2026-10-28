@@ -27,6 +27,15 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Dashboard picture keeps to its own run
+
+[`scripts/draw_dashboard.py`](scripts/draw_dashboard.py) stops, naming the file, when the test file it writes for a run is
+already there, rather than writing over another run's and deleting it. [`.gitignore`](.gitignore) keeps that file out
+of a commit when a killed run leaves it behind.
+Files: [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py), [`tests/test_draw_dashboard.py`](tests/test_draw_dashboard.py), [`.gitignore`](.gitignore).
+
+**Do:** if it says the file is already there and no run is going, delete it.
+
 ## 2026-10-28: Tickets check a tool claim first
 
 [`steering/tickets.md`](steering/tickets.md) now says to check, by running it, any claim a ticket makes about how a tool or
