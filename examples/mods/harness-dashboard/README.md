@@ -206,3 +206,5 @@ claude plugin test harness-dashboard
 ```
 
 `python3 -m unittest discover -s tests`, and so the loop, runs these wherever Claude Code is installed. CI doesn't install Claude Code, so it skips them.
+
+After changing how the pane draws, run `python3 scripts/draw_dashboard.py` from the root. It redraws the picture above and its text from [`hooks/sample.ts`](hooks/sample.ts), and [`tests/test_draw_dashboard.py`](../../../tests/test_draw_dashboard.py) fails until you do.

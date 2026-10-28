@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Dashboard picture from the pane
+
+[`scripts/draw_dashboard.py`](scripts/draw_dashboard.py) redraws the harness dashboard README's picture, [`docs/harness-dashboard.svg`](docs/harness-dashboard.svg),
+and its text version from what the pane draws for [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts), so the picture shows the
+sample's made-up numbers. [`tests/test_draw_dashboard.py`](tests/test_draw_dashboard.py) fails when either is out of date, and skips
+without Claude Code, as CI does.
+Files: [`scripts/draw_dashboard.py`](scripts/draw_dashboard.py), [`tests/test_draw_dashboard.py`](tests/test_draw_dashboard.py),
+[`examples/mods/harness-dashboard/hooks/picture.test.ts`](examples/mods/harness-dashboard/hooks/picture.test.ts), [`examples/mods/harness-dashboard/README.md`](examples/mods/harness-dashboard/README.md),
+[`docs/harness-dashboard.svg`](docs/harness-dashboard.svg).
+
+**Do:** after changing how the dashboard pane draws, or writing its sample again, run
+`python3 scripts/draw_dashboard.py` from the root.
+
 ## 2026-10-28: Dashboard says when its script is newer
 
 [`scripts/dashboard_data.py`](scripts/dashboard_data.py) now prints `"schema": 1` first, a number that goes up when a section's shape
