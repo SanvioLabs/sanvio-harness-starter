@@ -27,6 +27,20 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Dashboard says when its script is newer
+
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py) now prints `"schema": 1` first, a number that goes up when a section's shape
+changes in a way an older pane would misread. When the script's schema is higher than the one the
+harness dashboard reads, the pane draws a yellow line under its header saying to run `/plugin update`,
+and still draws every section. A script with no schema draws as before. The mod is now 0.1.3.
+Files: [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py),
+[`examples/mods/harness-dashboard/hooks/logic.ts`](examples/mods/harness-dashboard/hooks/logic.ts), [`examples/mods/harness-dashboard/hooks/register.tsx`](examples/mods/harness-dashboard/hooks/register.tsx),
+[`examples/mods/harness-dashboard/hooks/logic.test.ts`](examples/mods/harness-dashboard/hooks/logic.test.ts), [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts),
+[`examples/mods/harness-dashboard/.claude-plugin/plugin.json`](examples/mods/harness-dashboard/.claude-plugin/plugin.json).
+
+**Do:** nothing. When you change a section's shape in `dashboard_data.py`, raise `SCHEMA` there and in
+the mod's `logic.ts` together.
+
 ## 2026-10-28: Dashboard sample from build()
 
 The harness dashboard's tests now also draw [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts), what

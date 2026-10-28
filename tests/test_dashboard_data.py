@@ -194,10 +194,16 @@ class Layout(Harness):
         code, out = self.main()
         self.assertEqual(code, 0)
         found = json.loads(out)
-        self.assertEqual(list(found), ["generated", "since", "loop_spend", "loop_throughput", "activity", "evals",
-                                       "conversations", "waiting", "loop_rework"])
+        self.assertEqual(list(found), ["schema", "generated", "since", "loop_spend", "loop_throughput", "activity",
+                                       "evals", "conversations", "waiting", "loop_rework"])
+        self.assertEqual(found["schema"], 1)
         self.assertEqual(found["since"], SINCE)
         self.assertIsNotNone(datetime.datetime.fromisoformat(found["generated"]).tzinfo)
+
+    def test_the_docstring_says_when_schema_goes_up(self):
+        doc = dashboard_data.__doc__
+        self.assertIn("schema", doc)
+        self.assertIn("It goes up when a section's shape changes", doc)
 
     def test_without_json_it_refuses(self):
         with self.assertRaises(SystemExit) as raised, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):

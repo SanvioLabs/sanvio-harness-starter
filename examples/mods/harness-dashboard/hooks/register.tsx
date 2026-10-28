@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { bars, encode, svg, ticks, under } from './charts'
 import type { Chart } from './charts'
-import { DEFAULT_RANGE, RANGES, argv, clip, findRoot, money, outcome, sections, sinceFor, state, tokens } from './logic'
+import { DEFAULT_RANGE, RANGES, argv, clip, findRoot, money, newer, outcome, sections, sinceFor, state, tokens } from './logic'
 import type { Table, Tone } from './logic'
 import type { Range, Seen } from '../types'
 
@@ -140,6 +140,7 @@ export const register: Register = on => {
     const wraps = e.surface === 'desktop' || e.surface === 'vscode'
     const fit = (s: string) => (wraps ? s : clip(s, width))
     const top = state(seen)
+    const ahead = seen?.doc ? newer(seen.doc) : null
 
     // A table: the name column takes what's left, each number column the width of its widest cell,
     // right-aligned, one space between. A name too long for what's left is cut, not wrapped. When
@@ -256,6 +257,7 @@ export const register: Register = on => {
           ))}
         </Box>
         {seen?.failure ? <Text key="failure" color="red">{fit(`Last refresh: ${seen.failure}`)}</Text> : null}
+        {ahead ? <Text key="newer" {...COLORS[ahead.tone]}>{fit(ahead.text)}</Text> : null}
         <Text dimColor>{'─'.repeat(width)}</Text>
         {seen?.doc
           ? sections(seen.doc).map((section, i) => (
