@@ -92,6 +92,7 @@ from usage_report import count, log_path, read, since_date  # noqa: E402 (same r
 WEEK = 7  # days in the last-7-days window, today included
 TRANSCRIPTS = Path.home() / ".claude" / "projects"
 CACHE = Path(".harness") / "cache" / "conversations.json"
+SAVE_EVERY = 50  # transcripts read between saves of the conversations cache
 SIDES = {"Conversations": "harness", "projects/": "harness", "Loop": "loop"}  # token_report's groups, two sides
 COUNTS = ("input", "output", "cache_writes", "cache_reads")  # token_report's FIELDS, in order
 GH_TIMEOUT = 30  # seconds before a gh call counts as unavailable
@@ -487,7 +488,8 @@ def conversations(root, since, today, projects_dir, cache_path):
     counts them: each reply once, the first copy in path order, judged by the folder it ran in.
 
     A transcript whose size and time match its cache entry isn't read again. The cache drops transcripts
-    that are gone, and one that can't be read or isn't the right shape is rebuilt.
+    that are gone, and one that can't be read or isn't the right shape is rebuilt. The cache is saved as
+    the read goes, so a read stopped part way keeps what it read, and isn't rewritten when nothing changed.
     """
     projects_dir = Path(projects_dir)
     if not projects_dir.is_dir():
@@ -502,18 +504,23 @@ def conversations(root, since, today, projects_dir, cache_path):
         cache = {}
     if not isinstance(cache, dict):
         cache = {}
-    fresh = {}
+    fresh, read = {}, 0
     for path in sorted(projects_dir.rglob("*.jsonl")):
         try:
             stat = path.stat()  # before the read, so a file that grows during it is read again next time
             entry = cache.get(str(path))
-            if not (cached(entry) and entry["size"] == stat.st_size and entry["mtime_ns"] == stat.st_mtime_ns):
+            stale = not (cached(entry) and entry["size"] == stat.st_size and entry["mtime_ns"] == stat.st_mtime_ns)
+            if stale:
                 entry = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
                          "replies": replies(read_file(path, False), root, loop)}
         except OSError:
             continue
         fresh[str(path)] = entry
-    save(cache_path, fresh)
+        read += stale
+        if stale and read % SAVE_EVERY == 0:
+            save(cache_path, {**cache, **fresh})  # keep the entries this read hasn't reached yet
+    if read or fresh.keys() != cache.keys():
+        save(cache_path, fresh)
 
     by_model = {"harness": {}, "loop": {}}
     sessions = {"harness": set(), "loop": set()}
