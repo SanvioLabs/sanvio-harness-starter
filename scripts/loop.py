@@ -538,8 +538,9 @@ def build_prompt(number, plan, review="", tests="", rules=""):
     prompt = rules + (
         "Make the change for issue #{n} in this git worktree.\n"
         "Keep to the plan below. Don't commit, push or use git for anything but reading. "
-        "Don't run the test suite: the loop runs it. When the change is in place, say in "
-        "two lines what you changed.\n\nPLAN:\n{plan}\n"
+        "Don't run the test suite: the loop runs it. Before each step, say in a line what "
+        "you're about to do and why: the issue's window shows what you say, not what you "
+        "think. When the change is in place, say in two lines what you changed.\n\nPLAN:\n{plan}\n"
     ).format(n=number, plan=plan)
     if review or tests:
         prompt += (

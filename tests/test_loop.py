@@ -245,6 +245,7 @@ class TestPureParts(unittest.TestCase):
         build = loop.build_prompt(4, "Plan: add feature.txt.")
         self.assertIn("Plan: add feature.txt.", build)
         self.assertIn("Don't run the test suite", build)
+        self.assertIn("Before each step, say in a line what you're about to do and why", build)
         self.assertNotIn("earlier round failed", build)
         again = loop.build_prompt(4, "Plan.", "feature.txt is wrong.", "FAILED test_x")
         self.assertIn("feature.txt is wrong.", again)
