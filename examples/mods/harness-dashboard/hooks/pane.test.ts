@@ -179,6 +179,28 @@ group('the spend tables', () => {
   })
 })
 
+group('the tables in a narrow pane', () => {
+  type Node = { props?: Record<string, unknown>; children?: (Node | string)[] }
+  const text = (n: Node | undefined): Node => n!.children![0] as Node
+  const stale: Doc = { ...DOC, evals: { reviewer: { stable: 3, flaky: 0, failing: 0, saved: '2026-10-20', stale: true, why: 'agent changed' } } }
+  test("put each row's figures on a line under its name, in the row's colour", async ($, on) => {
+    seed(on, SEEN({ doc: stale }))
+    // The Evals figures take 34 of 40 columns, leaving 6 for the name.
+    const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 40 } })
+    const name = await ui.find({ key: 'evals-reviewers-0-name' }) as unknown as Node
+    expect(name.props?.flexDirection).toBe('row')
+    expect(JSON.stringify(name)).toContain('reviewer')
+    let figures = 0
+    for (let i = 0; i < 5; i++) figures += Number((await ui.find({ key: `evals-reviewers-0-${i}` }))?.props.width)
+    expect(figures).toBeLessThanOrEqual(40)
+    expect(await ui.find({ key: 'evals-reviewers-head-name' })).toBeDefined()
+    const figure = await ui.find({ key: 'evals-reviewers-0-0' }) as unknown as Node
+    expect(text(name).props?.color).toBe('yellow')
+    for (const prop of ['color', 'dimColor', 'bold']) expect(text(figure).props?.[prop]).toBe(text(name).props?.[prop])
+    await ui.unmount()
+  })
+})
+
 group('the daily charts', () => {
   const daily: Doc = { ...DOC, loop_spend: { today: {}, last_7_days: {}, since: {}, cost_per_pr: null,
     by_day: [{ day: '2026-10-26', tokens: 1, cost_usd: 1 }, { day: '2026-10-27', tokens: 2, cost_usd: 2 }] } }

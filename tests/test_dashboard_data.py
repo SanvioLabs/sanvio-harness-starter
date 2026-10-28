@@ -637,6 +637,10 @@ def lines(folder, relative, entries):
     return write(folder, relative, "".join(json.dumps(e) + "\n" for e in entries))
 
 
+class Stop(Exception):
+    """Stands in for a read stopped part way, as when the pane's timeout kills it."""
+
+
 class Conversations(Harness):
     """Transcripts beside the harness, and the loop's worktrees in a folder set by loop.json."""
 
@@ -711,6 +715,45 @@ class Conversations(Harness):
         with mock.patch.object(dashboard_data, "read_file", wraps=token_report.read_file) as reading:
             self.assertEqual(self.conversations(), first)
         self.assertEqual([call.args[0] for call in reading.call_args_list], [self.other])
+
+    def stop_on_read(self, n):
+        """read_file, raising Stop on the nth transcript read."""
+        calls = []
+
+        def reading(path, *args):
+            calls.append(path)
+            if len(calls) == n:
+                raise Stop(path)
+            return token_report.read_file(path, *args)
+        return reading
+
+    def test_a_read_stopped_part_way_keeps_what_it_read_and_the_next_read_finishes_it(self):
+        with mock.patch.object(dashboard_data, "SAVE_EVERY", 1), \
+                mock.patch.object(dashboard_data, "read_file", self.stop_on_read(3)):
+            self.assertRaises(Stop, self.conversations)
+        kept = json.loads(self.cache.read_text())
+        self.assertEqual(len(kept), 2)
+        self.assertNotIn(str(self.other), kept)
+        with mock.patch.object(dashboard_data, "read_file", wraps=token_report.read_file) as reading:
+            self.assertEqual(self.conversations(), self.from_token_report())
+        self.assertEqual([call.args[0] for call in reading.call_args_list], [self.other])
+
+    def test_a_save_part_way_keeps_the_earlier_caches_entries(self):
+        self.conversations()
+        before = json.loads(self.cache.read_text())[str(self.other)]
+        for path in (self.transcripts / "a" / "s1.jsonl", self.other):
+            stat = path.stat()
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        with mock.patch.object(dashboard_data, "SAVE_EVERY", 1), \
+                mock.patch.object(dashboard_data, "read_file", self.stop_on_read(2)):
+            self.assertRaises(Stop, self.conversations)
+        self.assertEqual(json.loads(self.cache.read_text())[str(self.other)], before)
+
+    def test_an_unchanged_read_leaves_the_cache_file_alone(self):
+        self.conversations()
+        inode = self.cache.stat().st_ino
+        self.conversations()
+        self.assertEqual(self.cache.stat().st_ino, inode)
 
     def test_a_cache_that_cant_be_read_or_has_the_wrong_shape_is_rebuilt(self):
         for junk in ("not json", "[1, 2]", json.dumps({str(self.other): {"size": "big", "replies": [[1]]}})):

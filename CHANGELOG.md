@@ -27,12 +27,12 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
-## 2026-10-27: Dashboard sample from a real run
+## 2026-10-28: Dashboard sample from build()
 
-The harness dashboard's tests now also draw [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts), a real run of
-[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `build()` with every section filled. [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py)'s `Sample`
+The harness dashboard's tests now also draw [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts), what
+[`scripts/dashboard_data.py`](scripts/dashboard_data.py)'s `build()` prints for made-up inputs that fill every section. [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py)'s `Sample`
 fails when `build()` no longer prints that sample, so a renamed or moved field can't reach the pane
-unnoticed, and `sample.test.ts` fails when the pane can't read one. The mod is now 0.1.1.
+unnoticed, and `sample.test.ts` fails when the pane can't read one. The mod is now 0.1.2.
 Files: [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py), [`examples/mods/harness-dashboard/hooks/sample.ts`](examples/mods/harness-dashboard/hooks/sample.ts),
 [`examples/mods/harness-dashboard/hooks/sample.test.ts`](examples/mods/harness-dashboard/hooks/sample.test.ts),
 [`examples/mods/harness-dashboard/.claude-plugin/plugin.json`](examples/mods/harness-dashboard/.claude-plugin/plugin.json).
@@ -40,6 +40,15 @@ Files: [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py), [`example
 **Do:** after changing what `dashboard_data.py` prints, run
 `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample` to write the sample again,
 then `claude plugin test harness-dashboard` from [`examples/mods/`](examples/mods/).
+
+## 2026-10-27: Dashboard tables stack in a narrow pane
+
+In a pane too narrow to leave 8 columns for a table's names, the harness dashboard puts each row's
+figures on a line under its name, in the row's colour, instead of cutting the name to a few letters.
+Wider panes look as they did. The mod goes to 0.1.1. Touches [`examples/mods/harness-dashboard/hooks/register.tsx`](examples/mods/harness-dashboard/hooks/register.tsx)
+and [`examples/mods/harness-dashboard/.claude-plugin/plugin.json`](examples/mods/harness-dashboard/.claude-plugin/plugin.json).
+
+**Do:** nothing.
 
 ## 2026-10-27: Harness dashboard pane
 
