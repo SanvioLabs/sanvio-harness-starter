@@ -27,6 +27,14 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Loop help shows example commands
+
+`python3 scripts/loop.py --help` now ends with three example commands: `run --once`, `review --once`
+and `stop`. Each subcommand's own help is unchanged.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py).
+
+**Do:** nothing.
+
 ## 2026-10-28: Build agent says why before each step
 
 The loop's build agent now says, in a line, what it's about to do and why before each step, so an

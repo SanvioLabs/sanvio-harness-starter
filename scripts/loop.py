@@ -2119,7 +2119,13 @@ class Loop:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(
+        description=__doc__.split("\n")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="examples:\n"
+               "  python3 scripts/loop.py run --once\n"
+               "  python3 scripts/loop.py review --once\n"
+               "  python3 scripts/loop.py stop")
     sub = parser.add_subparsers(dest="command", required=True)
     run_help = "take ready issues as they're labelled; keeps polling until stopped (bound it with --for)"
     run = sub.add_parser("run", help=run_help, description=run_help)
