@@ -43,12 +43,13 @@ async function drain(): Promise<void> {
   for (let i = 0; i < 40; i++) await Promise.resolve()
 }
 
-// A session started in the harness root, with the pane open or not, counting the script's runs and
-// how often the pane asks which panes are open.
-function session(on: On, open: { now: boolean }): { runs: () => number; asks: () => number } {
+// A session whose root is the harness root unless given another, with the pane open or not, counting
+// the script's runs and how often the pane asks which panes are open.
+function session(on: On, open: { now: boolean }, root = '/h/starter'): { runs: () => number; asks: () => number } {
   let runs = 0
   let asks = 0
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('session.root', async () => ({ value: root }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('fs.exists', async (_$, e) => ({ value: e.path === '/h/starter/scripts/dashboard_data.py' }))
   on('ui.panes', async () => {
@@ -321,5 +322,24 @@ group('the Refresh button', () => {
     await drain()
     expect(runs).toBe(0)
     await ui.unmount()
+  })
+})
+
+group('/harness-dashboard', () => {
+  // A /clear starts a new session with no session.start, so a folder saved there is gone or the last session's.
+  test('after a /clear, with no session.start, finds the harness from the session root', async ($, on) => {
+    mock.clock(on, { now: 1_800_000_000_000 })
+    session(on, { now: false })
+    on('ui.open', async () => ({ value: { isPlaced: true } }))
+    const typed = { command: 'harness-dashboard', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
+    expect(((await $.command.run(typed)) as { text?: string }).text).toBe('Dashboard opened.')
+  })
+  test('outside any harness, names the folder it looked from', async ($, on) => {
+    mock.clock(on, { now: 1_800_000_000_000 })
+    session(on, { now: false }, '/h/elsewhere')
+    await $.session.start({ ...START, cwd: '/h/elsewhere' })
+    const typed = { command: 'harness-dashboard', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
+    expect(((await $.command.run(typed)) as { text?: string }).text)
+      .toBe('No scripts/dashboard_data.py at or above /h/elsewhere, so there are no numbers to show.')
   })
 })

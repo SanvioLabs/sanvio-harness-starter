@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-28: Mods find the harness after a /clear
+
+`/loop-pane`, `/harness-dashboard` and `/github <project>` now work after a `/clear`. Each mod saves
+the session's folder at `session.start`, and a `/clear` starts a new session without one, so
+`/loop-pane` said there was no [`scripts/loop.py`](scripts/loop.py). When the saved folder is missing or leads to no
+harness, they now look from the session's root instead, so a session without a `/clear` behaves as
+before. `/loop-pane` and `/harness-dashboard` name the folder they looked from when they find none.
+The harness lens gets the same fallback, but it still builds its picture only at `session.start`.
+Files: [`examples/mods/loop-pane/`](examples/mods/loop-pane/), [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/),
+[`examples/mods/github-status/`](examples/mods/github-status/), [`examples/mods/harness-lens/`](examples/mods/harness-lens/).
+
+**Do:** nothing. `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-28: Loop help shows example commands
 
 `python3 scripts/loop.py --help` now ends with three example commands: `run --once`, `review --once`

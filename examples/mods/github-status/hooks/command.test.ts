@@ -11,6 +11,7 @@ function world(on: On, options: { betaFails?: boolean } = {}): string[][] {
   mock.clock(on, { now: 1_800_000_000_000 })
   // The engine beneath the plugins: a session that starts, and a command it takes.
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('session.root', async () => ({ value: ROOT }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('fs.list', async (_$, e, next) =>
     e.path === `${ROOT}/projects`
@@ -79,6 +80,15 @@ describe('/github on a project', () => {
   test('a failed read shows that repo as unavailable', async ($, on) => {
     world(on, { betaFails: true })
     expect(await github($, 'beta')).toBe('beta: beta/site · GitHub unavailable (is gh installed and signed in?)')
+  })
+})
+
+describe('/github after a /clear', () => {
+  // A /clear starts a new session with no session.start, so a folder saved there is gone or the last session's.
+  test('with no session.start, reads the project from the session root', async ($, on) => {
+    world(on)
+    const text = ((await $.command.run(typed('acme'))) as { text?: string }).text ?? ''
+    expect(text).toBe('acme: acme/app · 0 actions running · 4 open pull requests · 1 open issue')
   })
 })
 

@@ -35,9 +35,12 @@ let stopPolling: (() => void) | null = null
 // One read at a time: a refresh asked for while one runs is the same refresh.
 let reading: Promise<void> | null = null
 
+// The folder saved at session.start first, then the session's root: a /clear starts a new session
+// without a session.start, so the saved folder can be missing or the last session's.
 async function rootOf($: EngineInterface): Promise<string | null> {
+  const exists = (path: string) => $.fs.exists(path)
   const launch = await read($, launchAtom)
-  return launch ? findRoot(launch, path => $.fs.exists(path)) : null
+  return (launch && (await findRoot(launch, exists))) || findRoot(await $.session.root(), exists)
 }
 
 // The first day the chosen range counts.
@@ -120,7 +123,7 @@ export const register: Register = on => {
   on('command.run', { command: COMMAND }, async $ => {
     try {
       const root = await rootOf($)
-      if (!root) return { text: 'No scripts/dashboard_data.py at or above the folder this session started in, so there are no numbers to show.' }
+      if (!root) return { text: `No scripts/dashboard_data.py at or above ${await $.session.root()}, so there are no numbers to show.` }
       const opened = await $.ui.open({ id: PANE, title: 'Harness' })
       void refresh($, root).catch(() => {})
       startPolling($, root)
