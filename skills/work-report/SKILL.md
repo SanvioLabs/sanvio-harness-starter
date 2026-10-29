@@ -1,6 +1,6 @@
 ---
 name: work-report
-description: Write a one-page report of what got done in a repo over a period, for a lead or a team: what merged and who did it, what the loop built, the milestones GitHub recorded, the specs it touched, a chart of merges, and what to watch. Reads GitHub through gh and the repo's CHANGELOG.md and changes nothing. Use when someone asks for a "work report", "what got done", "what did we ship", "which milestones did we hit", "a report for my lead", "showcase the work", or "what did the team do this sprint".
+description: Write a one-page report of what got done in a repo over a period, for a lead or a team: what merged and who made and approved it, what the loop built, the milestones GitHub recorded, the specs it touched, a chart of merges, and what to watch. Reads GitHub through gh and the repo's CHANGELOG.md and changes nothing. Use when someone asks for a "work report", "what got done", "what did we ship", "which milestones did we hit", "a report for my lead", "showcase the work", or "what did the team do this sprint".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
@@ -8,15 +8,20 @@ license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLab
 
 One page on what got done in one repo over a period, built from what GitHub
 recorded rather than what anyone remembers. [`scripts/work_report.py`](../../scripts/work_report.py) reads
-the facts: merged pull requests, their authors and reviewers, the issues they
-closed, releases, GitHub milestones, the `Spec:` lines on closed issues, and
-the repo's [`CHANGELOG.md`](../../CHANGELOG.md). You add the summary and what to watch, from those
-numbers only.
+the facts: merged pull requests, who made, reviewed and approved each one,
+the issues they closed, releases, GitHub milestones, the `Spec:` lines on
+closed issues, and the repo's [`CHANGELOG.md`](../../CHANGELOG.md). It also prints what to watch.
+You add the summary, from those numbers only.
 
-It names people. Each pull request's author and reviewers appear by GitHub
-login, with its number and title, because a lead reads it to see who did what.
-Say so when you hand it over, and the people it names should be able to read
-the same report.
+It names people. Its last section lists every pull request with its number,
+title, address, author and reviewers by GitHub login, because a lead reads it
+to see who did what. Say so when you hand it over, and the people it names
+should be able to read the same report.
+
+Two things a reader needs told. Loop-built pull requests count as the login
+the loop runs as, since the loop opens them as that account. And a review
+counts only when it's on GitHub: someone who read a pull request and merged it
+without leaving a review shows as nobody else reviewing it.
 
 ## Steps
 
@@ -35,17 +40,16 @@ the same report.
    It prints the facts as Markdown. A section that says `Not available` stays
    that way in the report, with its reason; the usual one is gh not signed in
    (`gh auth status`). Don't fill a gap from memory.
-3. **Write the report** to `reports/work/<YYYY-MM-DD>-<repo>.md`:
+3. **Write the report** to `reports/work/<since>-to-<until>-<repo>.md`, with
+   the dates as YYYY-MM-DD and the repo's name after its `/`:
    - The script's title line.
    - `## Summary`: three to five sentences. Lead with what was delivered (the
-     milestones met and releases), then how much merged and how much the loop
-     built, then who. Every figure in it is one the script printed.
-   - The script's output as printed, from `## In numbers` down. The `## Merges`
-     chart is Mermaid, which GitHub and most Markdown viewers draw.
-   - `## What to watch`: one line each, with its figure, for whichever of these
-     the numbers show: merged pull requests with no second reviewer, merged
-     work on no milestone or spec, an open milestone past its due date, and the
-     script's line about stopping at its limit. If none apply, say so.
+     releases and milestones closed), then how much merged and how much the
+     loop built, then who. Every figure in it is one the script printed; don't
+     work out a new one.
+   - The script's output as printed, from the line after its title to the end.
+     `## To watch` is already in it. The `## Merges` chart is Mermaid, which
+     GitHub and most Markdown viewers draw.
 
    Describe the work, never the person: no "productive", "slow" or ranking.
 4. **Have them read it.** Name what it holds that others will see: GitHub
@@ -60,12 +64,14 @@ The report counts only what GitHub records, so a team gets out of it what it
 puts in:
 
 - **A deliverable is a GitHub milestone.** Name it after the deliverable or
-  goal, put its issues on it, and close it when they're done. The report counts
-  it met on the day it closed, and lists open ones with their progress and due
-  date.
+  goal, put its issues on it, and close it when they're done. The report lists
+  it on the day it closed, with how many of its issues were done and
+  its due date, and To watch says when it closed late or with issues open.
+  Open ones are listed with their progress, and flagged once past due.
 - **A release is a milestone too.** `gh release create` records it.
 - **An issue names its spec** with one line in its References section:
-  `Spec: specs/004-search REQ-002`.
+  `Spec: docs/specs/004-search REQ-002`. The path is the spec; what follows
+  it is free text, so several requirements of one spec count together.
 - **Loop work needs nothing.** The script knows it by the loop's branch,
   `loop/issue-N`.
 

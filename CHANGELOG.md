@@ -30,14 +30,17 @@ fine).
 ## 2026-10-29: Work report
 
 Say "work report" or "what did we ship" for one page on a repo over a period, built from what GitHub
-recorded: pull requests merged and who made them, how many the loop built (known by its
-`loop/issue-N` branch), how many had a second reviewer, releases and closed GitHub milestones, the
-specs closed issues name on a `Spec:` line, the CHANGELOG's entries, and a chart of merges by day.
-The skill adds a summary and what to watch from those numbers only. Milestones are only what GitHub
-records, so a deliverable shows up as met when its GitHub milestone closes. Unlike the other reports,
-it names people by GitHub login. Reports stay gitignored in `reports/work/`.
+recorded: pull requests merged and who made, reviewed and approved them, how many the loop built
+(known by its `loop/issue-N` branch), releases and closed GitHub milestones, the specs closed issues
+name on a `Spec:` line, the CHANGELOG's entries, a chart of merges by day (by week past a month),
+and what to watch, such as work nobody but its author approved or a milestone past due. The skill
+adds a summary from those numbers only. Milestones are only what GitHub records, so a deliverable
+shows up when its GitHub milestone closes. Unlike the other reports, it names people by GitHub
+login and lists every pull request. Reports stay gitignored in [`reports/work/`](reports/work/). A ticket's
+References can now carry a `Spec:` line naming the spec it builds.
 Files: [`scripts/work_report.py`](scripts/work_report.py), [`skills/work-report/`](skills/work-report/), [`reports/work/README.md`](reports/work/README.md),
-[`tests/test_work_report.py`](tests/test_work_report.py), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`.gitignore`](.gitignore).
+[`tests/test_work_report.py`](tests/test_work_report.py), [`steering/tickets.md`](steering/tickets.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md),
+[`.gitignore`](.gitignore).
 
 **Do:** nothing to take it. To see deliverables in it, put each one's issues on a GitHub milestone,
 and name an issue's spec with a `Spec:` line in its References.

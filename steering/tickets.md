@@ -19,7 +19,7 @@ a missing required section, whatever else the ticket gets right.
 | **Acceptance Criteria** | Flat `- [ ]` items, one observable outcome each, in order, failure behaviour included | Nobody could check one. "Works well" is not a check |
 | **Scope** | **In:** what it changes. **Out:** what it leaves alone | The Out half is missing |
 | **Risk** | Low, Medium, High or Critical, with a reason for the top two | It's missing |
-| Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from | They're there as `N/A`, or References turns into instructions for writing the code |
+| Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from, a `Spec: docs/specs/<name>` line naming the spec it builds | They're there as `N/A`, or References turns into instructions for writing the code |
 
 The standard also allows Requirements, Constraints, Assumptions and Human
 Approval, on the same terms, and `stelliad:create-ticket` writes them when they
