@@ -27,6 +27,21 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-29: Work report
+
+Say "work report" or "what did we ship" for one page on a repo over a period, built from what GitHub
+recorded: pull requests merged and who made them, how many the loop built (known by its
+`loop/issue-N` branch), how many had a second reviewer, releases and closed GitHub milestones, the
+specs closed issues name on a `Spec:` line, the CHANGELOG's entries, and a chart of merges by day.
+The skill adds a summary and what to watch from those numbers only. Milestones are only what GitHub
+records, so a deliverable shows up as met when its GitHub milestone closes. Unlike the other reports,
+it names people by GitHub login. Reports stay gitignored in `reports/work/`.
+Files: [`scripts/work_report.py`](scripts/work_report.py), [`skills/work-report/`](skills/work-report/), [`reports/work/README.md`](reports/work/README.md),
+[`tests/test_work_report.py`](tests/test_work_report.py), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`.gitignore`](.gitignore).
+
+**Do:** nothing to take it. To see deliverables in it, put each one's issues on a GitHub milestone,
+and name an issue's spec with a `Spec:` line in its References.
+
 ## 2026-10-28: Mods find the harness after a /clear
 
 `/loop-pane`, `/harness-dashboard` and `/github <project>` now work after a `/clear`. Each mod saves
