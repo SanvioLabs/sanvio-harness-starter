@@ -19,7 +19,7 @@ a missing required section, whatever else the ticket gets right.
 | **Acceptance Criteria** | Flat `- [ ]` items, one observable outcome each, in order, failure behaviour included | Nobody could check one. "Works well" is not a check |
 | **Scope** | **In:** what it changes. **Out:** what it leaves alone | The Out half is missing |
 | **Risk** | Low, Medium, High or Critical, with a reason for the top two | It's missing |
-| Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from | They're there as `N/A`, or References turns into instructions for writing the code |
+| Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from, a `Spec: docs/specs/<name>` line naming the spec it builds | They're there as `N/A`, or References turns into instructions for writing the code |
 
 The standard also allows Requirements, Constraints, Assumptions and Human
 Approval, on the same terms, and `stelliad:create-ticket` writes them when they
@@ -43,9 +43,16 @@ whole token budget finding out.
 outcomes, it's two tickets. If it can't fit one pull request, split it so each
 part can be tested on its own.
 
-`stelliad:create-ticket` also suggests priority and risk labels. The starter
-ships only the loop's labels, so it says when one is missing, and that's fine
-to leave.
+**One type label.** Every issue carries exactly one of `bug`, `enhancement`,
+`documentation` or `chore` (maintenance: dependencies, tooling, tidying). A
+pull request takes its type from its own label, or else from the issue it
+closes, and [`skills/work-report/`](../skills/work-report/) counts work by it. GitHub creates the
+first three with a new repo; `gh label create chore --description
+"Maintenance: dependencies, tooling, tidying"` adds the fourth.
+
+`stelliad:create-ticket` also suggests priority and risk labels. Beyond the
+type and the loop's labels the starter ships none, so it says when one is
+missing, and that's fine to leave.
 
 ## Ready for the loop
 
@@ -75,6 +82,8 @@ skill checks them and asks before it labels.
   with a comment. The loop doesn't read priority: of the issues with nothing
   left to wait for, it takes the lowest-numbered.
 - It isn't assigned to someone else.
+- It carries exactly one type label: `bug`, `enhancement`, `documentation` or
+  `chore`.
 
 ## While it's worked
 

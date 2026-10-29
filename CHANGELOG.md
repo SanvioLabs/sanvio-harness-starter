@@ -27,6 +27,37 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-29: Tickets carry a type label
+
+Every issue now carries exactly one type label: `bug`, `enhancement`, `documentation` or `chore`
+(maintenance). It's on the list of what makes a ticket ready for the loop, and `loop-control` checks
+for it and adds one with the ready label. The work report counts merged work by type, a pull request
+taking its own label's type or else its closed issue's, and says how much has none.
+Files: [`steering/tickets.md`](steering/tickets.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md),
+[`scripts/work_report.py`](scripts/work_report.py), [`skills/work-report/SKILL.md`](skills/work-report/SKILL.md).
+
+**Do:** add the fourth label if your repo doesn't have it: `gh label create chore --description
+"Maintenance: dependencies, tooling, tidying"`. GitHub made the other three with the repo. Then put a
+type on open issues as you touch them.
+
+## 2026-10-29: Work report
+
+Say "work report" or "what did we ship" for one page on a repo over a period, built from what GitHub
+recorded: pull requests merged and who made, reviewed and approved them, how many the loop built
+(known by its `loop/issue-N` branch), releases and closed GitHub milestones, the specs closed issues
+name on a `Spec:` line, the CHANGELOG's entries, a chart of merges by day (by week past a month),
+and what to watch, such as work nobody but its author approved or a milestone past due. The skill
+adds a summary from those numbers only. Milestones are only what GitHub records, so a deliverable
+shows up when its GitHub milestone closes. Unlike the other reports, it names people by GitHub
+login and lists every pull request. Reports stay gitignored in [`reports/work/`](reports/work/). A ticket's
+References can now carry a `Spec:` line naming the spec it builds.
+Files: [`scripts/work_report.py`](scripts/work_report.py), [`skills/work-report/`](skills/work-report/), [`reports/work/README.md`](reports/work/README.md),
+[`tests/test_work_report.py`](tests/test_work_report.py), [`steering/tickets.md`](steering/tickets.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md),
+[`.gitignore`](.gitignore).
+
+**Do:** nothing to take it. To see deliverables in it, put each one's issues on a GitHub milestone,
+and name an issue's spec with a `Spec:` line in its References.
+
 ## 2026-10-28: Mods find the harness after a /clear
 
 `/loop-pane`, `/harness-dashboard` and `/github <project>` now work after a `/clear`. Each mod saves
