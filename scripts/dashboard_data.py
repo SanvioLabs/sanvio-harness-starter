@@ -549,11 +549,13 @@ def conversations(root, since, today, projects_dir, cache_path):
             for side in ("harness", "loop")}
 
 
-def gh(root, *args):
+def gh(root, *args, timeout=None):
     """The JSON values gh prints, run in root so it reaches root's repo, or None when gh is missing, fails
-    or prints anything else. A list with --paginate is printed a page at a time, one array after another."""
+    or prints anything else. A list with --paginate is printed a page at a time, one array after another.
+    timeout is the seconds the whole call gets, GH_TIMEOUT when it's None."""
     try:
-        done = subprocess.run(["gh", *args], cwd=root, capture_output=True, text=True, timeout=GH_TIMEOUT)
+        done = subprocess.run(["gh", *args], cwd=root, capture_output=True, text=True,
+                              timeout=GH_TIMEOUT if timeout is None else timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if done.returncode != 0:

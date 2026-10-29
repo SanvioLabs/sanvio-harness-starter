@@ -9,23 +9,28 @@
 It reads, through gh, in the harness root or the repo under projects/:
 
     pull_requests  each pull request merged on or after --since, through one GraphQL search: its number,
-                   title, address, author's login, when it opened and merged, the issues it closes, its
-                   milestone, who else reviewed it and who else approved it, and the specs its closed
-                   issues name. loop_built is true when its branch is loop/issue-N, the branch the loop
+                   title, address, author's login, when it opened and merged, the issues it closes, the
+                   milestones it and those issues are on, who else reviewed it and who else approved it,
+                   and the specs its closed issues name. loop_built is true when its branch is loop/issue-N, the branch the loop
                    opens; the loop opens it as whoever runs the loop, so it counts as that login's. A
                    review counts when its author isn't the pull request's and isn't a bot (GitHub's Bot
                    type, which gh's own reviews field doesn't show), and isn't pending or dismissed. An
-                   approval is such a review in the APPROVED state
+                   approval is such a review in the APPROVED state, read on its own so a long thread of
+                   comments can't push it out of the first REVIEWS
     totals         counts over those, and the median minutes from opened to merged
     by_person      for each login that authored or reviewed one: the same counts, and reviews_given, how
                    many of the others' pull requests it reviewed
     by_day         every UTC day from --since to today's UTC date, oldest first, with merged and loop_built
-    milestones     GitHub milestones: closed, the ones closed on or after --since, and open, each with its
-                   issues closed and still open and its due date
+    milestones     GitHub milestones: closed, the ones closed on or after --since, and open, each with
+                   how many of what's on it are done and still open (GitHub counts its pull requests
+                   with its issues) and its due date
     releases       releases published on or after --since, drafts left out, from the newest RELEASES
     specs          for each spec a closed issue names, the pull requests that closed one. An issue names
-                   it with a line "Spec: <path> [requirement ...]"; the path, its first word, is the spec
-    changelog      CHANGELOG.md's entries dated on or after --since, newest first: what shipped, in words
+                   it with a line "Spec: <path> [requirement ...]", as a bullet or not; the path, its
+                   first word, is the spec, and N/A or none names none
+    changelog      the entries dated on or after --since in CHANGELOG.md on GitHub's default branch, so
+                   only what merged, newest first: what shipped, in words. It reads headings of the shape
+                   "## YYYY-MM-DD: Name", and says so when the file has none
     watch          sentences on what a lead would ask about: merged work nobody else approved, work on no
                    milestone or spec, a milestone closed late or with issues open, one past its due date,
                    and a search that stopped at its limit
@@ -40,9 +45,10 @@ nor a commit message, a diff or an email.
 
 A section whose source is missing or can't be read is {"value": null, "why": ...}, and the script still
 exits 0. GitHub's search returns at most LIMIT pull requests; truncated says when there were more, and
-then the counts are low.
+then the counts are low. The search gets SEARCH_TIMEOUT seconds in all.
 """
 import argparse
+import base64
 import datetime
 import json
 import re
@@ -59,6 +65,8 @@ from usage_report import since_date  # noqa: E402 (same reason)
 SCHEMA = 1  # the document's shape; goes up when a section's shape changes
 LIMIT = 1000  # GitHub's search returns no more than this
 RELEASES = 100  # newest releases read
+REVIEWS = 100  # reviews read per pull request, oldest first
+SEARCH_TIMEOUT = 120  # seconds for the whole paginated search, about 2 a page of 100
 QUERY = """query($q: String!, $endCursor: String) {
   search(query: $q, type: ISSUE, first: 100, after: $endCursor) {
     issueCount
@@ -67,13 +75,15 @@ QUERY = """query($q: String!, $endCursor: String) {
       number title url createdAt mergedAt headRefName
       author { __typename login }
       milestone { title }
-      closingIssuesReferences(first: 20) { nodes { number body } }
-      reviews(first: 50) { nodes { state author { __typename login } } }
+      closingIssuesReferences(first: 20) { nodes { number body milestone { title } } }
+      reviews(first: %d) { nodes { state author { __typename login } } }
+      approvals: reviews(first: 20, states: [APPROVED]) { nodes { author { __typename login } } }
     } }
   }
-}"""
+}""" % REVIEWS
 COUNTED_REVIEWS = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
-SPEC_LINE = re.compile(r"^\s*Spec:\s*(\S+)", re.M)
+SPEC_LINE = re.compile(r"^\s*(?:[-*]\s+)?\**Spec:\**\s*(\S+)", re.M)
+NO_SPEC = {"n/a", "none", "-"}
 CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}): (\S.*)$", re.M)
 SHIPPED_SHOWN = 15  # changelog entries the Markdown lists before "and N more"
 
@@ -86,13 +96,19 @@ def flat(pages):
 
 
 def searched(pages):
-    """(pull requests, how many the search matched) from the GraphQL search's pages, or (None, 0)."""
+    """(pull requests, how many the search matched, why not) from the GraphQL search's pages.
+
+    Any page it can't read loses the lot, since a count from part of the pages would read as the whole.
+    """
+    if pages is None:
+        return None, 0, "gh unavailable"
     try:
-        found = [page["data"]["search"] for page in pages or [None]]
-        nodes = [node for page in found for node in page["nodes"] if isinstance(node, dict)]
-        return nodes, found[0].get("issueCount") or 0
+        found = [page["data"]["search"] for page in pages]
+        prs = [node for page in found for node in page["nodes"] if isinstance(node, dict)]
     except (KeyError, TypeError):
-        return None, 0
+        return None, 0, "GitHub's search returned a page it couldn't read"
+    matched = found[0].get("issueCount") if found else 0
+    return prs, matched if isinstance(matched, int) else 0, None
 
 
 def nodes(value):
@@ -119,7 +135,9 @@ def spec_of(issue):
     """The path on the first "Spec:" line of an issue's body, or None. Nothing else of the body is kept."""
     body = issue.get("body") if isinstance(issue.get("body"), str) else ""
     found = SPEC_LINE.search(body)
-    return found.group(1)[:120] if found else None
+    if not found or found.group(1).lower() in NO_SPEC:
+        return None
+    return found.group(1)[:120]
 
 
 def pull_request_rows(prs):
@@ -133,7 +151,9 @@ def pull_request_rows(prs):
         issues = [i for i in nodes(pr.get("closingIssuesReferences")) if isinstance(i.get("number"), int)]
         reviews = [(person(r.get("author")), r.get("state")) for r in nodes(pr.get("reviews"))]
         reviews = [(who, state) for who, state in reviews if who and who != author and state in COUNTED_REVIEWS]
-        milestone = pr.get("milestone") if isinstance(pr.get("milestone"), dict) else {}
+        approvers = {person(r.get("author")) for r in nodes(pr.get("approvals"))} - {None, author}
+        milestones = {m.get("title") for m in [pr.get("milestone")] + [i.get("milestone") for i in issues]
+                      if isinstance(m, dict) and isinstance(m.get("title"), str)}
         branch = pr.get("headRefName") if isinstance(pr.get("headRefName"), str) else ""
         rows.append({
             "number": pr["number"],
@@ -143,10 +163,10 @@ def pull_request_rows(prs):
             "merged": merged.date().isoformat(),
             "minutes_to_merge": round((merged - opened).total_seconds() / 60, 1) if opened else None,
             "closes": sorted(i["number"] for i in issues),
-            "milestone": milestone.get("title") if isinstance(milestone.get("title"), str) else None,
+            "milestones": sorted(milestones),
             "loop_built": bool(LOOP_BRANCH.match(branch)),
-            "reviewers": sorted({who for who, _ in reviews}),
-            "approved_by": sorted({who for who, state in reviews if state == "APPROVED"}),
+            "reviewers": sorted({who for who, _ in reviews} | approvers),
+            "approved_by": sorted(approvers),
             "specs": sorted({s for s in map(spec_of, issues) if s}),
         })
     return sorted(rows, key=lambda r: (r["merged"], r["number"]))
@@ -159,7 +179,7 @@ def counts(rows):
             "hand_built": sum(1 for r in rows if not r["loop_built"]),
             "issues_closed": len({n for r in rows for n in r["closes"]}),
             "approved_by_another": sum(1 for r in rows if r["approved_by"]),
-            "on_a_milestone_or_spec": sum(1 for r in rows if r["milestone"] or r["specs"]),
+            "on_a_milestone_or_spec": sum(1 for r in rows if r["milestones"] or r["specs"]),
             "median_minutes_to_merge": round(statistics.median(minutes), 1) if minutes else None}
 
 
@@ -207,7 +227,22 @@ def release_rows(raw, since):
 
 
 def changelog_rows(text, since):
-    return [{"date": d, "name": n.strip()} for d, n in CHANGELOG_HEADING.findall(text) if d >= since]
+    found = CHANGELOG_HEADING.findall(text)
+    if not found:
+        return missing("no '## YYYY-MM-DD: Name' headings in CHANGELOG.md")
+    return [{"date": d, "name": n.strip()} for d, n in found if d >= since]
+
+
+def merged_changelog(root):
+    """CHANGELOG.md's text on GitHub's default branch, or None when gh can't read it."""
+    found = gh(root, "api", "repos/{owner}/{repo}/contents/CHANGELOG.md")
+    page = found[0] if found and isinstance(found[0], dict) else {}
+    if page.get("encoding") != "base64" or not isinstance(page.get("content"), str):
+        return None
+    try:
+        return base64.b64decode(page["content"]).decode("utf-8")
+    except ValueError:
+        return None
 
 
 def spec_rows(rows):
@@ -218,8 +253,10 @@ def spec_rows(rows):
     return [{"spec": s, "pull_requests": numbers} for s, numbers in sorted(specs.items())]
 
 
-def short(day):
-    return datetime.date.fromisoformat(day).strftime("%b %-d %Y")
+def short(day, year=True):
+    """Oct 6 2026, built by hand because %-d isn't there on Windows."""
+    d = datetime.date.fromisoformat(day)
+    return "{} {}".format(d.strftime("%b"), d.day) + (" {}".format(d.year) if year else "")
 
 
 def watch(doc, today):
@@ -240,13 +277,13 @@ def watch(doc, today):
     if "closed" in milestones:
         for m in milestones["closed"]:
             if m["issues_open"]:
-                out.append("{} closed with {} of its {} issues still open.".format(
+                out.append("{} closed with {} of {} still open.".format(
                     m["title"], m["issues_open"], m["issues_open"] + m["issues_closed"]))
             if m["due"] and m["closed"] > m["due"]:
                 out.append("{} closed on {}, after its due date of {}.".format(m["title"], short(m["closed"]), short(m["due"])))
         for m in milestones["open"]:
             if m["due"] and m["due"] < today.isoformat():
-                out.append("{} is past its due date of {}, with {} of its {} issues open.".format(
+                out.append("{} is past its due date of {}, with {} of {} still open.".format(
                     m["title"], short(m["due"]), m["issues_open"], m["issues_open"] + m["issues_closed"]))
     return out
 
@@ -255,14 +292,14 @@ def build(root, since, today, name=None, now=None):
     now = now or datetime.datetime.now().astimezone()
     repo = gh(root, "repo", "view", "--json", "nameWithOwner")
     name = (repo[0].get("nameWithOwner") if repo and isinstance(repo[0], dict) else None) or name or Path(root).name
-    prs, matched = searched(gh(root, "api", "graphql", "--paginate",
-                               "-F", "q=repo:{{owner}}/{{repo}} is:pr is:merged merged:>={}".format(since),
-                               "-f", "query=" + QUERY))
+    prs, matched, why = searched(gh(root, "api", "graphql", "--paginate",
+                                    "-F", "q=repo:{{owner}}/{{repo}} is:pr is:merged merged:>={}".format(since),
+                                    "-f", "query=" + QUERY, timeout=SEARCH_TIMEOUT))
     doc = {"schema": SCHEMA, "generated": now.isoformat(timespec="seconds"), "repo": name,
            "since": since, "until": today.isoformat(), "truncated": matched > LIMIT}
     if prs is None:
         for key in ("pull_requests", "totals", "by_person", "by_day", "specs"):
-            doc[key] = missing("gh unavailable")
+            doc[key] = missing(why)
     else:
         rows = pull_request_rows(prs)
         doc.update(pull_requests=rows, totals=counts(rows), by_person=by_person(rows),
@@ -271,10 +308,8 @@ def build(root, since, today, name=None, now=None):
     doc["milestones"] = milestone_rows(raw, since) if raw is not None else missing("gh unavailable")
     raw = flat(gh(root, "release", "list", "--json", "name,tagName,publishedAt,isDraft", "--limit", str(RELEASES)))
     doc["releases"] = release_rows(raw, since) if raw is not None else missing("gh unavailable")
-    try:
-        doc["changelog"] = changelog_rows((Path(root) / "CHANGELOG.md").read_text(encoding="utf-8"), since)
-    except OSError:
-        doc["changelog"] = missing("no CHANGELOG.md")
+    text = merged_changelog(root)
+    doc["changelog"] = changelog_rows(text, since) if text is not None else missing("no CHANGELOG.md on the default branch gh can read")
     doc["watch"] = watch(doc, today)
     return doc
 
@@ -290,7 +325,7 @@ def duration(minutes):
 
 
 def cell(text):
-    return str(text).replace("|", "\\|").replace("\n", " ")
+    return str(text).replace("\\", "\\\\").replace("|", "\\|").replace("\r", "").replace("\n", " ")
 
 
 def chart(days):
@@ -305,7 +340,7 @@ def chart(days):
     return "\n".join([
         "```mermaid",
         "xychart-beta",
-        '    x-axis [{}]'.format(", ".join('"{}"'.format(datetime.date.fromisoformat(d["day"]).strftime("%b %-d")) for d in days)),
+        '    x-axis [{}]'.format(", ".join('"{}"'.format(short(d["day"], year=False)) for d in days)),
         '    y-axis "Merged" 0 --> {}'.format(top),
         "    bar [{}]".format(", ".join(str(d["merged"]) for d in days)),
         "    line [{}]".format(", ".join(str(d["loop_built"]) for d in days)),
@@ -337,7 +372,7 @@ def markdown(doc):
     releases, milestones = doc["releases"], doc["milestones"]
     reached = [] if unavailable(releases) else ["- {} · Release {}".format(short(r["published"]), r["name"]) for r in releases]
     if not unavailable(milestones):
-        reached += ["- {} · {} closed: {} of {} issues{}{}".format(
+        reached += ["- {} · {} closed: {} of {} done{}{}".format(
             short(m["closed"]), m["title"], m["issues_closed"], m["issues_closed"] + m["issues_open"],
             ", due " + short(m["due"]) if m["due"] else "", " " + m["url"] if m["url"] else "") for m in milestones["closed"]]
     out += reached or ["None reached in this period."]
@@ -346,7 +381,7 @@ def markdown(doc):
             out += ["", "{} not available: {}.".format(what, section["why"])]
     if not unavailable(milestones) and milestones["open"]:
         out += ["", "Open:", ""]
-        out += ["- {}: {} of {} issues closed{}".format(m["title"], m["issues_closed"], m["issues_closed"] + m["issues_open"],
+        out += ["- {}: {} of {} done{}".format(m["title"], m["issues_closed"], m["issues_closed"] + m["issues_open"],
                                                         ", due " + short(m["due"]) if m["due"] else "") for m in milestones["open"]]
     out += ["", "## By person", ""]
     if unavailable(doc["by_person"]):
@@ -398,10 +433,12 @@ def main(argv=None, root=ROOT):
     parser.add_argument("--project", help="a repo under projects/ to report on instead of the harness")
     parser.add_argument("--json", action="store_true", help="print the numbers as JSON instead of Markdown")
     args = parser.parse_args(argv)
+    if args.since > today.isoformat():
+        parser.error("--since {} is after today, {} in UTC".format(args.since, today.isoformat()))
     repo = Path(root)
     if args.project:
         repo = Path(root) / "projects" / args.project
-        if "/" in args.project or not (repo / ".git").exists():
+        if Path(args.project).name != args.project or args.project in (".", "..") or not (repo / ".git").exists():
             parser.error("no repo at projects/{}".format(args.project))
     doc = build(repo, args.since, today, args.project, now)
     print(json.dumps(doc, indent=2) if args.json else markdown(doc), end="\n" if args.json else "")

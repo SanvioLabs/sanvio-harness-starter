@@ -10,7 +10,8 @@ One page on what got done in one repo over a period, built from what GitHub
 recorded rather than what anyone remembers. [`scripts/work_report.py`](../../scripts/work_report.py) reads
 the facts: merged pull requests, who made, reviewed and approved each one,
 the issues they closed, releases, GitHub milestones, the `Spec:` lines on
-closed issues, and the repo's [`CHANGELOG.md`](../../CHANGELOG.md). It also prints what to watch.
+closed issues, and the repo's [`CHANGELOG.md`](../../CHANGELOG.md) as merged on GitHub's default
+branch. It also prints what to watch.
 You add the summary, from those numbers only.
 
 It names people. Its last section lists every pull request with its number,
@@ -38,8 +39,9 @@ without leaving a review shows as nobody else reviewing it.
    ```
 
    It prints the facts as Markdown. A section that says `Not available` stays
-   that way in the report, with its reason; the usual one is gh not signed in
-   (`gh auth status`). Don't fill a gap from memory.
+   that way in the report, with its reason. For `gh unavailable`, check
+   `gh auth status`; any other reason says what it couldn't read. Don't fill a
+   gap from memory.
 3. **Write the report** to `reports/work/<since>-to-<until>-<repo>.md`, with
    the dates as YYYY-MM-DD and the repo's name after its `/`:
    - The script's title line.
@@ -48,8 +50,9 @@ without leaving a review shows as nobody else reviewing it.
      loop built, then who. Every figure in it is one the script printed; don't
      work out a new one.
    - The script's output as printed, from the line after its title to the end.
-     `## To watch` is already in it. The `## Merges` chart is Mermaid, which
-     GitHub and most Markdown viewers draw.
+     `## To watch` is already in it. The `## Merges` chart is a Mermaid
+     `xychart-beta` block: GitHub draws it, and VS Code's Markdown preview
+     needs a Mermaid extension to.
 
    Describe the work, never the person: no "productive", "slow" or ranking.
 4. **Have them read it.** Name what it holds that others will see: GitHub

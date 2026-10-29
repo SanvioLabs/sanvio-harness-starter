@@ -1,4 +1,5 @@
 """Run with: python3 -m unittest discover -s tests"""
+import base64
 import contextlib
 import datetime
 import io
@@ -20,13 +21,16 @@ NOW = datetime.datetime(2026, 10, 29, 12, 0, tzinfo=datetime.timezone.utc)
 LEAK = "sentinel-wr4"  # put in every field the output must never carry
 SYSTEM_PATH = "/usr/bin:/bin"  # for the fake gh's own commands; the real gh isn't on it
 
-# A stand-in for gh, found on PATH. It answers the GraphQL search from search.json's pages, one printed
-# per line as --paginate does, the milestones API, release list and repo view from milestones.json,
+# A stand-in for gh, found on PATH. It logs each call's arguments to calls.json, answers the GraphQL
+# search from search.json's pages, one printed per line as --paginate does, the milestones API, the
+# CHANGELOG.md contents API, release list and repo view from milestones.json, changelog.json,
 # releases.json and repo.json, and exits 1 while a file named fail exists.
 GH = """#!PYTHON
 import json, os, sys
 folder = FOLDER
 args = sys.argv[1:]
+with open(os.path.join(folder, "calls.json"), "a") as f:
+    f.write(json.dumps(args) + "\\n")
 if os.path.exists(os.path.join(folder, "fail")):
     sys.exit(1)
 def read(name, empty):
@@ -37,6 +41,10 @@ if args[:2] == ["api", "graphql"]:
         print(json.dumps(page))
 elif args[:1] == ["api"] and "milestones" in args[1]:
     print(json.dumps(read("milestones", [])))
+elif args[:1] == ["api"] and args[1].endswith("/contents/CHANGELOG.md"):
+    if not os.path.exists(os.path.join(folder, "changelog.json")):
+        sys.exit(1)
+    print(json.dumps(read("changelog", {})))
 elif args[:2] == ["release", "list"]:
     print(json.dumps(read("releases", [])))
 elif args[:2] == ["repo", "view"]:
@@ -50,13 +58,17 @@ def review(who, state="APPROVED", kind="User"):
     return {"state": state, "author": {"__typename": kind, "login": who}, "body": LEAK}
 
 
-def pr(number, merged, branch="fix", author="ana", reviews=(), closes=(), milestone=None, opened=None):
-    """One pull request node from the GraphQL search, with the fields work_report asks for and a body it mustn't keep."""
+def pr(number, merged, branch="fix", author="ana", reviews=(), closes=(), milestone=None, opened=None, approvals=None):
+    """One pull request node from the GraphQL search, with the fields work_report asks for and a body it mustn't keep.
+
+    approvals is the query's separate list of APPROVED reviews: the approving ones among reviews unless given."""
+    if approvals is None:
+        approvals = [r for r in reviews if r["state"] == "APPROVED"]
     return {"number": number, "title": "PR {}".format(number), "url": "https://github.com/o/r/pull/{}".format(number),
             "author": {"__typename": "User", "login": author}, "createdAt": opened or merged, "mergedAt": merged,
             "headRefName": branch, "milestone": {"title": milestone} if milestone else None,
             "closingIssuesReferences": {"nodes": [c if isinstance(c, dict) else {"number": c, "body": LEAK} for c in closes]},
-            "reviews": {"nodes": list(reviews)}, "body": LEAK}
+            "reviews": {"nodes": list(reviews)}, "approvals": {"nodes": list(approvals)}, "body": LEAK}
 
 
 def pages(prs, matched=None, size=2):
@@ -80,9 +92,11 @@ class Report(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def answer(self, prs=None, matched=None, **files):
+    def answer(self, prs=None, matched=None, changelog=None, **files):
         if prs is not None:
             files["search"] = pages(prs, matched)
+        if changelog is not None:
+            files["changelog"] = {"encoding": "base64", "content": base64.b64encode(changelog.encode()).decode()}
         for name, content in files.items():
             (self.bin / (name + ".json")).write_text(json.dumps(content))
 
@@ -142,21 +156,26 @@ class Report(unittest.TestCase):
         doc = self.build()
         self.assertEqual([m["title"] for m in doc["milestones"]["closed"]], ["D2"])
         self.assertEqual([r["name"] for r in doc["releases"]], ["v1"])
-        self.assertEqual(doc["watch"], ["D2 closed with 2 of its 6 issues still open.",
+        self.assertEqual(doc["watch"], ["D2 closed with 2 of 6 still open.",
                                         "D2 closed on Oct 24 2026, after its due date of Oct 20 2026.",
-                                        "D3 is past its due date of Oct 27 2026, with 2 of its 3 issues open."])
+                                        "D3 is past its due date of Oct 27 2026, with 2 of 3 still open."])
         text = work_report.markdown(doc)
         self.assertIn("- Oct 22 2026 · Release v1", text)
-        self.assertIn("- Oct 24 2026 · D2 closed: 4 of 6 issues, due Oct 20 2026 https://github.com/o/r/milestone/2", text)
-        self.assertIn("- D4: 0 of 1 issues closed, due Nov 12 2026", text)
+        self.assertIn("- Oct 24 2026 · D2 closed: 4 of 6 done, due Oct 20 2026 https://github.com/o/r/milestone/2", text)
+        self.assertIn("- D4: 0 of 1 done, due Nov 12 2026", text)
 
     def test_a_changelog_entry_is_what_shipped_not_a_milestone(self):
-        (self.root / "CHANGELOG.md").write_text("# What's new\n\n## 2026-10-25: Loop run history\n\nx\n\n"
-                                                "## 2026-10-12: Before the period\n")
+        (self.root / "CHANGELOG.md").write_text("## 2026-10-28: Not merged yet\n")
+        self.answer(changelog="# What's new\n\n## 2026-10-25: Loop run history\n\nx\n\n## 2026-10-12: Before the period\n")
         doc = self.build()
         self.assertEqual(doc["changelog"], [{"date": "2026-10-25", "name": "Loop run history"}])
         self.assertEqual(doc["milestones"]["closed"], [])
         self.assertIn("None reached in this period.", work_report.markdown(doc))
+
+    def test_a_changelog_in_another_shape_says_so_rather_than_that_nothing_shipped(self):
+        self.answer(changelog="# Changelog\n\n## [1.2.0] - 2026-10-25\n")
+        self.assertEqual(self.build()["changelog"],
+                         {"value": None, "why": "no '## YYYY-MM-DD: Name' headings in CHANGELOG.md"})
 
     def test_every_day_of_the_period_has_a_count(self):
         self.answer([pr(1, "2026-10-21T10:00:00Z", branch="loop/issue-1", opened="2026-10-21T09:00:00Z"),
@@ -187,20 +206,63 @@ class Report(unittest.TestCase):
 
     def test_gh_failing_leaves_each_section_saying_why_and_still_exits_0(self):
         (self.bin / "fail").write_text("")
-        (self.root / "CHANGELOG.md").write_text("## 2026-10-25: Loop run history\n")
         doc = self.build()
         for key in ("pull_requests", "totals", "by_person", "by_day", "specs", "milestones", "releases"):
             self.assertEqual(doc[key], {"value": None, "why": "gh unavailable"}, key)
-        self.assertEqual((doc["repo"], len(doc["changelog"]), doc["watch"]), ("harness", 1, []))
+        self.assertEqual(doc["changelog"], {"value": None, "why": "no CHANGELOG.md on the default branch gh can read"})
+        self.assertEqual((doc["repo"], doc["watch"]), ("harness", []))
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(work_report.main(["--since", SINCE], root=self.root), 0)
         self.assertIn("Not available: gh unavailable.", out.getvalue())
 
     def test_a_project_that_isnt_a_repo_is_refused(self):
-        for name in ("nope", "../harness"):
+        for name in ("nope", "../harness", "..", "."):
             with self.subTest(name=name), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 work_report.main(["--project", name], root=self.root)
+
+
+    def test_an_issue_on_a_milestone_puts_the_pull_request_that_closes_it_on_one(self):
+        self.answer([pr(1, "2026-10-21T10:00:00Z", branch="loop/issue-7", closes=[{"number": 7, "body": "", "milestone": {"title": "D2"}}]),
+                     pr(2, "2026-10-21T10:00:00Z")])
+        doc = self.build()
+        self.assertEqual([r["milestones"] for r in doc["pull_requests"]], [["D2"], []])
+        self.assertEqual(doc["totals"]["on_a_milestone_or_spec"], 1)
+
+    def test_an_approval_counts_even_past_the_reviews_read(self):
+        self.answer([pr(1, "2026-10-21T10:00:00Z", reviews=[review("ben", "COMMENTED")] * 3,
+                        approvals=[review("cy"), review("ana")])])
+        row = self.build()["pull_requests"][0]
+        self.assertEqual((row["reviewers"], row["approved_by"]), (["ben", "cy"], ["cy"]))
+
+    def test_a_spec_line_can_be_a_bullet_and_n_a_names_none(self):
+        self.answer([pr(1, "2026-10-21T10:00:00Z", closes=[{"number": 7, "body": "## References\n\n- **Spec:** docs/specs/004-search"}]),
+                     pr(2, "2026-10-21T10:00:00Z", closes=[{"number": 8, "body": "Spec: N/A"}])])
+        self.assertEqual([r["specs"] for r in self.build()["pull_requests"]], [["docs/specs/004-search"], []])
+
+    def test_the_search_asks_github_for_merged_pull_requests_with_reviewers_types(self):
+        self.build()
+        calls = [json.loads(line) for line in (self.bin / "calls.json").read_text().splitlines()]
+        search = next(c for c in calls if c[:2] == ["api", "graphql"])
+        self.assertIn("q=repo:{owner}/{repo} is:pr is:merged merged:>=2026-10-20", search[search.index("-F") + 1:][:1])
+        query = search[search.index("-f") + 1]
+        self.assertEqual(query.count("author { __typename login }"), 3)
+        self.assertIn("states: [APPROVED]", query)
+
+    def test_a_page_it_cant_read_loses_the_search_with_its_own_reason(self):
+        (self.bin / "search.json").write_text(json.dumps(pages([pr(1, "2026-10-21T10:00:00Z")]) + [{"data": {"search": None}}]))
+        doc = self.build()
+        self.assertEqual(doc["totals"], {"value": None, "why": "GitHub's search returned a page it couldn't read"})
+
+    def test_a_title_cant_break_the_table(self):
+        row = pr(1, "2026-10-21T10:00:00Z")
+        row["title"] = "a | b\\| c\r\nd"
+        self.answer([row])
+        self.assertIn("| a \\| b\\\\\\| c d |", work_report.markdown(self.build()))
+
+    def test_a_since_after_today_is_refused(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            work_report.main(["--since", "2999-01-01"], root=self.root)
 
 
 if __name__ == "__main__":
