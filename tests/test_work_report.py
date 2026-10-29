@@ -58,7 +58,12 @@ def review(who, state="APPROVED", kind="User"):
     return {"state": state, "author": {"__typename": kind, "login": who}, "body": LEAK}
 
 
-def pr(number, merged, branch="fix", author="ana", reviews=(), closes=(), milestone=None, opened=None, approvals=None):
+def labels(*names):
+    return {"nodes": [{"name": n} for n in names]}
+
+
+def pr(number, merged, branch="fix", author="ana", reviews=(), closes=(), milestone=None, opened=None, approvals=None,
+       kinds=()):
     """One pull request node from the GraphQL search, with the fields work_report asks for and a body it mustn't keep.
 
     approvals is the query's separate list of APPROVED reviews: the approving ones among reviews unless given."""
@@ -66,7 +71,7 @@ def pr(number, merged, branch="fix", author="ana", reviews=(), closes=(), milest
         approvals = [r for r in reviews if r["state"] == "APPROVED"]
     return {"number": number, "title": "PR {}".format(number), "url": "https://github.com/o/r/pull/{}".format(number),
             "author": {"__typename": "User", "login": author}, "createdAt": opened or merged, "mergedAt": merged,
-            "headRefName": branch, "milestone": {"title": milestone} if milestone else None,
+            "headRefName": branch, "milestone": {"title": milestone} if milestone else None, "labels": labels(*kinds),
             "closingIssuesReferences": {"nodes": [c if isinstance(c, dict) else {"number": c, "body": LEAK} for c in closes]},
             "reviews": {"nodes": list(reviews)}, "approvals": {"nodes": list(approvals)}, "body": LEAK}
 
@@ -195,8 +200,8 @@ class Report(unittest.TestCase):
                      pr(2, "2026-10-22T10:00:00Z", branch="loop/issue-2")], repo={"nameWithOwner": "acme/app"})
         text = work_report.markdown(self.build())
         self.assertTrue(text.startswith("# Work report: acme/app, Oct 20 2026 to Oct 29 2026\n"))
-        self.assertIn("| [2](https://github.com/o/r/pull/2) | PR 2 | ana | loop | nobody else | 2026-10-22 |", text)
-        self.assertIn("| [1](https://github.com/o/r/pull/1) | PR 1 | ana | hand | ben (approved) | 2026-10-21 |", text)
+        self.assertIn("| [2](https://github.com/o/r/pull/2) | PR 2 | untyped | ana | loop | nobody else | 2026-10-22 |", text)
+        self.assertIn("| [1](https://github.com/o/r/pull/1) | PR 1 | untyped | ana | hand | ben (approved) | 2026-10-21 |", text)
 
     def test_a_search_with_more_than_github_returns_says_its_counts_are_low(self):
         self.answer([pr(1, "2026-10-21T10:00:00Z")], matched=work_report.LIMIT + 1)
@@ -247,6 +252,7 @@ class Report(unittest.TestCase):
         self.assertIn("q=repo:{owner}/{repo} is:pr is:merged merged:>=2026-10-20", search[search.index("-F") + 1:][:1])
         query = search[search.index("-f") + 1]
         self.assertEqual(query.count("author { __typename login }"), 3)
+        self.assertEqual(query.count("labels(first: 20) { nodes { name } }"), 2)
         self.assertIn("states: [APPROVED]", query)
 
     def test_a_page_it_cant_read_loses_the_search_with_its_own_reason(self):
@@ -263,6 +269,24 @@ class Report(unittest.TestCase):
     def test_a_since_after_today_is_refused(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             work_report.main(["--since", "2999-01-01"], root=self.root)
+
+
+    def test_a_type_comes_from_the_pull_requests_label_then_its_issues_never_its_branch(self):
+        self.answer([pr(1, "2026-10-21T10:00:00Z", kinds=["chore", "bug"], closes=[{"number": 7, "body": "", "labels": labels("enhancement")}]),
+                     pr(2, "2026-10-21T10:00:00Z", branch="loop/issue-8", closes=[{"number": 8, "body": "", "labels": labels("P3-medium", "bug")}]),
+                     pr(3, "2026-10-21T10:00:00Z", branch="fix/typo", kinds=["P3-medium"]),
+                     pr(4, "2026-10-22T10:00:00Z", kinds=["documentation"])])
+        doc = self.build()
+        self.assertEqual([r["type"] for r in doc["pull_requests"]], ["bug", "bug", None, "documentation"])
+        self.assertEqual(doc["by_type"], [{"type": "bug", "merged": 2, "loop_built": 1},
+                                          {"type": "enhancement", "merged": 0, "loop_built": 0},
+                                          {"type": "documentation", "merged": 1, "loop_built": 0},
+                                          {"type": "chore", "merged": 0, "loop_built": 0},
+                                          {"type": None, "merged": 1, "loop_built": 0}])
+        self.assertIn("1 of 4 merged pull requests have no type label (bug, enhancement, documentation or chore).", doc["watch"])
+        text = work_report.markdown(doc)
+        self.assertIn("| bug | 2 | 1 |", text)
+        self.assertIn("| untyped | 1 | 0 |", text)
 
 
 if __name__ == "__main__":

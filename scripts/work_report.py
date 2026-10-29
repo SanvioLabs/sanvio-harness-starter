@@ -11,15 +11,18 @@ It reads, through gh, in the harness root or the repo under projects/:
     pull_requests  each pull request merged on or after --since, through one GraphQL search: its number,
                    title, address, author's login, when it opened and merged, the issues it closes, the
                    milestones it and those issues are on, who else reviewed it and who else approved it,
-                   and the specs its closed issues name. loop_built is true when its branch is loop/issue-N, the branch the loop
+                   the specs its closed issues name, and its type. loop_built is true when its branch is loop/issue-N, the branch the loop
                    opens; the loop opens it as whoever runs the loop, so it counts as that login's. A
                    review counts when its author isn't the pull request's and isn't a bot (GitHub's Bot
                    type, which gh's own reviews field doesn't show), and isn't pending or dismissed. An
                    approval is such a review in the APPROVED state, read on its own so a long thread of
-                   comments can't push it out of the first REVIEWS
+                   comments can't push it out of the first REVIEWS. Its type is the first of TYPES
+                   among its own labels, or else among its closed issues' labels, or null: never a
+                   guess from its branch or title
     totals         counts over those, and the median minutes from opened to merged
     by_person      for each login that authored or reviewed one: the same counts, and reviews_given, how
                    many of the others' pull requests it reviewed
+    by_type        merged and loop_built for each of TYPES, then untyped
     by_day         every UTC day from --since to today's UTC date, oldest first, with merged and loop_built
     milestones     GitHub milestones: closed, the ones closed on or after --since, and open, each with
                    how many of what's on it are done and still open (GitHub counts its pull requests
@@ -32,7 +35,7 @@ It reads, through gh, in the harness root or the repo under projects/:
                    only what merged, newest first: what shipped, in words. It reads headings of the shape
                    "## YYYY-MM-DD: Name", and says so when the file has none
     watch          sentences on what a lead would ask about: merged work nobody else approved, work on no
-                   milestone or spec, a milestone closed late or with issues open, one past its due date,
+                   milestone or spec, work with no type, a milestone closed late or with issues open, one past its due date,
                    and a search that stopped at its limit
 
 Milestones are only what GitHub records: a release or a closed milestone. It never picks one, and a
@@ -75,12 +78,14 @@ QUERY = """query($q: String!, $endCursor: String) {
       number title url createdAt mergedAt headRefName
       author { __typename login }
       milestone { title }
-      closingIssuesReferences(first: 20) { nodes { number body milestone { title } } }
+      labels(first: 20) { nodes { name } }
+      closingIssuesReferences(first: 20) { nodes { number body milestone { title } labels(first: 20) { nodes { name } } } }
       reviews(first: %d) { nodes { state author { __typename login } } }
       approvals: reviews(first: 20, states: [APPROVED]) { nodes { author { __typename login } } }
     } }
   }
 }""" % REVIEWS
+TYPES = ("bug", "enhancement", "documentation", "chore")  # steering/tickets.md's type labels, in this order
 COUNTED_REVIEWS = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
 SPEC_LINE = re.compile(r"^\s*(?:[-*]\s+)?\**Spec:\**\s*(\S+)", re.M)
 NO_SPEC = {"n/a", "none", "-"}
@@ -140,6 +145,16 @@ def spec_of(issue):
     return found.group(1)[:120]
 
 
+def type_of(*labelled):
+    """The first of TYPES on the first item in labelled that carries one, or None."""
+    for item in labelled:
+        names = {label.get("name") for label in nodes(item.get("labels"))}
+        for kind in TYPES:
+            if kind in names:
+                return kind
+    return None
+
+
 def pull_request_rows(prs):
     """One row per merged pull request, oldest merge first."""
     rows = []
@@ -168,6 +183,7 @@ def pull_request_rows(prs):
             "reviewers": sorted({who for who, _ in reviews} | approvers),
             "approved_by": sorted(approvers),
             "specs": sorted({s for s in map(spec_of, issues) if s}),
+            "type": type_of(pr, *issues),
         })
     return sorted(rows, key=lambda r: (r["merged"], r["number"]))
 
@@ -188,6 +204,11 @@ def by_person(rows):
     people = [dict(counts([r for r in rows if r["author"] == who]), login=who,
                    reviews_given=sum(1 for r in rows if who in r["reviewers"])) for who in logins]
     return sorted(people, key=lambda p: (-p["merged"], -p["reviews_given"], p["login"]))
+
+
+def by_type(rows):
+    return [{"type": kind, "merged": sum(1 for r in rows if r["type"] == kind),
+             "loop_built": sum(1 for r in rows if r["type"] == kind and r["loop_built"])} for kind in TYPES + (None,)]
 
 
 def by_day(rows, since, today):
@@ -270,6 +291,10 @@ def watch(doc, today):
         unapproved = n - totals["approved_by_another"]
         if unapproved:
             out.append("{} of {} merged pull requests weren't approved by anyone but their author.".format(unapproved, n))
+        untyped = next(t["merged"] for t in doc["by_type"] if t["type"] is None)
+        if untyped:
+            out.append("{} of {} merged pull requests have no type label ({}).".format(
+                untyped, n, ", ".join(TYPES[:-1]) + " or " + TYPES[-1]))
         unlinked = n - totals["on_a_milestone_or_spec"]
         if unlinked:
             out.append("{} of {} merged pull requests are on no milestone and name no spec.".format(unlinked, n))
@@ -298,11 +323,11 @@ def build(root, since, today, name=None, now=None):
     doc = {"schema": SCHEMA, "generated": now.isoformat(timespec="seconds"), "repo": name,
            "since": since, "until": today.isoformat(), "truncated": matched > LIMIT}
     if prs is None:
-        for key in ("pull_requests", "totals", "by_person", "by_day", "specs"):
+        for key in ("pull_requests", "totals", "by_person", "by_type", "by_day", "specs"):
             doc[key] = missing(why)
     else:
         rows = pull_request_rows(prs)
-        doc.update(pull_requests=rows, totals=counts(rows), by_person=by_person(rows),
+        doc.update(pull_requests=rows, totals=counts(rows), by_person=by_person(rows), by_type=by_type(rows),
                    by_day=by_day(rows, since, today), specs=spec_rows(rows))
     raw = flat(gh(root, "api", "repos/{owner}/{repo}/milestones?state=all&per_page=100", "--paginate"))
     doc["milestones"] = milestone_rows(raw, since) if raw is not None else missing("gh unavailable")
@@ -383,6 +408,12 @@ def markdown(doc):
         out += ["", "Open:", ""]
         out += ["- {}: {} of {} done{}".format(m["title"], m["issues_closed"], m["issues_closed"] + m["issues_open"],
                                                         ", due " + short(m["due"]) if m["due"] else "") for m in milestones["open"]]
+    out += ["", "## By type", ""]
+    if unavailable(doc["by_type"]):
+        out += ["Not available: {}.".format(doc["by_type"]["why"])]
+    else:
+        out += ["| Type | Merged | By the loop |", "|---|---:|---:|"]
+        out += ["| {} | {} | {} |".format(t["type"] or "untyped", t["merged"], t["loop_built"]) for t in doc["by_type"]]
     out += ["", "## By person", ""]
     if unavailable(doc["by_person"]):
         out += ["Not available: {}.".format(doc["by_person"]["why"])]
@@ -415,9 +446,9 @@ def markdown(doc):
             out += ["- and {} more in CHANGELOG.md".format(len(shipped) - SHIPPED_SHOWN)]
     if not unavailable(doc["pull_requests"]) and doc["pull_requests"]:
         out += ["", "## Pull requests", "",
-                "| # | Title | Author | Built | Reviewed by | Merged |", "|---:|---|---|---|---|---|"]
-        out += ["| {} | {} | {} | {} | {} | {} |".format(
-            "[{}]({})".format(r["number"], r["url"]) if r["url"] else r["number"], cell(r["title"]), r["author"],
+                "| # | Title | Type | Author | Built | Reviewed by | Merged |", "|---:|---|---|---|---|---|---|"]
+        out += ["| {} | {} | {} | {} | {} | {} | {} |".format(
+            "[{}]({})".format(r["number"], r["url"]) if r["url"] else r["number"], cell(r["title"]), r["type"] or "untyped", r["author"],
             "loop" if r["loop_built"] else "hand",
             ", ".join(w + (" (approved)" if w in r["approved_by"] else "") for w in r["reviewers"]) or "nobody else",
             r["merged"]) for r in reversed(doc["pull_requests"])]

@@ -1,6 +1,6 @@
 ---
 name: work-report
-description: Write a one-page report of what got done in a repo over a period, for a lead or a team: what merged and who made and approved it, what the loop built, the milestones GitHub recorded, the specs it touched, a chart of merges, and what to watch. Reads GitHub through gh and the repo's CHANGELOG.md and changes nothing. Use when someone asks for a "work report", "what got done", "what did we ship", "which milestones did we hit", "a report for my lead", "showcase the work", or "what did the team do this sprint".
+description: Write a one-page report of what got done in a repo over a period, for a lead or a team: what merged by type (bug, enhancement, documentation, chore) and who made and approved it, what the loop built, the milestones GitHub recorded, the specs it touched, a chart of merges, and what to watch. Reads GitHub through gh and the repo's CHANGELOG.md and changes nothing. Use when someone asks for a "work report", "what got done", "what did we ship", "which milestones did we hit", "a report for my lead", "showcase the work", or "what did the team do this sprint".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
@@ -10,7 +10,7 @@ One page on what got done in one repo over a period, built from what GitHub
 recorded rather than what anyone remembers. [`scripts/work_report.py`](../../scripts/work_report.py) reads
 the facts: merged pull requests, who made, reviewed and approved each one,
 the issues they closed, releases, GitHub milestones, the `Spec:` lines on
-closed issues, and the repo's [`CHANGELOG.md`](../../CHANGELOG.md) as merged on GitHub's default
+closed issues, each one's type label, and the repo's [`CHANGELOG.md`](../../CHANGELOG.md) as merged on GitHub's default
 branch. It also prints what to watch.
 You add the summary, from those numbers only.
 
@@ -75,6 +75,10 @@ puts in:
 - **An issue names its spec** with one line in its References section:
   `Spec: docs/specs/004-search REQ-002`. The path is the spec; what follows
   it is free text, so several requirements of one spec count together.
+- **A type is a label:** exactly one of `bug`, `enhancement`,
+  `documentation` or `chore` on each issue, per [`steering/tickets.md`](../../steering/tickets.md). A pull
+  request takes its own label's type, or else its closed issue's, and
+  otherwise counts as untyped. It's never guessed from a branch or a title.
 - **Loop work needs nothing.** The script knows it by the loop's branch,
   `loop/issue-N`.
 

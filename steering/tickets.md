@@ -43,9 +43,16 @@ whole token budget finding out.
 outcomes, it's two tickets. If it can't fit one pull request, split it so each
 part can be tested on its own.
 
-`stelliad:create-ticket` also suggests priority and risk labels. The starter
-ships only the loop's labels, so it says when one is missing, and that's fine
-to leave.
+**One type label.** Every issue carries exactly one of `bug`, `enhancement`,
+`documentation` or `chore` (maintenance: dependencies, tooling, tidying). A
+pull request takes its type from its own label, or else from the issue it
+closes, and [`skills/work-report/`](../skills/work-report/) counts work by it. GitHub creates the
+first three with a new repo; `gh label create chore --description
+"Maintenance: dependencies, tooling, tidying"` adds the fourth.
+
+`stelliad:create-ticket` also suggests priority and risk labels. Beyond the
+type and the loop's labels the starter ships none, so it says when one is
+missing, and that's fine to leave.
 
 ## Ready for the loop
 
@@ -75,6 +82,8 @@ skill checks them and asks before it labels.
   with a comment. The loop doesn't read priority: of the issues with nothing
   left to wait for, it takes the lowest-numbered.
 - It isn't assigned to someone else.
+- It carries exactly one type label: `bug`, `enhancement`, `documentation` or
+  `chore`.
 
 ## While it's worked
 

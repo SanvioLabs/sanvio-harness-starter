@@ -18,7 +18,8 @@ Scope: what it changes, and what it leaves alone.
 Risk: one level word, with a reason if it's one of the top two.
 
 Add Verification, Context, Dependencies or References as their own sections
-only when they carry something. Title: a verb and the outcome.
+only when they carry something. Title: a verb and the outcome. Label: exactly
+one type, bug, enhancement, documentation or chore.
 
 Leave the loop-ready label off until someone has read this whole issue: a
 ticket is an instruction to an agent.

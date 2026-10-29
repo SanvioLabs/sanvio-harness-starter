@@ -49,6 +49,12 @@ it gets read before it's labelled.
    - **Nothing outside the repo:** no deploying, sending, publishing,
      credentials, or anything the guard would refuse.
    - **Not assigned to someone else.** The loop skips those anyway.
+   - **Exactly one type label:** `bug`, `enhancement`, `documentation` or
+     `chore`. With none, suggest the one that fits what it asks, and add it
+     with the ready label in step 5. If the repo has no `chore` label yet,
+     `gh label create chore --description "Maintenance: dependencies, tooling,
+     tidying"` (with `--repo` for a project) makes it, asked first like the
+     label itself.
 3. **If something's missing,** draft the missing part (usually the
    acceptance criteria) in the shape of [`.github/ISSUE_TEMPLATE/loop-task.md`](../../.github/ISSUE_TEMPLATE/loop-task.md), and show it. The person adds it to the issue, or tells you to.
 4. **Check where the pull request would go:** `gh repo view --json visibility
@@ -56,7 +62,8 @@ it gets read before it's labelled.
    ask whether that's meant. A copy of the public starter is public until
    someone makes it otherwise.
 5. **Ask, then label:** "Label #N with the ready label?" On a yes,
-   `gh issue edit <N> --add-label <ready label>` (with `--repo` for a project).
+   `gh issue edit <N> --add-label <ready label>` (with `--repo` for a project),
+   and its type label in the same `--add-label`, comma-separated, if it had none.
    Label only after step 1's verbatim body and comments have been shown in this
    conversation, or when the person wrote the issue. A yes to your summary
    doesn't count.
