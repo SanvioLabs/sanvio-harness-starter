@@ -278,6 +278,80 @@ group('activity', () => {
     expect(section.tables?.[2]?.rows).toEqual([['credential-file', '3']])
     expect(text(section.lines)).toBe('Guard asked 2 times, since Oct 13')
   })
+
+  const SKILLS = { 'review-pr': { tokens: 410_000, cost_usd: 0.62 }, learn: { tokens: 0, cost_usd: 0 } }
+  const spending = (over: object = {}): Doc => ({ ...DOC, activity: { ...(DOC.activity as object), skill_spend: SKILLS,
+    agent_spend: { reviewer: { tokens: 305_000, cost_usd: 0.45 } }, command_spend: {}, unpriced: {},
+    prices_checked: '2026-10-01', spend_at: '2026-10-27T12:00:00+00:00', ...over } })
+
+  test('skills and agents add their tokens and estimated cost, and what the guard refused stays two columns', () => {
+    const [skills, agents, guard] = activity(spending()).tables ?? []
+    expect(skills?.head).toEqual(['Skill', 'Times', 'Tokens', 'Est. cost'])
+    expect(skills?.rows).toEqual([['review-pr', '5', '410k', '$0.62'], ['learn', '1', '0', '$0.00']])
+    expect(agents?.head).toEqual(['Agent', 'Times', 'Tokens', 'Est. cost'])
+    expect(agents?.rows).toEqual([['reviewer', '5', '305k', '$0.45']])
+    expect(guard?.head).toEqual(['Guard refused', 'Times'])
+    expect(guard?.rows).toEqual([['credential-file', '3']])
+  })
+  test('a command adds them too, and the top five stay in order of use', () => {
+    const commands = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }
+    const t = activity(spending({ commands, command_spend: { f: { tokens: 1, cost_usd: 0 }, a: { tokens: 9_000_000, cost_usd: 99 } } })).tables?.[2]
+    expect(t?.head).toEqual(['Command', 'Times', 'Tokens', 'Est. cost'])
+    expect(t?.rows).toEqual([['f', '6', '1', '$0.00'], ['e', '5', '?', '?'], ['d', '4', '?', '?'], ['c', '3', '?', '?'], ['b', '2', '?', '?']])
+  })
+  test("a name the spend doesn't list shows ?, never 0 or $0.00", () => {
+    const t = activity(spending({ skill_spend: { 'review-pr': SKILLS['review-pr'] } })).tables?.[0]
+    expect(t?.rows).toEqual([['review-pr', '5', '410k', '$0.62'], ['learn', '1', '?', '?']])
+  })
+  test("a cost with no price shows ?, beside the tokens it read", () => {
+    const t = activity(spending({ skill_spend: { 'review-pr': { tokens: 410_000, cost_usd: null } } })).tables?.[0]
+    expect(t?.rows[0]).toEqual(['review-pr', '5', '410k', '?'])
+  })
+  test('each list reads its own field: one the script left out stays two columns', () => {
+    for (const agent_spend of [undefined, null, []]) {
+      const [skills, agents] = activity(spending({ agent_spend })).tables ?? []
+      expect(skills?.head.length).toBe(4)
+      expect(agents?.head).toEqual(['Agent', 'Times'])
+    }
+  })
+  test('says what the estimate rests on, ahead of the asks, with the time as the document wrote it', () => {
+    expect(activity(spending()).lines).toEqual([
+      { tone: 'quiet', text: 'Est. cost: an estimate from .harness/prices.json, checked Oct 1,' },
+      { tone: 'quiet', text: "worked out Oct 27 12:00. Skills' and commands' tokens are" },
+      { tone: 'quiet', text: 'attributed from where each started to the next prompt.' },
+      { tone: 'quiet', text: 'Guard asked 2 times, since Oct 13' },
+    ])
+    expect(text(activity(spending({ spend_at: '2026-10-27T23:30:00-07:00' })).lines)).toContain('worked out Oct 27 23:30.')
+  })
+  test("a price file with no date, or no time for the split, says ?", () => {
+    const lines = text(activity(spending({ prices_checked: null, spend_at: null })).lines)
+    expect(lines).toContain('checked ?,')
+    expect(lines).toContain('worked out ?.')
+  })
+  test('each line fits the 66 columns of the pane, even with the longest dates', () => {
+    const doc = spending({ prices_checked: '2026-09-30', spend_at: '2026-09-30T23:59:00-07:00', unpriced: { a: 'no prices.json' } })
+    for (const l of activity(doc).lines) expect(l.text.length <= 66).toBe(true)
+  })
+  test('says to fill the price file only when that is why every unpriced model has no price', () => {
+    const lines = (unpriced: object) => text(activity(spending({ unpriced })).lines)
+    const fill = 'Fill .harness/prices.json to see dollars'
+    expect(lines({ a: 'no prices.json', b: 'no prices.json' })).toContain(`next prompt.\n${fill}\nGuard asked`)
+    expect(lines({})).not.toContain(fill)
+    expect(lines({ a: 'not in prices.json' })).not.toContain(fill)
+    expect(lines({ a: 'unreadable' })).not.toContain(fill)
+    expect(lines({ a: 'no prices.json', b: 'not in prices.json' })).not.toContain(fill)
+  })
+  test('with no spend fields it draws as it did, and with no table to carry them no estimate either', () => {
+    const before = activity(DOC)
+    expect(before.tables?.every(t => t.head.length === 2)).toBe(true)
+    expect(text(before.lines)).toBe('Guard asked 2 times, since Oct 13')
+    const unused = activity(spending({ skills: {}, agents: {}, commands: {} }))
+    expect(unused.tables?.map(t => t.head[0])).toEqual(['Guard refused'])
+    expect(text(unused.lines)).toBe('Guard asked 2 times, since Oct 13')
+  })
+  test("the loop's spend doesn't change with them", () => {
+    expect(spend(spending())).toEqual(spend(DOC))
+  })
 })
 
 group('the range', () => {

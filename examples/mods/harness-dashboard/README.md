@@ -5,7 +5,7 @@ saved evals, Claude Code's transcripts and GitHub. This mod opens a pane
 beside the conversation that brings them together, with what needs you first.
 In a terminal pane 66 columns wide, with made-up numbers:
 
-<img src="../../../docs/harness-dashboard.svg" width="480" alt="The Harness pane in a terminal. Under the header, the buttons Refresh, 7 days, 14 days in orange as the one chosen, and 30 days. Waiting on you: four pull requests, one in yellow whose checks are still running and a draft in red whose checks fail and that conflicts, then a blocked issue in red with why. Loop spend: a bar a day from Oct 16 to Oct 27, today's in orange, with Oct 20 and Oct 27 under them, then tables of the spend by period, issue and model. Throughput and rework, with the 67% that needed a commit in yellow. Evals, with a stale reviewer in yellow. Conversations: a bar a day from Oct 15 to Oct 27, then tokens by side and model. Activity: the skills, agents and commands used, and the guard's one refusal in yellow.">
+<img src="../../../docs/harness-dashboard.svg" width="480" alt="The Harness pane in a terminal. Under the header, the buttons Refresh, 7 days, 14 days in orange as the one chosen, and 30 days. Waiting on you: four pull requests, one in yellow whose checks are still running and a draft in red whose checks fail and that conflicts, then a blocked issue in red with why. Loop spend: a bar a day from Oct 16 to Oct 27, today's in orange, with Oct 20 and Oct 27 under them, then tables of the spend by period, issue and model. Throughput and rework, with the 67% that needed a commit in yellow. Evals, with a stale reviewer in yellow. Conversations: a bar a day from Oct 15 to Oct 27, then tokens by side and model. Activity: the skills, agents and commands used, each with its tokens and estimated cost, a question mark where there is no figure, and the guard's one refusal in yellow, then what the estimate rests on.">
 
 <details>
 <summary>The same pane as text</summary>
@@ -105,20 +105,23 @@ Since Oct 15, cache reads included
 ──────────────────────────────────────────────────────────────────
 
 Activity
-Skill                                                        Times
-review-pr                                                        9
-learn                                                            2
+Skill                                       Times Tokens Est. cost
+review-pr                                       9   410k     $0.61
+learn                                           2      ?         ?
 
-Agent                                                        Times
-reviewer                                                         2
-security-reviewer                                                1
+Agent                                       Times Tokens Est. cost
+reviewer                                        2   305k     $0.46
+security-reviewer                               1      ?         ?
 
-Command                                                      Times
-standup                                                          9
+Command                                     Times Tokens Est. cost
+standup                                         9   8.2M    $62.12
 
 Guard refused                                                Times
 credential-file                                                  1
 
+Est. cost: an estimate from .harness/prices.json, checked Oct 1,
+worked out Oct 27 12:00. Skills' and commands' tokens are
+attributed from where each started to the next prompt.
 Guard asked 2 times, since Oct 15
 ```
 
@@ -165,14 +168,14 @@ A change to what the mod does raises `version` in its [`.claude-plugin/plugin.js
 
 | Section | Shows |
 |---|---|
-| The header | The harness's folder, and when the numbers were read. **7 days**, **14 days** and **30 days** pick how many days it counts, today among them: 14 until you pick another, and the pick is kept across reloads. Picking one reads straight away. A range you haven't read before takes a few seconds more the first time. **Reading…** until the first read ends. That can take a minute, because the first read goes through every Claude Code transcript once and keeps what it found in `.harness/cache/`; later reads took about two seconds here. **Refresh failed** in red when the last refresh didn't work, with the time of the numbers still shown and why under it |
+| The header | The harness's folder, and when the numbers were read. **7 days**, **14 days** and **30 days** pick how many days it counts, today among them: 14 until you pick another, and the pick is kept across reloads. Picking one reads straight away, and works out what each skill, agent and command spent again, because only the last range's is kept. **Reading…** on the Refresh button during any read, and the numbers shown stay the last range's until it ends. The first read can take a minute or more, because it goes through every Claude Code transcript and keeps what it found in `.harness/cache/`; later reads use that again. What each skill, agent and command spent is kept for 15 minutes, then worked out from the transcripts again. Measured on one machine on 2026-10-30, a read took about 2 seconds with that kept, and 23 to 29 seconds when it was worked out again. Expect that to grow with how many transcripts you have. **Refresh failed** in red when the last refresh didn't work, with the time of the numbers still shown and why under it |
 | **Waiting on you** | Each open pull request, how long it has waited, whether it's a draft, its checks and whether it conflicts with its base, then each issue the loop blocked, with why. Red when checks fail or it conflicts, yellow while they run. **conflicts unknown** while GitHub hasn't worked it out. Without `gh`, signed out, or a list in a shape it doesn't know, it says in red that it couldn't read them: never that nothing is waiting |
 | **Loop spend** | Three tables: the loop's estimated dollars and tokens today, over the last 7 days, since the date the numbers start and per pull request it opened; the five issues that cost most; and each model, costliest first. Runs that recorded no model show as **model not recorded**. When the loop's records start later than that date, it says when, and the chart starts there |
 | **Throughput and rework** | How the loop's recent issues ended and how many took more than one round, then how many of its merged pull requests needed someone else's commit before merging, split into fixes and merges from main |
 | **Evals** | Each reviewer's newest saved eval: stable, flaky and failing cases, which ones fail, and **stale** when the agent, a brief, a case or the eval script changed after it was saved. **stale: unknown** when git couldn't say |
 | The daily charts | At the top of **Loop spend** and **Conversations**: one bar per day, today in orange, under a line naming the busiest day. The terminal draws them in coloured blocks the width of the pane, with each day and its figures under its bar when the pane has 7 columns a day: cost and tokens for spend, tokens for conversations. Narrower, as for Conversations above, it writes only the day, under every 7th bar counting back from today's. A day whose runs recorded no cost shows **?**, not $0.00. On other surfaces it draws them as a picture whose bars say their day and value when you hover, with every bar's figures under it up to 14 days and every 7th bar's day beyond that; the tests cover Claude Desktop's, and nobody has looked at it in VS Code or the mobile app yet. A `dashboard_data.py` that doesn't give daily figures says so instead |
 | **Conversations** | Claude Code's tokens in the harness and in the loop's worktrees, with sessions and the four biggest models. Cache reads are most of it. Its chart covers every day counted, since the harness's own sessions start before the loop's |
-| **Activity** | The skills, agents and slash commands you used most, what the guard refused and how often it asked, from your usage log |
+| **Activity** | The skills, agents and slash commands you used most, what the guard refused and how often it asked, from your usage log. Skills, agents and commands also show **Tokens** and **Est. cost**, from the transcripts of conversations at the harness's root: a subagent's are measured, and a skill's or command's are attributed from where it started to the next prompt. **Est. cost** prices those tokens from `.harness/prices.json`, a file you keep yourself: copy [`scripts/prices.example.json`](../../../scripts/prices.example.json), then put in each model you use, from your provider's price list, with the date you checked it. The example's own model and date price nothing of yours. The lines under the tables say when its prices were checked and when the figures were worked out. **?** means no figure, never $0.00: a name the transcripts don't list, or a model with no price. With no price file it says to fill one. **Times** and **Tokens** come from different sources, so don't divide one by the other. A `dashboard_data.py` that doesn't give these figures, or couldn't read the transcripts, draws just **Times** |
 
 A section whose source is missing or can't be read says why, dimmed, and the
 rest still show. The range sets every section but **Throughput and rework**'s
@@ -184,7 +187,8 @@ isn't in it, so **Since** can match **7 days** in a young harness.
 
 It spends no model tokens: it runs a Python script and draws what it prints.
 It runs `python3 scripts/dashboard_data.py --json --since <the range's first day>` once when it opens, then
-every five minutes while it's open, and **Refresh** reads now. One read runs at
+every five minutes while it's open, and **Refresh** reads now. About every 15 minutes, and when you pick another
+range, a read goes through every transcript again. One read runs at
 a time, and a refresh that fails keeps the last numbers it had. After you close
 the pane it stops at the next five-minute mark; a read already running then
 finishes.

@@ -325,19 +325,47 @@ function top(v: unknown, n = 5): string[][] {
     .map(e => [e.name, String(e.c)])
 }
 
+// Oct 27 12:00, read from an ISO time's own text: hhmm() would give each machine's own zone.
+function stamp(text: string | null): string {
+  const clock = text ? /T(\d{2}:\d{2})/.exec(text)?.[1] : null
+  return clock ? `${day(text)} ${clock}` : day(text)
+}
+
+// What the estimate rests on. Several lines, each within the 66 columns the terminal's pane has,
+// because a line wider than the pane is clipped. The last says what to do when no model has a price
+// only because there's no price file. A model missing from a file that exists is the README's to explain.
+function estimate(a: Obj): Line[] {
+  const whys = Object.values(obj(a.unpriced) ?? {})
+  return [
+    line('quiet', `Est. cost: an estimate from .harness/prices.json, checked ${day(str(a.prices_checked))},`),
+    line('quiet', `worked out ${stamp(str(a.spend_at))}. Skills' and commands' tokens are`),
+    line('quiet', 'attributed from where each started to the next prompt.'),
+    ...(whys.length && whys.every(w => w === 'no prices.json') ? [line('quiet', 'Fill .harness/prices.json to see dollars')] : []),
+  ]
+}
+
 // What the harness did in the person's sessions, a table each: skills, agents, commands and what the
-// guard refused, then how often it asked.
+// guard refused, then how often it asked. A script that says what each name spent adds its tokens and
+// estimated cost, ? where it has no figure, and what the estimate rests on.
 export function activity(doc: Doc): Section {
   const why = missing(doc.activity)
   const a = obj(doc.activity)
   if (why || !a) return { key: 'activity', title: 'Activity', lines: [line('quiet', why ?? 'not in this script')] }
   const tables: Table[] = []
-  for (const [field, label] of [['skills', 'Skill'], ['agents', 'Agent'], ['commands', 'Command'], ['guard_refusals', 'Guard refused']] as const) {
+  let estimated = false
+  for (const [field, label, spentField] of [['skills', 'Skill', 'skill_spend'], ['agents', 'Agent', 'agent_spend'], ['commands', 'Command', 'command_spend'], ['guard_refusals', 'Guard refused', null]] as const) {
     const rows = top(a[field])
-    if (rows.length) tables.push({ key: `activity-${field}`, head: [label, 'Times'], rows,
+    if (!rows.length) continue
+    const spent = spentField && obj(a[spentField])
+    estimated ||= !!spent
+    tables.push({ key: `activity-${field}`, head: spent ? [label, 'Times', 'Tokens', 'Est. cost'] : [label, 'Times'],
+      rows: spent ? rows.map(r => {
+        const t = total(spent[r[0]!])
+        return [...r, tokens(t.tokens), money(t.cost)]
+      }) : rows,
       tones: field === 'guard_refusals' ? rows.map(() => 'now') : undefined })
   }
-  const out = [line('quiet', `Guard asked ${num(a.asks) ?? 0} times, since ${day(str(doc.since))}`)]
+  const out = [...(estimated ? estimate(a) : []), line('quiet', `Guard asked ${num(a.asks) ?? 0} times, since ${day(str(doc.since))}`)]
   if (!tables.length) out.unshift(line('quiet', 'Nothing used yet'))
   return { key: 'activity', title: 'Activity', lines: out, tables }
 }
