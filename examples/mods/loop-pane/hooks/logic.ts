@@ -29,6 +29,20 @@ export function loopLabel(seen: Seen): string {
   return seen.project ?? seen.root.split('/').filter(Boolean).pop() ?? seen.root
 }
 
+// How many jobs a live loop is on. The lock is the truth about running, so with no live lock it's
+// none, whatever the file's rows say. A stop request doesn't change it: those jobs are still being worked.
+export function workingCount(seen: Seen): number {
+  if (!seen.isLocked) return 0
+  return seen.status?.issues.filter(r => r.state === 'working').length ?? 0
+}
+
+// What a loop's button says: its name, with a marker while it's on a job and a count past one.
+export function loopButtonLabel(seen: Seen): string {
+  const working = workingCount(seen)
+  if (!working) return loopLabel(seen)
+  return `● ${loopLabel(seen)}${working > 1 ? ` ${working}` : ''}`
+}
+
 const STEPS: Record<string, string> = {
   SHAPE: 'planning',
   BUILD: 'building',
@@ -129,7 +143,7 @@ function loopState(seen: Seen, now: number): Line {
   const up = Number.isFinite(from) ? ` · up ${duration(now - from)}` : ''
   if (seen.isLocked && seen.isStopping) return { tone: 'now', text: '● Stopping after this step' }
   if (seen.isLocked) {
-    const working = seen.status?.issues.filter(r => r.state === 'working').length ?? 0
+    const working = workingCount(seen)
     if (!working) return { tone: 'idle', text: `● Idle${up}` }
     return { tone: 'now', text: `● Running${working > 1 ? ` ${working}` : ''}${up}` }
   }
