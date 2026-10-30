@@ -79,6 +79,9 @@ DEFAULTS = {
     "review_agent": "",
     # Run by this script, never by the agent, so the agent can't grade its own work.
     "test_command": "python3 -m unittest discover -s tests",
+    # Run by this script after each build, in the worktree, and what it writes goes in that round's commit.
+    # For files the build agent can't make itself. Empty means nothing runs.
+    "generate_command": "",
     "base": "main",
     "ready_label": "loop-ready",
     "blocked_label": "loop:blocked",
@@ -262,9 +265,13 @@ def next_start(hours, ts):
     return None  # not reached: every set of hours has a day
 
 
+# The harness's own generated files: the dashboard's sample, then the picture drawn from it. A project doesn't get this.
+HARNESS_GENERATE = "UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample && python3 scripts/draw_dashboard.py"
+
+
 def load_config(root):
-    """The defaults, overlaid with loop.json at the repo root if there is one."""
-    cfg = dict(DEFAULTS)
+    """The defaults and the harness's generate command, overlaid with loop.json at the repo root if there is one."""
+    cfg = dict(DEFAULTS, generate_command=HARNESS_GENERATE)
     path = Path(root) / "loop.json"
     if path.exists():
         cfg.update(json.loads(path.read_text()))
@@ -273,7 +280,7 @@ def load_config(root):
 
 # What a project's own loop.json may set. Everything else is the machine's: it decides what the loop may
 # run and spend, so it comes from the harness's loop.json, never from a clone anyone can push to.
-PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label")
+PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label", "generate_command")
 MACHINE_KEYS = frozenset(DEFAULTS) - set(PROJECT_KEYS) | {"allow_lockfile_changes"}
 
 
@@ -515,15 +522,24 @@ def pick(issues, me, cfg, only=None):
     return None
 
 
-def shape_prompt(issue, rules=""):
+def generated(generate, then):
+    """The sentence a prompt adds about the generate command, or nothing when there isn't one."""
+    if not generate:
+        return ""
+    return (" After each build, the loop runs `{}` in the worktree and puts what it writes in that "
+            "round's commit. {}").format(generate, then)
+
+
+def shape_prompt(issue, rules="", generate=""):
     """rules, for a project, is rules_preamble(): it goes first, ahead of the ticket. So for every prompt."""
     return rules + (
         "You are planning, not building. Do not edit any file.\n"
         "Read the ticket below and the rules in AGENTS.md. Write the smallest version of "
         "this change that would count as done, as plain markdown under 40 lines: what "
-        "changes, in which files, what check proves it, and what you are leaving out.\n\n"
+        "changes, in which files, what check proves it, and what you are leaving out.{generate}\n\n"
         "TICKET #{number}: {title}\n{body}\n".format(
-            number=issue["number"], title=issue["title"], body=issue.get("body") or "")
+            number=issue["number"], title=issue["title"], body=issue.get("body") or "",
+            generate=generated(generate, "Don't plan a step that runs it or writes its files by hand."))
     )
 
 
@@ -533,15 +549,15 @@ def tail(text, size=20_000):
     return text if len(text) <= size else "...\n" + text[-size:]
 
 
-def build_prompt(number, plan, review="", tests="", rules=""):
+def build_prompt(number, plan, review="", tests="", rules="", generate=""):
     """Everything goes in the prompt: an agent in a worktree can't read the loop's own folder."""
     prompt = rules + (
         "Make the change for issue #{n} in this git worktree.\n"
         "Keep to the plan below. Don't commit, push or use git for anything but reading. "
         "Don't run the test suite: the loop runs it. Before each step, say in a line what "
         "you're about to do and why: the issue's window shows what you say, not what you "
-        "think. When the change is in place, say in two lines what you changed.\n\nPLAN:\n{plan}\n"
-    ).format(n=number, plan=plan)
+        "think. When the change is in place, say in two lines what you changed.{generate}\n\nPLAN:\n{plan}\n"
+    ).format(n=number, plan=plan, generate=generated(generate, "Don't run it, and don't write its files by hand."))
     if review or tests:
         prompt += (
             "\nAn earlier round failed. Fix exactly what it says.\n\n"
@@ -550,16 +566,18 @@ def build_prompt(number, plan, review="", tests="", rules=""):
     return prompt
 
 
-def review_prompt(plan, diff, tests, code, rules=""):
+def review_prompt(plan, diff, tests, code, rules="", generate=""):
     return rules + (
         "You are the reviewer, in a fresh context. Do not edit any file.\n"
         "Below are the plan, the diff, and the test output (the tests exited {code}). Say "
         "whether the change does what the plan asks, and list the problems that matter, "
         "most important first, one line each.\n"
         "Your last line must be exactly VERDICT: PASS or VERDICT: FIX. PASS only if the "
-        "tests exited 0 and the diff matches the plan.\n\n"
+        "tests exited 0 and the diff matches the plan.{generate}\n\n"
         "PLAN:\n{plan}\n\nDIFF:\n{diff}\n\nTEST OUTPUT:\n{tests}\n"
-    ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests))
+    ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests),
+             generate=generated(generate, "Its files in the diff aren't outside the plan, and don't ask for it to be "
+                                          "run by hand."))
 
 
 def result_line(line):
@@ -1536,8 +1554,9 @@ class Loop:
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
-        code, plan = self.agent("reader_agent", shape_prompt(issue, self.rules), tree, confine=True, number=number,
-                                step="plan")
+        generate = self.cfg.get("generate_command", "")  # .get: a cfg can be built without DEFAULTS
+        code, plan = self.agent("reader_agent", shape_prompt(issue, self.rules, generate), tree, confine=True,
+                                number=number, step="plan")
         self.discard_edits(tree, "SHAPE", "planner", number)
         if code != 0 or not plan.strip():
             return self.block(number, "shape failed (agent exit {})".format(code))
@@ -1556,10 +1575,17 @@ class Loop:
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
-            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules),
+            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules, generate),
                                     tree, number=number, step="build", round_no=round_no)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
+            # Before the add, so what it writes is in this round's commit and counts as a change below.
+            # One that fails doesn't stop the round: the tests and the review see what it left.
+            if generate:
+                gcode = self.sh(generate, cwd=tree, shell=True, timeout=self.cfg["test_timeout"],
+                                env=env_for_tests(os.environ))[0]
+                if gcode != 0:
+                    self.log("GENERATE", "round {} exit {}".format(round_no, gcode), number)
             self.git("add", "-A", cwd=tree)
             # -z keeps a path with spaces whole; --no-renames makes a renamed lockfile a deletion too.
             changed = [p for p in self.git("diff", "--cached", "--name-only", "--no-renames", "-z",
@@ -1612,7 +1638,7 @@ class Loop:
                 return self.block(number, why)
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent(self.reviewer(),
-                                       review_prompt(plan, diff, tout or "(no output)", tcode, self.rules),
+                                       review_prompt(plan, diff, tout or "(no output)", tcode, self.rules, generate),
                                        tree, confine=True, number=number, step="review", round_no=round_no)
             self.discard_edits(tree, "REVIEW", "reviewer", number)
             (folder / "review.md").write_text(review)

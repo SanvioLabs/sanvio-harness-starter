@@ -64,6 +64,10 @@ skill checks them and asks before it labels.
 - At least one acceptance criterion is a test that fails now and passes
   after, which the loop's `test_command` runs. If the proof is something
   else, the loop can't see it, and the reviewer only reads.
+- A file the build agent can't make itself comes from `generate_command`,
+  which the loop runs after each build, committing what it writes. The ticket
+  says the file changes, not that the agent runs the command. A project sets
+  the key in its own `loop.json`; [`HOW-IT-WORKS.md`](../HOW-IT-WORKS.md) has it.
 - Where Stelliad is installed, `stelliad:review-ticket` says READY. Its
   docs call the Ready label `agent-ready`; here it's `loop-ready`, applied
   through `loop-control`.

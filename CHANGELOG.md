@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Generated files in the loop's commit
+
+The loop now runs a new `generate_command` after each build and before the commit, so files the build agent can't make itself land in that round's commit and count as a change. The harness's runs `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample && python3 scripts/draw_dashboard.py`; a project's is empty unless its own `loop.json` sets it. It gets the same environment and timeout as `test_command`, and one that fails logs a `GENERATE` line and the round goes on. The plan, build and review prompts say what it does when it's set. [`scripts/check_mod_versions.py`](scripts/check_mod_versions.py) no longer counts a change to a mod's `hooks/sample.ts`, since only tests read it.
+Files: [`scripts/loop.py`](scripts/loop.py), [`scripts/check_mod_versions.py`](scripts/check_mod_versions.py), [`tests/test_loop.py`](tests/test_loop.py), [`tests/test_mod_versions.py`](tests/test_mod_versions.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`skills/loop-control/SKILL.md`](skills/loop-control/SKILL.md), [`steering/tickets.md`](steering/tickets.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** restart a running loop (`python3 scripts/loop.py stop`, then start it again) to use it.
+
 ## 2026-10-30: Dependencies met on a non-default base
 
 A dependency now counts as met when a merged pull request into `base` says in its body that it closes it, because GitHub fills in the closing references only for the default branch. The loop reads the 200 most recently opened pull requests merged into `base`, so an older dependency is refused until someone takes the `Depends on` line out.

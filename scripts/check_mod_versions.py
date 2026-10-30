@@ -7,8 +7,9 @@
 under examples/mods/ that changes without a higher `version` in its
 .claude-plugin/plugin.json never reaches people who already have it. This
 compares each mod at the merge base with <base> against HEAD. A change only to
-Markdown or to `*.test.ts`/`*.test.tsx` files doesn't count. A mod that's new on
-HEAD, or removed on it, is skipped.
+Markdown, to `*.test.ts`/`*.test.tsx` files or to `hooks/sample.ts`, which only
+the tests read, doesn't count. A mod that's new on HEAD, or removed on it, is
+skipped.
 
 Exits 0 when every changed mod raised its version, 1 when one didn't or its
 version isn't three whole numbers, and 2 when git can't resolve <base>.
@@ -21,7 +22,7 @@ import sys
 MODS = "examples/mods"
 MANIFEST = ".claude-plugin/plugin.json"
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
-NOT_BEHAVIOUR = (".md", ".test.ts", ".test.tsx")
+NOT_BEHAVIOUR = (".md", ".test.ts", ".test.tsx", "/hooks/sample.ts")
 
 
 def git(*args):

@@ -194,6 +194,7 @@ keeps its default:
 | `reader_agent` | `claude -p` | The command that plans and reviews, or a name: `claude`, `codex` or `ollama:<model>`. It's told not to edit, and anything it edits is thrown away. Held to read tools in the checkout when it's `claude`; for `review`, it has to be `claude` or `ollama:<model>` |
 | `review_agent` | empty | The command that reviews, when it's set, or a name: `claude`, `codex` or `ollama:<model>`. Empty means `reader_agent` reviews. Held to read tools the same way, and for `review` it has to be `claude` or `ollama:<model>` |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
+| `generate_command` | For the harness, `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample && python3 scripts/draw_dashboard.py`. For a project, empty | Run by the script after each build, before the commit, in the worktree, with the same environment and timeout as `test_command`. What it writes goes in that round's commit, for files the build agent can't make itself. Empty runs nothing. One that fails logs a `GENERATE` line with its exit code, and the round goes on |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
 | `max_issue_tokens` | `0` | Tokens one run of an issue may use before it's blocked. `0` means no budget. *A token budget* above has the detail |
@@ -357,7 +358,7 @@ script; [`examples/typescript/`](examples/typescript/) has a fuller one. The loo
 isn't on github.com, or a `loop.json` without `test_command`.
 
 Which `loop.json` sets what: the project's own sets only `test_command`,
-`test_timeout`, `base`, `ready_label` and `blocked_label`. Every other key,
+`test_timeout`, `base`, `ready_label`, `blocked_label` and `generate_command`. Every other key,
 `agent`, `max_workers` and `allow_lockfile_changes` among them, comes from the
 harness's `loop.json`, and can be set for one project under `"projects"` there,
 keyed by the folder name:
