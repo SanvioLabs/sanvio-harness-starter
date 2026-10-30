@@ -32,7 +32,7 @@ fine).
 The token report has a new section, `## By activity`, for conversations at the harness's root: runs
 and tokens for each subagent type, each skill and each slash command. A subagent's tokens are
 measured from its own transcript; a skill's or command's are attributed from where it started to the
-next prompt you typed. Repos under `projects/` and the loop's worktrees are left out.
+next prompt you typed. Repos under [`projects/`](projects/) and the loop's worktrees are left out.
 Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py).
 
 **Do:** nothing. The harness report prints the new section.

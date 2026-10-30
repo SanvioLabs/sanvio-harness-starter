@@ -291,6 +291,16 @@ class Activity(Harness):
             "skills": {},
             "commands": {"plan": {"runs": 1, "models": ONE}}})
 
+    def test_a_subagent_with_no_tokens_is_still_a_run(self):
+        write(self.transcripts, "proj/s1/subagents/agent-a.jsonl", [said(self.root, "go")])
+        write(self.transcripts, "proj/s1/subagents/agent-a.meta.json", [{"agentType": "reviewer"}])
+        self.assertEqual(self.activity()["agents"], {"reviewer": {"runs": 1, "models": {}}})
+
+    def test_a_sidechain_line_in_a_sessions_file_takes_no_span(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root, sidechain=True),
+                                                  entry(self.root)])
+        self.assertEqual(self.activity()["commands"], {"plan": {"runs": 1, "models": ONE}})
+
     def test_a_skill_counts_from_the_reply_after_its_call_to_the_next_prompt(self):
         write(self.transcripts, "proj/s1.jsonl", [
             said(self.root, "review this"), skill_call(self.root, "review-pr", "msg_call", "req_call"),

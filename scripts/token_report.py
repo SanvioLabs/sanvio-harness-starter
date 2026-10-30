@@ -199,9 +199,13 @@ def activity(projects_dir, since, root, loop_dir):
     read(). It reads every line itself, because read_file() drops the lines without a usage.
 
     A subagent's file, in a session's subfolder, is one run of the agentType in the .meta.json beside
-    it. In a session's own file, a <command-name> line or a Skill call opens a span, and a typed prompt
-    closes it; a new start replaces the open span. A reply counts toward the span open when its id pair
-    is first seen, so the reply that calls a skill stays with what came before it.
+    it, from its first line in scope, even if it has no tokens. In a session's own file, a
+    <command-name> line or a Skill call opens a span, and a typed prompt closes it; a new start replaces
+    the open span. A reply counts toward the span open when its id pair is first seen, so the reply that
+    calls a skill stays with what came before it. A start already seen, by its line's uuid for a command
+    or its block's id for a skill, isn't a second run: the same line written twice, or repeated in a
+    resumed session's file. isSidechain lines in a session's own file are a subagent's, so they don't
+    open, close or count toward a span.
     """
     out = {"agents": {}, "skills": {}, "commands": {}}
     projects_dir = Path(projects_dir)
@@ -254,8 +258,8 @@ def activity(projects_dir, since, root, loop_dir):
         if len(path.relative_to(projects_dir).parts) > 2:
             name, row = agent_type(path), None
             for entry in lines:
-                if counts(entry):
-                    row = row or start(out["agents"], name, entry)
+                row = row or start(out["agents"], name, entry)
+                if counts(entry) and row is not None:
                     add_usage(row, entry)
             continue
         span, owner = None, {}
