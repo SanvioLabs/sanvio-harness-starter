@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Quoted command tags don't count
+
+The token report and the dashboard's Activity section no longer count a `<command-name>` tag quoted in a
+prompt as a slash command. The tag now has to open the line, after at most one `<command-message>` block, and hold
+one command-shaped word, and a prompt quoting one closes the open span like any other prompt. An existing
+`.harness/cache/activity.json` can show the old names for up to 15 minutes.
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py).
+
+**Do:** nothing.
+
 ## 2026-10-30: Activity tokens and estimated cost in the pane
 
 The harness dashboard's **Activity** section now shows **Tokens** and **Est. cost** beside **Times** for

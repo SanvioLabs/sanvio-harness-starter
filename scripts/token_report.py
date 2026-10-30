@@ -324,9 +324,15 @@ def text_of(entry):
 
 
 def command_name(entry):
-    """The slash command a user line runs, without its /, "" for an empty tag, or None when there's no tag."""
-    found = re.search(r"<command-name>(.*?)</command-name>", text_of(entry), re.S)
-    return found.group(1).strip().lstrip("/") if found else None
+    """The slash command a user line runs, without its /, or "" when its tag is empty.
+
+    The tag has to open the line, after whitespace and at most one <command-message> block, and hold one
+    command-shaped word. Anything else is None: no tag, or a tag someone typed or pasted into a prompt.
+    """
+    found = re.match(r"\s*(?:<command-message>(?:(?!</command-message>).)*</command-message>\s*)?"
+                     r"<command-name>(.*?)</command-name>", text_of(entry), re.S)
+    name = found.group(1).strip() if found else ""
+    return name.lstrip("/") if found and re.fullmatch(r"/?[\w:.-]*", name) else None
 
 
 def typed_prompt(entry):
