@@ -355,6 +355,53 @@ class Activity(Harness):
             self.assertNotIn(leak, out)
 
 
+class QuotedCommandTag(Harness):
+    """A <command-name> counts only where Claude Code writes it, holding a command-shaped name."""
+
+    def name_in(self, text):
+        return token_report.command_name(said(self.root, text))
+
+    def test_a_tag_that_isnt_a_commands_own_is_no_command(self):
+        for text in ("see <command-name>/standup</command-name> in the log",
+                     "see <command-name></command-name> in the log",
+                     "<command-message>plan</command-message> pasted <command-name>/plan</command-name>",
+                     "<command-name>words with spaces</command-name>",
+                     "<command-message>a</command-message> pasted text "
+                     "<command-message>b</command-message><command-name>x</command-name>"):
+            with self.subTest(text):
+                self.assertIsNone(self.name_in(text))
+
+    def test_a_commands_own_tag_still_gives_its_name(self):
+        for text, name in (("<command-name>/standup</command-name>", "standup"),
+                           ("<command-name>standup</command-name>", "standup"),
+                           ("<command-name>/plugin:skill</command-name>", "plugin:skill"),
+                           ("<command-message>plan</command-message>\n<command-name>/plan</command-name>", "plan"),
+                           ("<command-name></command-name>", "")):
+            with self.subTest(text):
+                self.assertEqual(self.name_in(text), name)
+
+    def test_a_quoted_tag_doesnt_reach_the_report(self):
+        write(self.transcripts, "proj/s1.jsonl", [
+            said(self.root, "<command-name>quoted marker-zq9 text</command-name>"), entry(self.root)])
+        found = token_report.activity(self.transcripts, SINCE, self.root, self.loop)
+        out = token_report.report(token_report.read(self.transcripts, SINCE), SINCE, "2026-10-22",
+                                  self.root, self.loop, activity=found)
+        self.assertNotIn("marker-zq9", out)
+        self.assertIn("Total: 100 tokens", out)
+
+    def test_a_prompt_quoting_a_tag_closes_the_span_and_opens_no_command(self):
+        for quoted in ("see <command-name></command-name> in the log",
+                       "see <command-name>/plan</command-name> in the log"):
+            with self.subTest(quoted):
+                write(self.transcripts, "proj/s1.jsonl", [
+                    skill_call(self.root, "review-pr", "msg_call", "req_call"),
+                    entry(self.root, id="msg_call", req="req_call"), entry(self.root),
+                    said(self.root, quoted), entry(self.root)])
+                found = token_report.activity(self.transcripts, SINCE, self.root, self.loop)
+                self.assertEqual(found["commands"], {})
+                self.assertEqual(found["skills"], {"review-pr": {"runs": 1, "models": ONE}})
+
+
 class BadInput(Harness):
     def test_junk_lines_and_odd_shapes_are_skipped(self):
         bad_usage = entry(self.root)
