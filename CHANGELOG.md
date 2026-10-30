@@ -27,6 +27,18 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Activity tokens and estimated cost in the pane
+
+The harness dashboard's **Activity** section now shows **Tokens** and **Est. cost** beside **Times** for
+each skill, agent and slash command, with **?** where there's no figure, never $0.00. Lines under the
+tables say the cost is an estimate from `.harness/prices.json`, when its prices were checked and when the
+figures were worked out. With no price file, they also say to fill one. What the guard refused keeps its two columns.
+A read that works those figures out again takes longer, including each time you pick another range; the mod's README has the times.
+Files: [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/), [`docs/harness-dashboard.svg`](docs/harness-dashboard.svg).
+
+**Do:** if you installed the mod, `/plugin update`, then `/reload-plugins` or a new session, picks it up. To get dollars, follow the price-file step in
+*Tokens and cost per activity item*, below.
+
 ## 2026-10-30: Tokens and cost per activity item
 
 `dashboard_data.py`'s `activity` section now also says what each skill, agent and slash command spent:
