@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Dependencies met on a non-default base
+
+A dependency now counts as met when a merged pull request into `base` says in its body that it closes it, because GitHub fills in the closing references only for the default branch. The loop reads the 200 most recently opened pull requests merged into `base`, so an older dependency is refused until someone takes the `Depends on` line out.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** restart a running loop (`python3 scripts/loop.py stop`, then start it again) to use it.
+
 ## 2026-10-30: Working loops on the loop pane's buttons
 
 The loop pane's buttons now show which loops are working, on screen or not: `● app` for a loop on one job and `● app 2` from two up, counted the same way as the header's **Running**. A loop with no live lock shows its name alone.

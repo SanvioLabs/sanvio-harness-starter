@@ -567,6 +567,17 @@ elif args[:2] == ["issue", "view"]:
     print(open(path).read().strip() if os.path.exists(path) else "OPEN")
 elif args[:2] == ["pr", "create"]:
     print("https://example.test/pull/1")
+elif args[:2] == ["pr", "list"]:
+    # Merged pull requests, only those into --base if given: merged-prs.json, [{"number", "body", "base"}], none by default.
+    import json
+    if os.path.exists(os.path.join(state, "pr-list-fails")):
+        print("HTTP 502", file=sys.stderr)
+        sys.exit(1)
+    path = os.path.join(state, "merged-prs.json")
+    listed = json.load(open(path)) if os.path.exists(path) else []
+    if "--base" in args:
+        listed = [p for p in listed if p["base"] == args[args.index("--base") + 1]]
+    print(json.dumps(listed))
 elif args[:2] == ["pr", "view"]:
     if os.path.exists(os.path.join(state, "pr-view-fails")):
         print("HTTP 502")  # on stdout, as gh prints its errors
@@ -1593,6 +1604,57 @@ class TestAPass(unittest.TestCase):
         errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
         self.assertEqual(len(errors), 1)
         self.assertIn("could not read its dependencies: HTTP 502", errors[0])
+
+    def closed_with_no_references(self, *prs):
+        """#3 as GitHub has it with no commit and no references, and prs as the merged pull requests there are."""
+        (self.state / "merged-prs.json").write_text(json.dumps(list(prs)))
+        return {"3": {"state": "closed", "state_reason": "completed", "body": "",
+                      "timeline": [{"event": "closed", "commit_id": None}]}}
+
+    def test_a_dependency_a_merged_pull_request_into_base_says_it_closes_lets_the_issue_be_taken(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps=self.closed_with_no_references(
+            {"number": 9, "body": "Closes #3", "base": "main"}))
+        self.go()
+        self.assertIn("pr list --state merged --base main --limit 200 --json number,body", self.calls())
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+
+    def test_a_closing_word_in_a_pull_request_body_counts_in_any_case(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps=self.closed_with_no_references(
+            {"number": 9, "body": "CLOSES #3", "base": "main"}))
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+
+    def test_a_pull_request_body_that_doesnt_close_the_dependency_blocks_the_issue(self):
+        for body in ("Closes #30", "see #3", "unresolved #3"):
+            with self.subTest(body=body):
+                (self.state / "gh-calls").unlink(missing_ok=True)
+                self.assertIn("#3 was closed without a merged change", self.blocked_on(
+                    self.closed_with_no_references({"number": 9, "body": body, "base": "main"})))
+
+    def test_a_pull_request_into_another_branch_blocks_the_issue(self):
+        self.assertIn("#3 was closed without a merged change", self.blocked_on(
+            self.closed_with_no_references({"number": 9, "body": "Closes #3", "base": "release"})))
+
+    def test_a_dependency_closed_by_hand_with_no_merged_pull_requests_blocks_the_issue(self):
+        self.assertIn("#3 was closed without a merged change", self.blocked_on(self.closed_with_no_references()))
+
+    def test_a_failed_read_of_the_merged_pull_requests_logs_one_error_and_takes_nothing(self):
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps=self.closed_with_no_references())
+        (self.state / "pr-list-fails").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertFalse((self.state / "plan-cwd").exists())
+        self.assertFalse(any("--add-label" in c for c in self.calls()))
+        errors = [l for l in self.lines() if l.split()[2] == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("could not read its dependencies: HTTP 502", errors[0])
+
+    def test_a_dependency_a_listed_reference_closed_is_taken_without_listing_pull_requests(self):
+        deps = self.closed_with_no_references()
+        deps["3"]["closed_by"] = [{"merged": True}]
+        self.with_dependencies([dict(issue(2), body="Depends on #3")], deps=deps)
+        self.go()
+        self.assertTrue(any(c.startswith("pr create --base main --head loop/issue-2") for c in self.calls()))
+        self.assertFalse(any(c.startswith("pr list") for c in self.calls()))
 
     def test_only_the_last_time_a_dependency_was_closed_counts(self):
         self.assertIn("#3 was closed without a merged change", self.blocked_on(
