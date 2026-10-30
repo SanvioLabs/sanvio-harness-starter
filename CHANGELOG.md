@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Project loops in the loop pane
+
+The loop pane now shows loops started with `--project`, not only the harness's. With more than one loop, a row of buttons above the tabs switches between them; `/loop-pane` opens on the first one running, the harness first, and the loop you pick stays. An issue reaching an end in any loop raises a toast, a project's starting with its name.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/types/index.d.ts`](examples/mods/loop-pane/types/index.d.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`examples/mods/loop-pane/hooks/logic.test.ts`](examples/mods/loop-pane/hooks/logic.test.ts), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts).
+
+**Do:** reopen `/loop-pane`, or reload mods.
+
 ## 2026-10-30: Quoted command tags don't count
 
 The token report and the dashboard's Activity section no longer count a `<command-name>` tag quoted in a

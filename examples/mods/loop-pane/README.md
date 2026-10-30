@@ -110,9 +110,10 @@ it.
 
 | Line | Shows |
 |---|---|
-| The header | The repo's folder on the left. On the right, **Running** while a live loop holds its lock and works a job (**Running 2** for two), **Idle** in dim green while it holds the lock with nothing to work, **Stopping after this step** after `loop.py stop`, **Not running** otherwise, with how long a live loop has been up. Red when the last run was killed: its lock is still there but its process isn't, and the next run replaces it. A loop.py older than this one writes no start, so no uptime |
+| The header | The loop's name on the left: the project's, or the harness's folder. On the right, **Running** while a live loop holds its lock and works a job (**Running 2** for two), **Idle** in dim green while it holds the lock with nothing to work, **Stopping after this step** after `loop.py stop`, **Not running** otherwise, with how long a live loop has been up. Red when the last run was killed: its lock is still there but its process isn't, and the next run replaces it. A loop.py older than this one writes no start, so no uptime |
 | **Copy attach command** | While a loop started in tmux is running, copies the command that opens its session. `loop-control` starts the loop that way when tmux is installed |
 | **Watch it** | On a Mac, opens a new Terminal window attached to that session, read-only: you see the loop work and can't type into it. Close the window and the loop keeps running. If the window can't open, it copies the read-only attach command instead. It shows only while the loop runs in tmux on macOS |
+| The loop buttons | Above the tabs when there's more than one loop: the harness, then each project with a `.loop/projects/<name>/status.json`, by name. Press one to show that loop, on its busiest tab. A project that has never run has no button |
 | **Queue** | Ready issues the loop will take next, lowest first. One that depends on an open issue says **waiting on** and which |
 | **Active** | Issues being worked: what each is on (planning, building, checking, opening the pull request) with the round. One left part way by a run that stopped shows where it was left. In tmux, **Watch** opens a read-only Terminal window on that issue's own `issue-N` window, or copies its attach command when it can't. tmux has one current window per session, so it also switches any other window attached to the session, **Watch it**'s included |
 | **Finished** | Issues that reached an end in the last 24 hours: a pull request, blocked, stopped or skipped. Older ones drop off; `.loop/status.json` still has them |
@@ -124,8 +125,15 @@ A tab shows three jobs at a time. Scroll over the pane, or press the
 **▲ more** and **▼ more** lines, to move through the rest; the header and the
 tabs stay put.
 
-While the pane is open, an issue that reaches an end also pops up a short
-notice, so you hear about it without reading the pane.
+`/loop-pane` opens on the first loop running, the harness before the projects,
+else on the harness. After that the loop you're on stays, even when another one
+starts, until you press another or run `/loop-pane` again. If a project's folder
+goes while you're on it, the pane falls back to the harness.
+
+While the pane is open, an issue that reaches an end in any loop, on screen or
+not, also pops up a short notice, so you hear about it without reading the pane.
+A project's starts with its name (`app: #14 has a pull request`), the harness's
+with `Loop:`.
 
 ## What it doesn't do
 
@@ -137,10 +145,13 @@ on macOS and removes when it ends, and a job's **Watch** opens
 closes; the windows they open are read-only. Every two seconds while the pane is open,
 and not at all while it's closed, it reads `.loop/status.json`, which the loop
 rewrites at every step, and checks `.loop/STOP` and `.loop/lock`, with
-`kill -0` on the process the lock names.
+`kill -0` on the process the lock names. It lists `.loop/projects/` and does the
+same in each project's folder, so a project's `.loop/projects/<name>/` stands in
+for `.loop/` in every path above.
 
-It shows the loop of the harness the session started in: the nearest folder
-at or above it with [`scripts/loop.py`](../../../scripts/loop.py).
+It shows the loops of the harness the session started in: the nearest folder
+at or above it with [`scripts/loop.py`](../../../scripts/loop.py), and the projects that harness has run with
+`--project`.
 
 ## Changing it
 

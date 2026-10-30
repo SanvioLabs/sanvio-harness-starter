@@ -40,13 +40,15 @@ export type Status = {
 // What the pane draws from: the status file, plus whether the lock and a stop request are there.
 export type Seen = {
   root: string
+  // The project under .loop/projects/ this loop belongs to. Unset for the harness's own.
+  project?: string
   status: Status | null
   // A lock whose process is alive: the loop is running.
   isLocked: boolean
   // A lock left by a process that's gone: the last run was killed. The next run replaces it.
   isStaleLock: boolean
   isStopping: boolean
-  // .loop/watch.command is there: loop.py wrote it, on macOS inside tmux, for the Watch it button.
+  // The loop's watch.command is there: loop.py wrote it, on macOS inside tmux, for the Watch it button.
   hasWatchFile: boolean
 }
 
@@ -56,6 +58,8 @@ export type View = { tab: Tab; start: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    'loop-pane': { launch: string | null; seen: Seen | null; view: View | null }
+    // seen: the loop on screen. loops: every loop's last look, the harness first. picked: the loop to
+    // show, a project's name or '' for the harness, null until the pane has opened on one.
+    'loop-pane': { launch: string | null; seen: Seen | null; view: View | null; loops: Seen[] | null; picked: string | null }
   }
 }

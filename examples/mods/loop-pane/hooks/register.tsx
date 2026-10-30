@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOCK_FILE, PAGE, STATUS_FILE, STOP_FILE, TABS, WATCH_FILE, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, page, parseStatus, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, loopDir, loopLabel, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -15,6 +15,8 @@ const TICK_MS = 500
 const launchAtom = atom({ plugin: 'loop-pane', key: 'launch' } as const, null)
 const seenAtom = atom({ plugin: 'loop-pane', key: 'seen' } as const, null)
 const viewAtom = atom({ plugin: 'loop-pane', key: 'view' } as const, null)
+const loopsAtom = atom({ plugin: 'loop-pane', key: 'loops' } as const, null)
+const pickedAtom = atom({ plugin: 'loop-pane', key: 'picked' } as const, null)
 
 const COLORS: Record<Tone, { color?: string; bold?: boolean; dimColor?: boolean }> = {
   now: { color: 'cyan', bold: true },
@@ -78,8 +80,8 @@ async function rootOf($: EngineInterface): Promise<string | null> {
 }
 
 // Whether the process named in the lock is alive. A killed run leaves its lock behind.
-async function lockHolderAlive($: EngineInterface, root: string): Promise<boolean | null> {
-  const text = await $.fs.read(`${root}/${LOCK_FILE}`).catch(() => null)
+async function lockHolderAlive($: EngineInterface, root: string, project?: string): Promise<boolean | null> {
+  const text = await $.fs.read(`${root}/${loopDir(project)}/lock`).catch(() => null)
   if (text === null) return null
   const pid = lockPid(text)
   if (pid === null) return true
@@ -88,29 +90,55 @@ async function lockHolderAlive($: EngineInterface, root: string): Promise<boolea
   return !ran || ran.exitCode === 0 || !/no such process/i.test(ran.stderr)
 }
 
-// One look at the loop's files. It only reads: the loop is the only writer.
-async function look($: EngineInterface, root: string): Promise<Seen> {
-  const text = await $.fs.read(`${root}/${STATUS_FILE}`).catch(() => null)
-  const alive = await lockHolderAlive($, root)
+// One look at one loop's files. It only reads: the loop is the only writer.
+async function look($: EngineInterface, root: string, project?: string): Promise<Seen> {
+  const dir = `${root}/${loopDir(project)}`
+  const text = await $.fs.read(`${dir}/status.json`).catch(() => null)
+  const alive = await lockHolderAlive($, root, project)
   return {
     root,
+    ...(project ? { project } : {}),
     status: parseStatus(text),
     isLocked: alive === true,
     isStaleLock: alive === false,
-    isStopping: await $.fs.exists(`${root}/${STOP_FILE}`),
-    hasWatchFile: await $.fs.exists(`${root}/${WATCH_FILE}`),
+    isStopping: await $.fs.exists(`${dir}/STOP`),
+    hasWatchFile: await $.fs.exists(`${dir}/watch.command`),
   }
 }
 
+// Look at every loop and show the picked one. Each loop is compared with its own last look: against
+// the one on screen, every switch would look like a change, and a loop off screen would never tell.
 async function refresh($: EngineInterface): Promise<void> {
   const root = await rootOf($)
   if (!root) return
-  const now = await look($, root)
+  const entries = await $.fs.list(`${root}/${PROJECTS_DIR}`).catch(() => [])
+  const names = await projectNames(entries, name => $.fs.exists(`${root}/${loopDir(name)}/status.json`))
+  const harness = await look($, root)
+  const loops = [harness, ...(await Promise.all(names.map(name => look($, root, name))))]
+  const was = (await read($, loopsAtom)) ?? []
   const before = await read($, seenAtom)
-  if (sameSeen(before, now)) return
-  await update($, seenAtom, () => now)
-  for (const line of changes(before?.status ?? null, now.status)) $.ui.toast(line)
+  const picked = await read($, pickedAtom)
+  // No pick yet is an opening. A pick whose project has gone falls back to the harness.
+  const shown = (picked === null ? openingLoop(loops) : loops.find(l => (l.project ?? '') === picked)) ?? harness
+  const pick = shown.project ?? ''
+  if (picked !== pick) await update($, pickedAtom, () => pick)
+  if (sameSeen(before, shown) && JSON.stringify(was) === JSON.stringify(loops)) return
+  // Another loop opens on its busiest tab, as it does when pressed.
+  if (before?.project !== shown.project) await update($, viewAtom, () => null)
+  await update($, loopsAtom, () => loops)
+  await update($, seenAtom, () => shown)
+  for (const loop of loops) {
+    const last = was.find(l => l.project === loop.project)
+    for (const line of changes(last?.status ?? null, loop.status, loop.project)) $.ui.toast(line)
+  }
   $.ui.invalidate('ui.render')
+}
+
+// Show another loop, from its last look, on its busiest tab. The pick holds until /loop-pane is run again.
+async function show($: EngineInterface, loop: Seen): Promise<void> {
+  await update($, pickedAtom, () => loop.project ?? '')
+  await update($, seenAtom, () => loop)
+  await update($, viewAtom, () => null)
 }
 
 // Poll only while the pane is up, so a session that never opens it reads nothing.
@@ -156,6 +184,8 @@ export const register: Register = on => {
     try {
       const root = await rootOf($)
       if (!root) return { text: `No scripts/loop.py at or above ${await $.session.root()}, so there is no loop to show.` }
+      // Opening picks again: the first loop running, else the harness.
+      await update($, pickedAtom, () => null)
       await refresh($)
       const opened = await $.ui.open({ id: PANE, title: 'Loop' })
       startPolling($)
@@ -175,6 +205,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const seen = await read($, seenAtom)
+    const loops = (await read($, loopsAtom)) ?? []
     const width = Math.max(10, e.props.bodyColumns)
     // A job's lines sit under its title, past the dot.
     const inner = width - 2
@@ -234,7 +265,7 @@ export const register: Register = on => {
                     key={`watch-${row.number}`}
                     label="Watch"
                     onPress={press =>
-                      openWatch($, `${seen.root}/${jobWatchFile(row.number)}`, () =>
+                      openWatch($, `${seen.root}/${jobWatchFile(row.number, seen.project)}`, () =>
                         $.ui.copy({ text: jobCommand, surface: press.surface }))}
                   />
                 )}
@@ -286,6 +317,19 @@ export const register: Register = on => {
           </Box>
         )}
         <Text dimColor>{'─'.repeat(width)}</Text>
+        {loops.length > 1 && (
+          <Box key="loops" flexDirection="row" flexWrap="wrap" columnGap={1}>
+            {loops.map(loop => (
+              <Button
+                key={loop.project ? `loop-${loop.project}` : 'loop'}
+                label={loopLabel(loop)}
+                variant={loop.project === seen.project ? 'primary' : undefined}
+                dimColor={loop.project !== seen.project}
+                onPress={() => show($, loop)}
+              />
+            ))}
+          </Box>
+        )}
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {TABS.map(({ tab, label }) => (
             <Button
