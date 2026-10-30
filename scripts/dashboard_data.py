@@ -24,7 +24,20 @@
     loop_throughput  the issues in .loop/status.json and each project's: how many are in each
                      state, each one's round, and how many took more than one
     activity         your usage log, .harness/usage/<you>.jsonl, since --since: skills, agents and
-                     slash commands by name, guard refusals by rule, and how many times it asked
+                     slash commands by name, guard refusals by rule, and how many times it asked.
+                     skill_spend, agent_spend and command_spend hold each name's tokens and estimated
+                     cost_usd, from token_report.py's split of the transcripts in ~/.claude/projects for
+                     conversations at the harness's root, so a name there needn't match the counts: a
+                     subagent's are measured, a skill's or command's attributed from where it started to
+                     the next prompt. cost_usd prices each model's tokens at .harness/prices.json's
+                     dollars per million tokens (scripts/prices.example.json has the shape), and is
+                     null when a model with tokens has no price. unpriced names those models, each with
+                     why: "no prices.json", "unreadable" or "not in prices.json". prices_checked is
+                     that file's "checked" date, or null when it isn't a date, and spend_at when the
+                     transcripts were read. The split is kept in .harness/cache/activity.json, only
+                     names, models and counts, and read again when it's over 15 minutes old or --since
+                     changes; prices are read every run. With no transcripts folder, or a loop.json or
+                     transcript that stops the read, these fields are left out and the counts stay
     evals            the newest file in .harness/evals/ for each reviewer: when it was saved, how
                      many cases were stable, flaky and failing, and the failing cases' names. stale
                      is true when a file the result rests on changed after it was saved: the agent's
@@ -70,12 +83,13 @@ so they hold whatever was typed into them. Nowhere else does it print a title or
 does it add a pull request's address, a prompt, a commit's message or author, an eval's reasons or a
 file path other than those in changed, which are from the harness root: counts, dollars, dates, issue
 names, step, model, skill, agent, rule and case names. The dollars are the loop's estimate at API
-prices, not what was billed.
+prices, or under activity an estimate at the prices in .harness/prices.json, not what was billed.
 """
 import argparse
 import contextlib
 import datetime
 import json
+import math
 import os
 import re
 import subprocess
@@ -86,7 +100,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from eval_agents import load_cases  # noqa: E402 (needs scripts/ on the path first)
+import token_report  # noqa: E402 (needs scripts/ on the path first)
+from eval_agents import load_cases  # noqa: E402 (same reason)
 from loop import USAGE_TOKENS, usage_totals  # noqa: E402 (same reason)
 from token_report import group, loop_dir, loop_runs, natural, read_file, tokens, usage_files  # noqa: E402 (same reason)
 from usage_report import count, log_path, read, since_date  # noqa: E402 (same reason)
@@ -104,6 +119,11 @@ FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
 LOOP_BRANCH = re.compile(r"^loop/issue-(\d+)$")
 REWORK_CACHE = Path(".harness") / "cache" / "loop_rework.json"
 BASE_MERGES = ("Merge branch 'main'", "Merge remote-tracking branch 'origin/main'")
+ACTIVITY_CACHE = Path(".harness") / "cache" / "activity.json"
+ACTIVITY_KEEP = datetime.timedelta(minutes=15)  # how long a read of the transcripts is used again
+PRICES = Path(".harness") / "prices.json"
+PRICED_TOKENS = 1_000_000  # prices.json's figures are dollars for this many tokens
+SPEND_FIELDS = {"skills": "skill_spend", "agents": "agent_spend", "commands": "command_spend"}
 
 
 def missing(why):
@@ -549,6 +569,117 @@ def conversations(root, since, today, projects_dir, cache_path):
             for side in ("harness", "loop")}
 
 
+def kept_shape(result):
+    """True when a kept result has the shape token_report.activity() returns."""
+    return isinstance(result, dict) and all(
+        isinstance(result.get(kind), dict) and all(
+            isinstance(row, dict) and whole(row.get("runs")) and isinstance(row.get("models"), dict) and all(
+                isinstance(counts, list) and len(counts) == len(COUNTS) and all(whole(n) for n in counts)
+                for counts in row["models"].values())
+            for row in result[kind].values())
+        for kind in SPEND_FIELDS)
+
+
+def kept_activity(root, since, now, projects_dir):
+    """(token_report.activity()'s result, when it was read), or (None, None) when it can't be read.
+
+    The read goes through every transcript, so its result is kept and used again for ACTIVITY_KEEP at the
+    same since. A kept result that can't be read or isn't the right shape counts as none."""
+    path = Path(root) / ACTIVITY_CACHE
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        kept = None
+    if isinstance(kept, dict) and kept.get("since") == since and kept_shape(kept.get("result")):
+        at = when(kept.get("at"))
+        if at and now - at <= ACTIVITY_KEEP:
+            return kept["result"], at
+    try:
+        result = token_report.activity(projects_dir, since, root, loop_dir(root))
+    except (OSError, ValueError, TypeError):
+        return None, None
+    save(path, {"at": now.isoformat(timespec="seconds"), "since": since, "result": result})
+    return result, now
+
+
+def iso_date(value):
+    """value when it's a YYYY-MM-DD date, else None."""
+    try:
+        return value if datetime.date.fromisoformat(value).isoformat() == value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def rate(entry):
+    """[dollars per PRICED_TOKENS for each of COUNTS] from a prices.json entry, or None unless it has four
+    finite, non-negative numbers: json.loads() takes NaN, which json.dumps() would print as invalid JSON."""
+    found = [number(entry.get(name)) for name in COUNTS] if isinstance(entry, dict) else [None]
+    try:
+        return [float(n) for n in found] if all(n is not None and n >= 0 and math.isfinite(n) for n in found) else None
+    except OverflowError:  # a whole number too big for a float
+        return None
+
+
+def prices(root):
+    """({model: its rate(), None when that can't be read}, why a model not listed has no price, the date checked)."""
+    try:
+        found = json.loads((Path(root) / PRICES).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, "no prices.json", None
+    except (OSError, ValueError):
+        return {}, "unreadable", None
+    models = found.get("models") if isinstance(found, dict) else None
+    if not isinstance(models, dict):
+        return {}, "unreadable", None
+    return {model: rate(entry) for model, entry in models.items()}, "not in prices.json", iso_date(found.get("checked"))
+
+
+def dollars(counts, price):
+    """What counts cost at price, infinite when that's too big for a float."""
+    try:
+        return sum(n * p for n, p in zip(counts, price)) / PRICED_TOKENS
+    except OverflowError:
+        return math.inf
+
+
+def spent(models, rates, why, unpriced):
+    """{tokens, cost_usd} over {model: counts}, adding to unpriced each model with tokens and no price.
+
+    A model with no tokens costs nothing, priced or not, so an item with none costs 0.0."""
+    count, cost = 0, 0.0
+    for model, counts in models.items():
+        if not any(counts):
+            continue
+        count += sum(counts)
+        price = rates.get(model, why)
+        if isinstance(price, list):
+            cost = None if cost is None else cost + dollars(counts, price)
+        else:
+            unpriced[model] = price or "unreadable"
+            cost = None
+    return {"tokens": count, "cost_usd": round(cost, 4) if cost is not None and math.isfinite(cost) else None}
+
+
+def spend(section, root, since, now, projects_dir):
+    """The activity section with what each skill, agent and command spent merged in. A section that's
+    missing stays as it is, and so do the counts when there's nothing to say what was spent: empty maps
+    would claim nothing was."""
+    if "why" in section or not Path(projects_dir).is_dir():
+        return section
+    result, at = kept_activity(root, since, now, projects_dir)
+    if result is None:
+        return section
+    rates, why, checked = prices(root)
+    unpriced, out = {}, dict(section)
+    for kind, field in SPEND_FIELDS.items():
+        rows = {name: spent(row["models"], rates, why, unpriced) for name, row in result[kind].items()}
+        out[field] = {name: rows[name] for name in sorted(rows, key=lambda n: (-rows[n]["tokens"], natural(n)))}
+    out["unpriced"] = {model: unpriced[model] for model in sorted(unpriced, key=natural)}
+    out["prices_checked"] = checked
+    out["spend_at"] = at.isoformat(timespec="seconds")
+    return out
+
+
 def gh(root, *args, timeout=None):
     """The JSON values gh prints, run in root so it reaches root's repo, or None when gh is missing, fails
     or prints anything else. A list with --paginate is printed a page at a time, one array after another.
@@ -629,7 +760,7 @@ def build(root, since, today, now=None, projects_dir=TRANSCRIPTS):
     return {"schema": SCHEMA, "generated": now.isoformat(timespec="seconds"), "since": since,
             "loop_spend": loop_spend(root, since, today),
             "loop_throughput": loop_throughput(root),
-            "activity": activity(root, since),
+            "activity": spend(activity(root, since), root, since, now, projects_dir),
             "evals": evals(root),
             "conversations": conversations(root, since, today, projects_dir, Path(root) / CACHE),
             "waiting": waiting(root, now),
