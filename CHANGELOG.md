@@ -27,6 +27,16 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-29: Tokens by agent, skill and command
+
+The token report has a new section, `## By activity`, for conversations at the harness's root: runs
+and tokens for each subagent type, each skill and each slash command. A subagent's tokens are
+measured from its own transcript; a skill's or command's are attributed from where it started to the
+next prompt you typed. Repos under [`projects/`](projects/) and the loop's worktrees are left out.
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py).
+
+**Do:** nothing. The harness report prints the new section.
+
 ## 2026-10-29: Tickets carry a type label
 
 Every issue now carries exactly one type label: `bug`, `enhancement`, `documentation` or `chore`

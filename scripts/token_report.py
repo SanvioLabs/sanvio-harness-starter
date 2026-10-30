@@ -13,8 +13,10 @@ file path or a line of code: counts, model names, session ids, issue names,
 and for the loop, estimated dollars. Claude Code only: Codex, Kiro and other
 tools keep their own logs. The dollars are the estimate at API prices each loop
 run recorded in .loop/**/usage.json, not what was billed; a conversation's
-transcript carries no cost, so it stays in tokens. The skills/harness-report/
-skill runs this next to usage_report.py.
+transcript carries no cost, so it stays in tokens. A last section splits the
+conversations at the root by subagent type, skill and slash command, a skill's
+or command's share attributed from where it started to the next prompt. The
+skills/harness-report/ skill runs this next to usage_report.py.
 """
 import argparse
 import datetime
@@ -34,6 +36,8 @@ FIELDS = (("input_tokens", "Input"), ("output_tokens", "Output"),
           ("cache_creation_input_tokens", "Cache writes"), ("cache_read_input_tokens", "Cache reads"))
 GROUPS = (("Conversations", "Where"), ("projects/", "Repo"), ("Loop", "Issue"))
 TOP = 5
+NO_AGENT_TYPE = "agent type not recorded"
+ATTRIBUTED = "Attributed from where each started to the next prompt, not measured."
 
 
 def loop_dir(root):
@@ -186,6 +190,177 @@ def group(entry, root, loop_dir):
     return None
 
 
+def activity(projects_dir, since, root, loop_dir):
+    """Runs and tokens by model for each subagent type, skill and slash command, at the harness's root.
+
+    Returns {"agents": {...}, "skills": {...}, "commands": {...}}, each name mapping to
+    {"runs": n, "models": {model: [input, output, cache writes, cache reads]}}. Only lines dated on or
+    after `since` whose folder group() puts in Conversations count, and each reply counts once, as in
+    read(). It reads every line itself, because read_file() drops the lines without a usage.
+
+    A subagent's file, in a session's subfolder, is one run of the agentType in the .meta.json beside
+    it, from its first line in scope, even if it has no tokens. In a session's own file, a
+    <command-name> line or a Skill call opens a span, and a typed prompt closes it; a new start replaces
+    the open span. A reply counts toward the span open when its id pair is first seen, so the reply that
+    calls a skill stays with what came before it. A start already seen, by its line's uuid for a command
+    or its block's id for a skill, isn't a second run: the same line written twice, or repeated in a
+    resumed session's file. isSidechain lines in a session's own file are a subagent's, so they don't
+    open, close or count toward a span.
+    """
+    out = {"agents": {}, "skills": {}, "commands": {}}
+    projects_dir = Path(projects_dir)
+    if not projects_dir.is_dir():
+        return out
+    seen, started, where = set(), set(), {}
+
+    def once(kind, key):
+        """False for a start already seen: the same line written twice, or repeated in a resumed session's file."""
+        if key is None:
+            return True
+        if (kind, key) in started:
+            return False
+        started.add((kind, key))
+        return True
+
+    def in_scope(entry):
+        if str(entry.get("timestamp", ""))[:10] < since:
+            return False
+        cwd = entry.get("cwd")
+        key = cwd if isinstance(cwd, str) else None
+        if key not in where:
+            where[key] = group(entry, root, loop_dir)
+        return where[key] == ("Conversations", "")
+
+    def counts(entry):
+        """True for a reply with a usage, in scope, not counted before."""
+        message = entry.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("usage"), dict) or not in_scope(entry):
+            return False
+        key = (message.get("id"), entry.get("requestId"))
+        if key != (None, None):
+            if key in seen:
+                return False
+            seen.add(key)
+        return True
+
+    def start(table, name, entry):
+        if not in_scope(entry):
+            return None
+        row = table.setdefault(name, {"runs": 0, "models": {}})
+        row["runs"] += 1
+        return row
+
+    for path in sorted(projects_dir.rglob("*.jsonl")):
+        try:
+            lines = transcript(path)
+        except OSError:
+            continue
+        if len(path.relative_to(projects_dir).parts) > 2:
+            name, row = agent_type(path), None
+            for entry in lines:
+                row = row or start(out["agents"], name, entry)
+                if counts(entry) and row is not None:
+                    add_usage(row, entry)
+            continue
+        span, owner = None, {}
+        for entry in lines:
+            if entry.get("isSidechain"):
+                continue
+            if entry.get("type") == "user":
+                name = command_name(entry)
+                if name is None:
+                    if typed_prompt(entry):
+                        span = None
+                elif name and once("command", entry.get("uuid")):
+                    span = start(out["commands"], name, entry)
+                continue
+            message = entry.get("message")
+            if entry.get("type") != "assistant" or not isinstance(message, dict):
+                continue
+            key = (message.get("id"), entry.get("requestId"))
+            target = span if key == (None, None) else owner.setdefault(key, span)
+            if counts(entry) and target is not None:
+                add_usage(target, entry)
+            skill, call = skill_called(entry)
+            if skill and once("skill", call):
+                span = start(out["skills"], skill, entry)
+    return out
+
+
+def transcript(path):
+    """Every line in one transcript that is a JSON object, in file order. A file that can't be read raises OSError."""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        lines = handle.readlines()
+    entries = []
+    for raw in lines:
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            entries.append(entry)
+    return entries
+
+
+def agent_type(path):
+    """The agentType in the .meta.json beside a subagent's transcript, or NO_AGENT_TYPE."""
+    try:
+        found = json.loads(Path(path).with_suffix(".meta.json").read_text())
+    except (OSError, ValueError):
+        return NO_AGENT_TYPE
+    name = found.get("agentType") if isinstance(found, dict) else None
+    return name if isinstance(name, str) and name else NO_AGENT_TYPE
+
+
+def text_of(entry):
+    """The text of a line's message: its content if that's a string, or its text blocks joined."""
+    message = entry.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b["text"] for b in content if isinstance(b, dict) and isinstance(b.get("text"), str))
+    return ""
+
+
+def command_name(entry):
+    """The slash command a user line runs, without its /, "" for an empty tag, or None when there's no tag."""
+    found = re.search(r"<command-name>(.*?)</command-name>", text_of(entry), re.S)
+    return found.group(1).strip().lstrip("/") if found else None
+
+
+def typed_prompt(entry):
+    """True for a user line someone typed: not isMeta and not a tool result."""
+    message = entry.get("message")
+    if entry.get("isMeta") or not isinstance(message, dict):
+        return False
+    content = message.get("content")
+    if isinstance(content, list):
+        return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+    return isinstance(content, str)
+
+
+def skill_called(entry):
+    """(skill, the block's id) for a Skill tool_use block on this line, or (None, None)."""
+    content = entry["message"].get("content")
+    if not isinstance(content, list):
+        return None, None
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill":
+            given = block.get("input")
+            skill = given.get("skill") if isinstance(given, dict) else None
+            if isinstance(skill, str) and skill:
+                call = block.get("id")
+                return skill, call if isinstance(call, str) and call else None
+    return None, None
+
+
+def add_usage(row, entry):
+    model = entry["message"].get("model")
+    model = model if isinstance(model, str) and model else "unknown"
+    row["models"][model] = [a + b for a, b in zip(row["models"].get(model, [0] * len(FIELDS)), tokens(entry))]
+
+
 def tokens(entry):
     """The four usage counts on a reply, with anything that isn't a whole number taken as 0."""
     usage = entry["message"]["usage"]
@@ -220,7 +395,21 @@ def top_table(counter, header, label=None, limit=TOP):
     return out + [""]
 
 
-def report(entries, since, until, root, loop_dir, costs=None):
+def activity_table(rows, header):
+    """Runs and the four counts summed over models, most tokens first."""
+    if not rows:
+        return ["None.", ""]
+    summed = {name: [sum(v) for v in zip(*row["models"].values())] or [0] * len(FIELDS) for name, row in rows.items()}
+    out = ["| {} | Runs | {} | Total |".format(header, " | ".join(label for _, label in FIELDS)),
+           "|---|---|" + "---|" * (len(FIELDS) + 1)]
+    for name in sorted(summed, key=lambda n: (-sum(summed[n]), natural(n))):
+        values = summed[name]
+        out.append("| {} | {:,} | {} | {:,} |".format(
+            name, rows[name]["runs"], " | ".join("{:,}".format(v) for v in values), sum(values)))
+    return out + [""]
+
+
+def report(entries, since, until, root, loop_dir, costs=None, activity=None):
     groups = {name: {} for name, _ in GROUPS}
     models, sessions, issues = Counter(), Counter(), Counter()
     first_seen = {}
@@ -267,6 +456,10 @@ def report(entries, since, until, root, loop_dir, costs=None):
     out += ["## Top sessions", ""] + top_table(
         sessions, "Session", lambda s: "`{}`, first {}".format(s, first_seen[s]))
     out += ["## Top loop issues", ""] + top_table(issues, "Issue")
+    if activity is not None:
+        out += ["## By activity", "", "### Agents", ""] + activity_table(activity["agents"], "Agent")
+        out += ["### Skills", ""] + activity_table(activity["skills"], "Skill") + [ATTRIBUTED, ""]
+        out += ["### Commands", ""] + activity_table(activity["commands"], "Command") + [ATTRIBUTED, ""]
     out += ["## Loop cost", ""] + cost_table(costs)
     out.append("Claude Code sessions only. Dollars only for the loop's runs, as the loop recorded them at API prices.")
     return "\n".join(out)
@@ -279,8 +472,10 @@ def main(argv=None):
     parser.add_argument("--projects", default=str(Path.home() / ".claude" / "projects"),
                         help="Claude Code's transcripts folder, if not ~/.claude/projects")
     args = parser.parse_args(argv)
-    entries = read(Path(args.projects).expanduser(), args.since)
-    print(report(entries, args.since, today.isoformat(), ROOT, loop_dir(ROOT), loop_costs(ROOT, args.since)))
+    projects, loops = Path(args.projects).expanduser(), loop_dir(ROOT)
+    entries = read(projects, args.since)
+    print(report(entries, args.since, today.isoformat(), ROOT, loops, loop_costs(ROOT, args.since),
+                 activity(projects, args.since, ROOT, loops)))
     return 0
 
 
