@@ -79,7 +79,7 @@ the next. Nothing runs until you start it, and it never merges.
 
 | Step | What happens | Left behind in `.loop/issue-N/` |
 |---|---|---|
-| Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else, skipping one still waiting on an open dependency until it closes. A dependency counts as met when a merged change closes it; one closed by hand blocks the issue, with a comment saying why | `ticket.md` |
+| Discover | The next open issue labelled `loop-ready` that isn't assigned to someone else, skipping one still waiting on an open dependency until it closes. A dependency counts as met when a merged change closes it; one closed by hand blocks the issue, with a comment saying why. On a `base` that isn't the default branch, a merged pull request into `base` whose body closes the dependency counts. Only the 200 most recently opened pull requests merged into `base` are read, so an older dependency is refused until someone takes the `Depends on` line out | `ticket.md` |
 | Shape | A fresh agent writes the smallest plan that would count, plus the check that proves it | `plan.md` |
 | Build | A fresh agent makes the change in a git worktree, outside your clone (`~/.harness-loop/`). Once the pull request is merged or closed, the loop removes the worktree and its branch while it's idle, unless the worktree has changes or the branch has commits the pull request doesn't. A pull request someone rebased or amended is still tidied, as long as the branch is still the commit the loop pushed | the commit |
 | Validate | The script runs your test command. A second fresh agent reads the diff and the output and says PASS or FIX | `test-output.txt`, `diff.patch`, `review.md` |
@@ -279,7 +279,11 @@ To give a ticket a new dependency, add it yourself first:
   needs nothing more. Or open an issue for it, leave `loop-ready` off it, and
   merge a pull request that says `Closes #N`. Then put `Depends on #N` on the
   ticket, naming that issue rather than the pull request: the loop blocks a
-  number that isn't an issue, or an issue closed by hand.
+  number that isn't an issue, or an issue closed by hand. On a `base` that
+  isn't the default branch, a merged pull request into `base` whose body closes
+  the issue counts. Only the 200 most recently opened pull requests merged into
+  `base` are read, so an older dependency is refused until someone takes the
+  `Depends on` line out.
 - If the ticket has already blocked, its old checkout and branch are reused as
   they are when it's relabelled, without your dependency. Remove both first,
   `git worktree remove <worktree_dir>/issue-N` then `git branch -D

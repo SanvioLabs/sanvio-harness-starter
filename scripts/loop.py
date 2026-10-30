@@ -1371,6 +1371,8 @@ class Loop:
 
             A commit on the last closed event says so. Without one, a merged pull request GitHub lists as
             closing n says so: a pull request merged with "Closes #n" can close it with no commit on the event.
+            GitHub fills in those references only for the default branch, so failing that, a merged pull
+            request into base whose body closes n says so. That list is the 200 most recently opened.
             The jq runs once per page with --paginate, so the last closed event is the last line out.
             """
             code, out = self.gh("api", "--paginate", "repos/{owner}/{repo}/issues/" + str(n) + "/timeline",
@@ -1388,7 +1390,14 @@ class Loop:
                 prs = json.loads(out)["data"]["repository"]["issue"]["closedByPullRequestsReferences"]["nodes"]
             except (KeyError, TypeError):
                 raise LookupError(out)
-            return any(pr.get("merged") for pr in prs)
+            if any(pr.get("merged") for pr in prs):
+                return True
+            code, out = self.gh("pr", "list", "--state", "merged", "--base", self.cfg["base"],
+                                "--limit", "200", "--json", "number,body")
+            if code != 0:
+                raise LookupError(out)
+            closes = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#{}\b".format(n), re.IGNORECASE)
+            return any(closes.search(pr.get("body") or "") for pr in json.loads(out))
 
         def is_open(got):
             return bool(got) and not got.get("pull_request") and got.get("state") == "open"
