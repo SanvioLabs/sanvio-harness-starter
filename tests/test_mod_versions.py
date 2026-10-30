@@ -83,6 +83,18 @@ class ModVersions(unittest.TestCase):
         self.commit()
         self.assertEqual(self.check(), (0, ""))
 
+    def test_a_rewritten_sample_passes_at_the_same_version(self):
+        self.write("examples/mods/lens/hooks/sample.ts", "export const SAMPLE = 2;\n")
+        self.commit()
+        self.assertEqual(self.check(), (0, ""))
+
+    def test_a_file_only_named_like_the_sample_still_counts(self):
+        self.write("examples/mods/lens/hooks/notsample.ts", "export const n = 2;\n")
+        self.commit()
+        code, out = self.check()
+        self.assertEqual(code, 1, out)
+        self.assertIn("lens: behaviour changed", out)
+
     def test_versions_compare_as_numbers(self):
         self.git("checkout", "-q", "main")
         self.bump("lens", "0.9.0")

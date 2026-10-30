@@ -250,11 +250,30 @@ class TestPureParts(unittest.TestCase):
 
     def test_config_overlays_defaults_from_loop_json(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(loop.load_config(tmp), loop.DEFAULTS)
+            self.assertEqual(loop.load_config(tmp), dict(loop.DEFAULTS, generate_command=loop.HARNESS_GENERATE))
             Path(tmp, "loop.json").write_text(json.dumps({"max_rounds": 2}))
             cfg = loop.load_config(tmp)
             self.assertEqual(cfg["max_rounds"], 2)
             self.assertEqual(cfg["base"], "main")
+
+    def test_the_harness_gets_its_generate_command_and_loop_json_can_change_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(loop.DEFAULTS["generate_command"], "")
+            self.assertEqual(loop.load_config(tmp)["generate_command"], loop.HARNESS_GENERATE)
+            Path(tmp, "loop.json").write_text(json.dumps({"generate_command": ""}))
+            self.assertEqual(loop.load_config(tmp)["generate_command"], "")
+
+    def test_prompts_quote_the_generate_command_only_when_it_is_set(self):
+        def prompts(*generate):
+            return (loop.shape_prompt(issue(4), "", *generate), loop.build_prompt(4, "Plan.", "", "", "", *generate),
+                    loop.review_prompt("Plan.", "+x", "ok", 0, "", *generate))
+
+        for text in prompts("make {gen}"):
+            self.assertIn("`make {gen}`", text)
+            self.assertNotIn(EM_DASH, text)
+        for without, empty in zip(prompts(), prompts("")):
+            self.assertEqual(without, empty)
+            self.assertNotIn("After each build", without)
 
     def test_prompts_carry_their_inputs_so_the_agent_needs_no_file_access(self):
         build = loop.build_prompt(4, "Plan: add feature.txt.")
@@ -1765,6 +1784,58 @@ class TestAPass(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", seen)
         self.assertIn("PATH=", seen)
 
+    def test_a_generated_file_lands_in_the_same_rounds_commit(self):
+        self.cfg["generate_command"] = "echo made > generated.txt"
+        self.assertEqual(self.go(), 0)
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        self.assertEqual(git(tree, "rev-list", "--count", "origin/main..HEAD").stdout.strip(), "1")
+        self.assertEqual(sorted(git(tree, "show", "--name-only", "--format=", "HEAD").stdout.split()),
+                         ["feature.txt", "generated.txt"])
+        self.assertNotIn("GENERATE", [l.split()[2] for l in self.lines()])
+
+    def test_a_later_round_where_only_generated_files_changed_goes_on_to_tests_and_review(self):
+        (self.state / "build-once").write_text("")
+        (self.state / "verdict").write_text("FIX")
+        self.cfg["generate_command"] = "echo again >> generated.txt"
+        self.go()
+        self.assertEqual([l.split()[2] for l in self.lines()].count("VALIDATE"), 2)
+        self.assertNotIn("added nothing", "\n".join(self.lines()))
+
+    def test_a_generate_command_that_fails_is_logged_and_the_round_goes_on(self):
+        self.cfg["generate_command"] = "exit 3"
+        self.assertEqual(self.go(), 0)
+        self.assertEqual([l.split(" ", 3)[3] for l in self.lines() if l.split()[2] == "GENERATE"], ["round 1 exit 3"])
+        self.assertIn("VALIDATE", [l.split()[2] for l in self.lines()])
+        self.assertTrue(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_the_generate_command_runs_in_the_checkout_without_the_tokens(self):
+        os.environ["GH_TOKEN"] = "not-a-real-token"
+        try:
+            self.cfg["generate_command"] = "pwd > {0}/generate-cwd; env > {0}/generate-env".format(self.state)
+            self.go()
+        finally:
+            os.environ.pop("GH_TOKEN")
+        seen = (self.state / "generate-env").read_text()
+        self.assertNotIn("GH_TOKEN", seen)
+        self.assertIn("PATH=", seen)
+        self.assertEqual(Path((self.state / "generate-cwd").read_text().strip()).resolve(),
+                         (Path(self.cfg["worktree_dir"]) / "issue-12").resolve())
+
+    def test_an_empty_generate_command_runs_nothing(self):
+        ran = []
+        sh = loop.Loop.sh
+
+        def spy(me, cmd, *args, **kwargs):
+            ran.append(cmd)
+            return sh(me, cmd, *args, **kwargs)
+
+        self.cfg["generate_command"] = ""
+        with mock.patch.object(loop.Loop, "sh", spy):
+            self.assertEqual(self.go(), 0)
+        self.assertIn(self.cfg["test_command"], ran)
+        self.assertNotIn("", ran)
+        self.assertNotIn("GENERATE", [l.split()[2] for l in self.lines()])
+
     def test_dry_run_names_the_issue_and_starts_no_agent(self):
         self.go(dry_run=True)
         self.assertEqual(len(self.lines()), 1)
@@ -2904,7 +2975,7 @@ class TestProject(unittest.TestCase):
     def test_a_claude_run_that_times_out_is_recorded_as_not_reported(self):
         sleeper = Path(self.tmp.name) / "bin" / "claude"
         sleeper.write_text("#!/usr/bin/env python3\nimport sys, time\nsys.stdin.read()\ntime.sleep(30)\n")
-        cfg = dict(loop.load_config(self.project), agent_timeout=1)
+        cfg = dict(loop.load_config(self.project), agent_timeout=1, generate_command="")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             loop.Loop(self.harness, cfg, project=self.project).run(once=True)
         state = self.harness / ".loop" / "projects" / "app"
@@ -2943,9 +3014,15 @@ class TestProject(unittest.TestCase):
     def test_a_projects_own_loop_json_sets_only_the_project_keys(self):
         (self.project / "loop.json").write_text(json.dumps({
             "test_command": "make test", "test_timeout": 9, "base": "dev", "ready_label": "go",
-            "blocked_label": "stuck"}))
+            "blocked_label": "stuck", "generate_command": "make files"}))
         cfg = loop.Loop(self.harness, project=self.project).cfg
-        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS], ["make test", 9, "dev", "go", "stuck"])
+        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS], ["make test", 9, "dev", "go", "stuck", "make files"])
+
+    def test_a_project_gets_no_generate_command_from_the_harness(self):
+        (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
+        self.assertEqual(loop.Loop(self.harness, project=self.project).cfg["generate_command"], "")
+        self.harness_config({"generate_command": "make files"})
+        self.assertEqual(loop.Loop(self.harness, project=self.project).cfg["generate_command"], "")
 
     def test_a_project_key_the_projects_loop_json_leaves_out_is_the_default_not_the_harnesss(self):
         (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))
@@ -3029,7 +3106,7 @@ class TestProject(unittest.TestCase):
              "hooks": [{"type": "command", "command": "python3 " + shlex.quote(str(guard)), "timeout": 10}]}]}})
         for step in ("plan", "review"):
             self.assertNotIn("--settings", json.loads((self.state / (step + "-argv")).read_text()), step)
-        cfg = dict(loop.load_config(self.project), agent="codex")
+        cfg = dict(loop.load_config(self.project), agent="codex", generate_command="")
         self.assertNotIn("--settings", loop.Loop(self.harness, cfg, project=self.project).argv("agent")[0])
 
     def test_the_project_test_command_runs_in_the_checkout_without_the_tokens(self):
