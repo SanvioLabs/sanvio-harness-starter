@@ -27,6 +27,19 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Tokens and cost per activity item
+
+`dashboard_data.py`'s `activity` section now also says what each skill, agent and slash command spent:
+`skill_spend`, `agent_spend` and `command_spend`, each name's tokens and estimated dollars, with
+`unpriced`, `prices_checked` and `spend_at`. Dollars come from a price file you keep yourself, and stay
+null, with the reason under `unpriced`, for a model it doesn't price. The split of the transcripts is kept
+for 15 minutes in `.harness/cache/activity.json`. The pane doesn't show the new fields yet.
+Files: [`scripts/dashboard_data.py`](scripts/dashboard_data.py), [`scripts/prices.example.json`](scripts/prices.example.json), [`tests/test_dashboard_data.py`](tests/test_dashboard_data.py), [`examples/mods/harness-dashboard/`](examples/mods/harness-dashboard/).
+
+**Do:** to get dollars, copy [`scripts/prices.example.json`](scripts/prices.example.json) to `.harness/prices.json` and put in the
+models you use, in dollars per million tokens, from your provider's price list. Its figures are an
+example, not real prices.
+
 ## 2026-10-29: Tokens by agent, skill and command
 
 The token report has a new section, `## By activity`, for conversations at the harness's root: runs

@@ -833,6 +833,232 @@ class Conversations(Harness):
                 self.assertNotIn(leak, text)
 
 
+# What token_report.activity() returns, each model's counts in FIELDS order: input, output, cache writes, reads.
+CANNED = {"skills": {"review-pr": {"runs": 2, "models": {"m-a": [1000, 2000, 3000, 4000]}}},
+          "agents": {"reviewer": {"runs": 1, "models": {"m-a": [100, 0, 0, 0], "m-b": [0, 500, 0, 0]}}},
+          "commands": {"standup": {"runs": 3, "models": {}}}}
+PRICE_A = {"input": 1, "output": 2, "cache_writes": 3, "cache_reads": 4}
+USAGE_COUNTS = {"skills": {"review-pr": 2, "learn": 1}, "agents": {"reviewer": 1}, "commands": {"standup": 1},
+                "guard_refusals": {"credential-file": 2}, "asks": 1}
+
+
+class ActivitySpend(Harness):
+    """A usage log and a transcripts folder, with token_report.activity() canned unless a test writes transcripts."""
+
+    def setUp(self):
+        super().setUp()
+        self.fill()
+        self.transcripts.mkdir()
+
+    def prices(self, models=None, **fields):
+        write(self.root, ".harness/prices.json", dict(fields, models={"m-a": PRICE_A} if models is None else models))
+
+    def canned(self, result=CANNED):
+        patcher = mock.patch.object(token_report, "activity", return_value=result)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def activity(self, since=SINCE, now=NOW):
+        return dashboard_data.build(self.root, since, TODAY, now, projects_dir=self.transcripts)["activity"]
+
+    def test_each_names_tokens_and_cost_sit_beside_the_usage_counts(self):
+        self.prices(checked="2026-10-20", models={"m-a": PRICE_A, "m-b": PRICE_A})
+        reading = self.canned()
+        self.assertEqual(self.activity(), dict(
+            USAGE_COUNTS,
+            skill_spend={"review-pr": {"tokens": 10000, "cost_usd": 0.03}},
+            agent_spend={"reviewer": {"tokens": 600, "cost_usd": 0.0011}},
+            command_spend={"standup": {"tokens": 0, "cost_usd": 0.0}},
+            unpriced={}, prices_checked="2026-10-20", spend_at=NOW.isoformat(timespec="seconds")))
+        reading.assert_called_once_with(self.transcripts, SINCE, self.root, dashboard_data.loop_dir(self.root))
+
+    def test_a_section_thats_missing_adds_nothing_and_reads_nothing(self):
+        log_path(self.root).unlink()
+        reading = self.canned()
+        self.assertEqual(self.activity(), {"value": None, "why": "no usage log"})
+        reading.assert_not_called()
+
+    def test_no_transcripts_folder_leaves_the_counts_without_empty_spend(self):
+        self.transcripts.rmdir()
+        self.assertEqual(self.activity(), USAGE_COUNTS)
+        self.assertFalse((self.root / dashboard_data.ACTIVITY_CACHE).exists())
+
+    def test_a_loop_json_that_stops_the_read_leaves_the_counts_without_empty_spend(self):
+        write(self.root, "loop.json", "not json")
+        self.assertEqual(self.activity(), USAGE_COUNTS)
+
+    def test_a_transcript_that_stops_the_read_leaves_the_counts_without_empty_spend(self):
+        lines(self.transcripts, "a/s1.jsonl", [dict(reply(self.root, 1, "1", "s1"), requestId=["not", "a", "string"])])
+        self.assertEqual(self.activity(), USAGE_COUNTS)
+
+    def real_transcripts(self):
+        """A command, then a reply calling a skill, then the skill's reply, a subagent, and a resumed session's
+        copy of the skill's reply. Each reply has 10n tokens."""
+        def user(text, uuid):
+            return {"type": "user", "cwd": str(self.root), "sessionId": "s1", "timestamp": "2026-10-20T11:00:00Z",
+                    "uuid": uuid, "message": {"role": "user", "content": text}}
+
+        calling = reply(self.root, 1, "2", "s1")
+        calling["message"]["content"].append({"type": "tool_use", "id": "toolu_1", "name": "Skill",
+                                              "input": {"skill": "review-pr"}})
+        skills = reply(self.root, 3, "3", "s1")
+        lines(self.transcripts, "a/s1.jsonl", [
+            user("<command-name>/standup</command-name> " + LEAK, "u1"), reply(self.root, 5, "1", "s1"),
+            user("prompt " + LEAK, "u2"), calling, skills])
+        lines(self.transcripts, "a/s1/subagents/agent-x.jsonl", [reply(self.root, 7, "4", "s1", sidechain=True)])
+        write(self.transcripts, "a/s1/subagents/agent-x.meta.json", {"agentType": "reviewer"})
+        lines(self.transcripts, "b/s2.jsonl", [dict(skills, sessionId="s3")])
+
+    def test_real_transcripts_count_a_copied_reply_once_and_match_token_reports_split(self):
+        self.real_transcripts()
+        self.prices()
+        found = self.activity()
+        self.assertEqual(found["skill_spend"]["review-pr"]["tokens"], 30)
+        self.assertEqual(found["agent_spend"]["reviewer"]["tokens"], 70)
+        self.assertEqual(found["command_spend"]["standup"]["tokens"], 50)
+        # The reply that calls the skill stays with what came before it, a typed prompt, so with nobody.
+        split = token_report.activity(self.transcripts, SINCE, self.root, dashboard_data.loop_dir(self.root))
+        for kind, field in dashboard_data.SPEND_FIELDS.items():
+            self.assertEqual({name: row["tokens"] for name, row in found[field].items()},
+                             {name: sum(map(sum, row["models"].values())) for name, row in split[kind].items()}, kind)
+        # 30 tokens at 3n, 6n, 9n, 12n of PRICE_A: 3 + 12 + 27 + 48 dollars per million.
+        self.assertEqual(found["skill_spend"]["review-pr"]["cost_usd"], 0.0001)
+
+    def test_no_prompt_reply_or_folder_reaches_the_output_or_the_kept_result(self):
+        self.real_transcripts()
+        self.prices(source=LEAK, checked=LEAK)
+        found = json.dumps(self.activity())
+        kept = (self.root / dashboard_data.ACTIVITY_CACHE).read_text()
+        for text in (found, kept):
+            for leak in (LEAK, str(self.root), "prompt"):
+                self.assertNotIn(leak, text)
+
+    def test_a_kept_result_is_used_again_for_15_minutes_at_the_same_since(self):
+        reading = self.canned()
+        self.activity()
+        minutes = NOW + datetime.timedelta(minutes=15)
+        self.assertEqual(self.activity(now=minutes)["spend_at"], NOW.isoformat(timespec="seconds"))
+        self.assertEqual(reading.call_count, 1)
+        later = minutes + datetime.timedelta(seconds=1)
+        self.assertEqual(self.activity(now=later)["spend_at"], later.isoformat(timespec="seconds"))
+        self.assertEqual(reading.call_count, 2)
+
+    def test_a_kept_result_dated_in_the_future_is_used_again(self):
+        reading = self.canned()
+        self.activity(now=NOW + datetime.timedelta(days=1))
+        self.activity()
+        self.assertEqual(reading.call_count, 1)
+
+    def test_a_changed_since_reads_again(self):
+        reading = self.canned()
+        self.activity()
+        self.activity(since="2026-10-20")
+        self.assertEqual([call.args[1] for call in reading.call_args_list], [SINCE, "2026-10-20"])
+
+    def test_a_kept_result_that_cant_be_used_counts_as_none(self):
+        at = NOW.isoformat(timespec="seconds")
+        for junk in ("not json", "[1, 2]", {"at": at, "since": SINCE},
+                     {"at": "not a time", "since": SINCE, "result": CANNED},
+                     {"at": at, "since": SINCE, "result": {"skills": {}, "agents": {}}},
+                     {"at": at, "since": SINCE, "result": dict(CANNED, skills={"a": {"runs": 1, "models": {"m": [1]}}})},
+                     {"at": at, "since": SINCE, "result": dict(CANNED, skills={"a": {"runs": "1", "models": {}}})}):
+            with self.subTest(junk=junk):
+                write(self.root, dashboard_data.ACTIVITY_CACHE, junk)
+                reading = self.canned()
+                self.assertEqual(self.activity()["skill_spend"]["review-pr"]["tokens"], 10000)
+                reading.assert_called_once()
+
+    def test_new_prices_show_without_reading_the_transcripts_again(self):
+        reading = self.canned()
+        self.assertIsNone(self.activity()["skill_spend"]["review-pr"]["cost_usd"])
+        self.prices()
+        found = self.activity()
+        self.assertEqual(found["skill_spend"]["review-pr"]["cost_usd"], 0.03)
+        self.assertNotIn("m-a", found["unpriced"])
+        self.assertEqual(reading.call_count, 1)
+
+    def test_no_price_file_says_so_for_every_model(self):
+        self.canned()
+        found = self.activity()
+        self.assertEqual(found["unpriced"], {"m-a": "no prices.json", "m-b": "no prices.json"})
+        self.assertEqual(found["skill_spend"]["review-pr"], {"tokens": 10000, "cost_usd": None})
+        self.assertIsNone(found["prices_checked"])
+
+    def test_a_price_file_that_cant_be_read_says_so_for_every_model(self):
+        self.canned()
+        for junk in ("not json", "[1, 2]", {"models": ["m-a"]}, {"checked": "2026-10-20"}):
+            with self.subTest(junk=junk):
+                write(self.root, ".harness/prices.json", junk)
+                found = self.activity()
+                self.assertEqual(found["unpriced"], {"m-a": "unreadable", "m-b": "unreadable"})
+                self.assertIsNone(found["prices_checked"])
+
+    def test_a_model_the_file_doesnt_list_is_named_and_makes_only_its_items_null(self):
+        self.prices()
+        self.canned()
+        found = self.activity()
+        self.assertEqual(found["unpriced"], {"m-b": "not in prices.json"})
+        self.assertEqual(found["skill_spend"]["review-pr"]["cost_usd"], 0.03)
+        # reviewer has one model priced and one not, so its cost isn't the part that could be priced.
+        self.assertEqual(found["agent_spend"]["reviewer"], {"tokens": 600, "cost_usd": None})
+
+    def test_a_model_with_no_tokens_needs_no_price(self):
+        self.prices()
+        self.canned({"skills": {"a": {"runs": 1, "models": {"m-a": [1000, 0, 0, 0], "m-z": [0, 0, 0, 0]}}},
+                     "agents": {"b": {"runs": 1, "models": {}}}, "commands": {}})
+        found = self.activity()
+        self.assertEqual(found["skill_spend"]["a"], {"tokens": 1000, "cost_usd": 0.001})
+        self.assertEqual(found["agent_spend"]["b"], {"tokens": 0, "cost_usd": 0.0})
+        self.assertEqual(found["unpriced"], {})
+
+    def test_an_entry_without_four_finite_non_negative_numbers_is_unreadable(self):
+        self.canned()
+        for bad in ('{"input": 1, "output": 2, "cache_writes": 3}', '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": NaN}',
+                    '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": Infinity}',
+                    '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": -1}',
+                    '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": true}',
+                    '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": "4"}',
+                    '{"input": 1, "output": 2, "cache_writes": 3, "cache_reads": 1' + "0" * 400 + '}', '[1, 2, 3, 4]'):
+            with self.subTest(bad=bad):
+                write(self.root, ".harness/prices.json", '{"models": {"m-a": ' + bad + '}}')
+                found = self.activity()
+                self.assertEqual(found["unpriced"]["m-a"], "unreadable")
+                self.assertIsNone(found["skill_spend"]["review-pr"]["cost_usd"])
+                json.dumps(found, allow_nan=False)
+
+    def test_a_cost_too_big_for_a_float_is_null_not_invalid_json(self):
+        huge = {name: 1e308 for name in PRICE_A}
+        self.prices(models={"m-a": huge, "m-b": huge})
+        self.canned()
+        found = self.activity()
+        self.assertIsNone(found["skill_spend"]["review-pr"]["cost_usd"])
+        json.dumps(found, allow_nan=False)
+
+    def test_only_a_date_is_printed_as_checked_and_the_source_never_is(self):
+        self.canned()
+        for checked, printed in (("2026-10-20", "2026-10-20"), ("2026-13-40", None), ("20261020", None),
+                                 ("last week", None), (20261020, None), (None, None)):
+            with self.subTest(checked=checked):
+                self.prices(source=LEAK, checked=checked)
+                found = self.activity()
+                self.assertEqual(found["prices_checked"], printed)
+                self.assertNotIn(LEAK, json.dumps(found))
+
+    def test_the_example_price_file_is_read_and_holds_only_an_example_model(self):
+        shutil.copy(ROOT / "scripts" / "prices.example.json", self.prices_path())
+        self.canned({"skills": {"a": {"runs": 1, "models": {"example-model": [1000000, 0, 0, 0]}}},
+                     "agents": {}, "commands": {}})
+        found = self.activity()
+        self.assertEqual(found["skill_spend"]["a"], {"tokens": 1000000, "cost_usd": 1.0})
+        self.assertEqual(list(json.loads((ROOT / "scripts" / "prices.example.json").read_text())["models"]),
+                         ["example-model"])
+
+    def prices_path(self):
+        path = self.root / dashboard_data.PRICES
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+
 @contextlib.contextmanager
 def zone(name):
     """Run in the time zone given, whatever the machine's, and put the old one back after."""
@@ -983,9 +1209,21 @@ class Sample(GitHarness):
                    "23": 450_000, "24": 90_000, "26": 820_000, "27": 560_000}
         for day, n in harness.items():
             ts = "2026-10-{}T12:00:00Z".format(day)
-            lines(self.transcripts, "harness/s{}.jsonl".format(day), [
-                reply(self.root, n, "h" + day, "s" + day, model=OPUS, ts=ts),
-                reply(self.root, n // 20, "k" + day, "s" + day, model=HAIKU, ts=ts)])
+            entries = [reply(self.root, n, "h" + day, "s" + day, model=OPUS, ts=ts),
+                       reply(self.root, n // 20, "k" + day, "s" + day, model=HAIKU, ts=ts)]
+            if day == "20":  # the reviewer ran that day, in the Haiku reply, so it moves to the subagent's file
+                lines(self.transcripts, "harness/s20/subagents/agent-x.jsonl", [entries.pop()])
+                write(self.transcripts, "harness/s20/subagents/agent-x.meta.json", {"agentType": "reviewer"})
+            if day == "26":  # /standup's Opus reply calls review-pr, so the Haiku reply after it is the skill's
+                entries[0]["message"]["content"].append({"type": "tool_use", "id": "toolu_26", "name": "Skill",
+                                                         "input": {"skill": "review-pr"}})
+                entries.insert(0, {"type": "user", "cwd": str(self.root), "sessionId": "s26", "timestamp": ts, "uuid": "u26",
+                                   "message": {"role": "user", "content": "<command-name>/standup</command-name>"}})
+            lines(self.transcripts, "harness/s{}.jsonl".format(day), entries)
+        write(self.root, ".harness/prices.json", {
+            "checked": "2026-10-01",
+            "models": {OPUS: {"input": 5, "output": 25, "cache_writes": 6.25, "cache_reads": 0.5},
+                       HAIKU: {"input": 1, "output": 5, "cache_writes": 1.2, "cache_reads": 0.1}}})
         for issue, day, n in (("issue-31", "16", 210_000), ("issue-32", "19", 280_000), ("issue-33", "21", 330_000),
                               ("issue-34", "23", 520_000), ("issue-36", "26", 240_000), ("issue-38", "27", 260_000)):
             lines(self.transcripts, "loop/{}.jsonl".format(issue), [
@@ -1017,6 +1255,8 @@ class Sample(GitHarness):
         rows = found["evals"].values()
         self.assertEqual([r["why"] for r in rows if "why" in r], [])
         self.assertTrue(any(r["changed"] and r["newest_change"] for r in rows))
+        for field, name in (("skill_spend", "review-pr"), ("agent_spend", "reviewer"), ("command_spend", "standup")):
+            self.assertIsNotNone(found["activity"][field][name]["cost_usd"], field)
 
 
 class Privacy(Harness):

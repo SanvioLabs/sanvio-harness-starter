@@ -4,21 +4,42 @@ import type { Doc } from '../types'
 
 export const SAMPLE: Doc = {
   "activity": {
+    "agent_spend": {
+      "reviewer": {
+        "cost_usd": 0.4575,
+        "tokens": 305000
+      }
+    },
     "agents": {
       "reviewer": 2,
       "security-reviewer": 1
     },
     "asks": 2,
+    "command_spend": {
+      "standup": {
+        "cost_usd": 62.115,
+        "tokens": 8200000
+      }
+    },
     "commands": {
       "standup": 9
     },
     "guard_refusals": {
       "credential-file": 1
     },
+    "prices_checked": "2026-10-01",
+    "skill_spend": {
+      "review-pr": {
+        "cost_usd": 0.615,
+        "tokens": 410000
+      }
+    },
     "skills": {
       "learn": 2,
       "review-pr": 9
-    }
+    },
+    "spend_at": "2026-10-27T12:00:00+00:00",
+    "unpriced": {}
   },
   "conversations": {
     "harness": {
