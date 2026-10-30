@@ -247,6 +247,104 @@ class Privacy(Harness):
             self.assertNotIn(leak, result.stdout)
 
 
+def said(cwd, content, meta=False, ts="2026-10-05T12:00:00.000Z"):
+    """One user line: a typed prompt when content is a string and meta is False."""
+    return {"type": "user", "cwd": str(cwd), "sessionId": "s1", "timestamp": ts, "isMeta": meta,
+            "message": {"role": "user", "content": content}}
+
+
+def command(cwd, name, args=""):
+    return said(cwd, "<command-message>{0}</command-message>\n<command-name>/{0}</command-name>\n"
+                     "<command-args>{1}</command-args>".format(name, args))
+
+
+def tool_result(cwd):
+    return said(cwd, [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "done"}])
+
+
+def skill_call(cwd, skill, id, req):
+    """The line of a reply holding a Skill call, without the usage, which comes on its other line."""
+    line = entry(cwd, id=id, req=req)
+    del line["message"]["usage"]
+    line["message"]["content"] = [{"type": "tool_use", "id": "toolu_" + id, "name": "Skill", "input": {"skill": skill}}]
+    return line
+
+
+ONE = {"claude-test-1": [10, 20, 30, 40]}
+TWO = {"claude-test-1": [20, 40, 60, 80]}
+
+
+class Activity(Harness):
+    """Tokens by subagent type, skill and slash command, for conversations at the root."""
+
+    def activity(self):
+        return token_report.activity(self.transcripts, SINCE, self.root, self.loop)
+
+    def test_subagents_count_by_their_recorded_type_and_under_no_skill_or_command(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.jsonl", [entry(self.root), entry(self.root)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.meta.json", [{"agentType": "reviewer"}])
+        write(self.transcripts, "proj/s1/subagents/agent-b.jsonl", [entry(self.root)])
+        self.assertEqual(self.activity(), {
+            "agents": {"reviewer": {"runs": 1, "models": TWO},
+                       "agent type not recorded": {"runs": 1, "models": ONE}},
+            "skills": {},
+            "commands": {"plan": {"runs": 1, "models": ONE}}})
+
+    def test_a_skill_counts_from_the_reply_after_its_call_to_the_next_prompt(self):
+        write(self.transcripts, "proj/s1.jsonl", [
+            said(self.root, "review this"), skill_call(self.root, "review-pr", "msg_call", "req_call"),
+            entry(self.root, id="msg_call", req="req_call"), tool_result(self.root),
+            entry(self.root), entry(self.root), said(self.root, "thanks"), entry(self.root)])
+        self.assertEqual(self.activity()["skills"], {"review-pr": {"runs": 1, "models": TWO}})
+
+    def test_a_skill_call_written_twice_is_one_run(self):
+        call = skill_call(self.root, "review-pr", "msg_call", "req_call")
+        write(self.transcripts, "proj/s1.jsonl", [call, call, entry(self.root, id="msg_call", req="req_call"),
+                                                  entry(self.root)])
+        self.assertEqual(self.activity()["skills"], {"review-pr": {"runs": 1, "models": ONE}})
+
+    def test_a_skill_inside_a_command_takes_over_from_it(self):
+        write(self.transcripts, "proj/s1.jsonl", [
+            command(self.root, "plan"), entry(self.root), skill_call(self.root, "create-ticket", "msg_x", "req_x"),
+            entry(self.root, id="msg_x", req="req_x"), tool_result(self.root), entry(self.root), entry(self.root)])
+        found = self.activity()
+        self.assertEqual(found["commands"], {"plan": {"runs": 1, "models": TWO}})
+        self.assertEqual(found["skills"], {"create-ticket": {"runs": 1, "models": TWO}})
+
+    def test_a_command_followed_by_a_prompt_has_one_run_and_no_tokens(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), said(self.root, "hi"), entry(self.root)])
+        found = self.activity()
+        self.assertEqual(found["commands"], {"plan": {"runs": 1, "models": {}}})
+        out = token_report.report(token_report.read(self.transcripts, SINCE), SINCE, "2026-10-22",
+                                  self.root, self.loop, activity=found)
+        self.assertIn("| plan | 1 | 0 | 0 | 0 | 0 | 0 |", out)
+
+    def test_projects_and_loop_worktrees_are_left_out(self):
+        app, issue = self.root / "projects" / "app", self.loop / "issue-7"
+        write(self.transcripts, "app/s1.jsonl", [command(app, "plan"), entry(app),
+                                                 skill_call(app, "review-pr", "msg_a", "req_a"), entry(app)])
+        write(self.transcripts, "loop/s2.jsonl", [command(issue, "plan"), entry(issue)])
+        write(self.transcripts, "loop/s2/subagents/agent-c.jsonl", [entry(issue)])
+        write(self.transcripts, "loop/s2/subagents/agent-c.meta.json", [{"agentType": "reviewer"}])
+        self.assertEqual(self.activity(), {"agents": {}, "skills": {}, "commands": {}})
+
+    def test_the_section_is_printed_most_tokens_first_without_prompts_or_arguments(self):
+        write(self.transcripts, "proj/s1.jsonl", [
+            command(ROOT, "plan", args="args-text-zq8"), entry(ROOT), said(ROOT, "prompt-text-zq8"),
+            command(ROOT, "review"), entry(ROOT), entry(ROOT)])
+        result = run("--projects", str(self.transcripts), "--since", SINCE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = result.stdout
+        for heading in ("## By activity", "### Agents", "### Skills", "### Commands",
+                        "| Command | Runs | Input | Output | Cache writes | Cache reads | Total |"):
+            self.assertIn(heading, out)
+        self.assertEqual(out.count(token_report.ATTRIBUTED), 2)
+        self.assertLess(out.index("| review | 1 | 20 |"), out.index("| plan | 1 | 10 |"))
+        for leak in ("args-text-zq8", "prompt-text-zq8"):
+            self.assertNotIn(leak, out)
+
+
 class BadInput(Harness):
     def test_junk_lines_and_odd_shapes_are_skipped(self):
         bad_usage = entry(self.root)
