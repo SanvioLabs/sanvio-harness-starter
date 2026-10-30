@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, loopDir, loopLabel, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -322,7 +322,7 @@ export const register: Register = on => {
             {loops.map(loop => (
               <Button
                 key={loop.project ? `loop-${loop.project}` : 'loop'}
-                label={loopLabel(loop)}
+                label={loopButtonLabel(loop)}
                 variant={loop.project === seen.project ? 'primary' : undefined}
                 dimColor={loop.project !== seen.project}
                 onPress={() => show($, loop)}

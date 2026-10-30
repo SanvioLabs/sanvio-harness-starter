@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Working loops on the loop pane's buttons
+
+The loop pane's buttons now show which loops are working, on screen or not: `● app` for a loop on one job and `● app 2` from two up, counted the same way as the header's **Running**. A loop with no live lock shows its name alone.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`examples/mods/loop-pane/hooks/logic.test.ts`](examples/mods/loop-pane/hooks/logic.test.ts), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-30: Project loops in the loop pane
 
 The loop pane now shows loops started with `--project`, not only the harness's. With more than one loop, a row of buttons above the tabs switches between them; `/loop-pane` opens on the first one running, the harness first, and the loop you pick stays. An issue reaching an end in any loop raises a toast, a project's starting with its name.
