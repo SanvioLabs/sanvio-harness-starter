@@ -4,11 +4,30 @@ import type { QueueItem, Row, Seen, Status, Tab } from '../types'
 export type Tone = 'now' | 'pass' | 'fail' | 'quiet' | 'idle'
 export type Line = { tone: Tone; text: string }
 
-export const STATUS_FILE = '.loop/status.json'
-export const LOCK_FILE = '.loop/lock'
-export const STOP_FILE = '.loop/STOP'
-export const WATCH_FILE = '.loop/watch.command'
+export const PROJECTS_DIR = '.loop/projects'
 export const SCRIPT = 'scripts/loop.py'
+
+// The folder under the root holding one loop's files: the harness's, or a project's.
+export function loopDir(project?: string): string {
+  return project ? `${PROJECTS_DIR}/${project}` : '.loop'
+}
+
+// The projects with a loop to show, by name: folders under PROJECTS_DIR that hold a status file.
+export async function projectNames(entries: { name: string; kind: string }[], hasStatus: (name: string) => Promise<boolean>): Promise<string[]> {
+  const folders = entries.filter(e => e.kind === 'dir').map(e => e.name).sort((a, b) => a.localeCompare(b))
+  const held = await Promise.all(folders.map(name => hasStatus(name)))
+  return folders.filter((_, i) => held[i])
+}
+
+// The loop to open on: the first one running, harness first, else the harness.
+export function openingLoop(loops: Seen[]): Seen | undefined {
+  return loops.find(l => l.isLocked) ?? loops[0]
+}
+
+// What a loop is called: the project's name, or the root's folder for the harness.
+export function loopLabel(seen: Seen): string {
+  return seen.project ?? seen.root.split('/').filter(Boolean).pop() ?? seen.root
+}
 
 const STEPS: Record<string, string> = {
   SHAPE: 'planning',
@@ -87,12 +106,12 @@ export function headline(seen: Seen): Line {
 
 export type Header = { left: string; right: Line; isPulsing: boolean; wraps: boolean; rows: [string, string] }
 
-// The pane's top: the repo on the left, the loop's state on the right. Always two rows: the state
+// The pane's top: the loop's name on the left, its state on the right. Always two rows: the state
 // drops to the second when both don't fit on the first, and the second stays blank when they do, so
 // nothing below moves as the state changes. The state's dot pulses while the loop is on a job, like
 // that job's own dot.
 export function header(seen: Seen, now: number, width: number): Header {
-  const left = seen.root.split('/').filter(Boolean).pop() ?? seen.root
+  const left = loopLabel(seen)
   const right = loopState(seen, now)
   const isPulsing = seen.isLocked && !seen.isStopping && !!seen.status?.issues.some(r => r.state === 'working')
   const wraps = left.length + 1 + right.text.length > width
@@ -129,7 +148,7 @@ export function attach(seen: Seen): string | null {
 // The file that opens a window on the running loop's tmux session, read-only, or null. loop.py
 // writes it only on macOS inside tmux, so elsewhere, or with an older loop.py, there's no button.
 export function watch(seen: Seen): string | null {
-  return attach(seen) && seen.hasWatchFile ? `${seen.root}/${WATCH_FILE}` : null
+  return attach(seen) && seen.hasWatchFile ? `${seen.root}/${loopDir(seen.project)}/watch.command` : null
 }
 
 // What the window runs, to copy when it can't open: read-only, and the name matched exactly. Always
@@ -141,8 +160,8 @@ export function watchCommand(seen: Seen): string | null {
 
 // The file that opens a window on one job's tmux window, read-only, under the root. loop.py writes it
 // only on macOS, when it opens the window, and removes it when the window closes.
-export function jobWatchFile(n: number): string {
-  return `.loop/issue-${n}/watch.command`
+export function jobWatchFile(n: number, project?: string): string {
+  return `${loopDir(project)}/issue-${n}/watch.command`
 }
 
 // What that file runs, to copy when it can't open, or null when the job has no window in a live run.
@@ -283,16 +302,18 @@ export function clock(row: Row, isRunning: boolean, now: number): string | null 
 }
 
 // A short line for each issue that has just reached an end: a pull request, a block or a stop.
-// The first look has nothing to compare with, so it says nothing: opening the pane isn't news.
-export function changes(before: Status | null, after: Status | null): string[] {
+// The first look has nothing to compare with, so it says nothing: opening the pane isn't news. A
+// project's line starts with its name, since its loop may not be the one on screen.
+export function changes(before: Status | null, after: Status | null, project?: string): string[] {
   if (!before || !after) return []
   const was = new Map((before?.issues ?? []).map(r => [r.number, r.state]))
+  const from = project ? `${project}:` : 'Loop:'
   const out: string[] = []
   for (const row of after.issues) {
     if (was.get(row.number) === row.state) continue
-    if (row.state === 'pr') out.push(`Loop: #${row.number} has a pull request`)
-    else if (row.state === 'blocked') out.push(`Loop: #${row.number} is blocked`)
-    else if (row.state === 'stopped') out.push(`Loop: #${row.number} stopped`)
+    if (row.state === 'pr') out.push(`${from} #${row.number} has a pull request`)
+    else if (row.state === 'blocked') out.push(`${from} #${row.number} is blocked`)
+    else if (row.state === 'stopped') out.push(`${from} #${row.number} stopped`)
   }
   return out
 }

@@ -1,4 +1,4 @@
-import { describe as group, expect, test } from 'claude-code/testing'
+import { describe as group, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { Seen } from '../types'
@@ -286,6 +286,176 @@ group('a job in the pane', () => {
     // Drawn from the same beat, so the two dots brighten and dim together.
     expect(headerDot.props).toEqual(jobDot.props)
     await ui.unmount()
+  })
+})
+
+group('project loops', () => {
+  const ROOT = '/h/starter'
+  const HARNESS = `${ROOT}/.loop`
+  const ALPHA = `${ROOT}/.loop/projects/alpha`
+  const BETA = `${ROOT}/.loop/projects/beta`
+  const statusText = (title: string, extra: object = {}) =>
+    JSON.stringify({ running: false, tmux: null, queue: [{ number: 30, title }], issues: [], ...extra })
+  const JOB = { number: 12, title: 'Gate', step: 'BUILD', state: 'working', round: 1, tests: null, review: null, pr: null, note: '', window: 'issue-12' }
+
+  // The engine beneath the plugin: a harness whose loop files are `files`, by path, and an open pane.
+  // The folders under .loop/projects come from those paths. The test changes `files` between polls.
+  function world(on: On, files: Map<string, string>) {
+    const clock = mock.clock(on, { now: 1_800_000_000_000 })
+    const toasts: string[] = []
+    const ran: string[][] = []
+    let isUp = true
+    on('session.root', async () => ({ value: ROOT }))
+    on('fs.exists', async (_$, e) => ({ value: e.path === `${ROOT}/scripts/loop.py` || files.has(e.path) }))
+    on('fs.read', async (_$, e) => {
+      const text = files.get(e.path)
+      return text === undefined ? { deny: `no ${e.path}` } : { value: text }
+    })
+    on('fs.list', async (_$, e) => {
+      if (e.path !== `${ROOT}/.loop/projects`) return { deny: `no ${e.path}` }
+      const names = [...files.keys()].flatMap(p => p.match(/\/\.loop\/projects\/([^/]+)\//)?.[1] ?? [])
+      return { value: [...new Set(names)].map(name => ({ name, kind: 'dir' as const, size: 0 })) } as never
+    })
+    on('process.run', async (_$, e) => {
+      ran.push([...e.argv])
+      return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    on('ui.open', async () => ({ value: { isPlaced: true } }))
+    on('ui.panes', async () => ({ value: isUp ? [{ id: 'loop' }] : [] }) as never)
+    on('ui.toast', async (_$, e) => {
+      toasts.push(e.text)
+      return { value: undefined }
+    })
+    // Closes the pane, so the poll stops itself and the next test can start its own.
+    const close = async () => {
+      isUp = false
+      await clock.advance(500)
+    }
+    return { clock, toasts, close, opened: () => ran.filter(argv => argv[0] === 'open') }
+  }
+
+  type Dollar = { command: { run: (i: object) => Promise<unknown> } }
+  const typed = { command: 'loop-pane', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }
+  const open = async ($: Dollar) => { await $.command.run(typed) }
+  // Past the poll's next read of the loop's files.
+  const POLL = 2000
+
+  const threeLoops = () => new Map([
+    [`${HARNESS}/status.json`, statusText('harness job')],
+    [`${ALPHA}/status.json`, statusText('alpha job')],
+    [`${BETA}/status.json`, statusText('beta job')],
+    [`${ROOT}/.loop/projects/never-ran/notes`, 'a clone with no status file'],
+  ])
+  const left = async (ui: { find: (q: { key: string }) => Promise<unknown> }) => JSON.stringify(await ui.find({ key: 'header' }))
+
+  test('there is no row without projects', async ($, on) => {
+    const { close } = world(on, new Map([[`${HARNESS}/status.json`, statusText('harness job')]]))
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.find({ key: 'loops' })).toBeUndefined()
+    expect(await ui.find({ key: 'tab-queue' })).toBeDefined()
+    await ui.unmount()
+    await close()
+  })
+  test('with projects, the row names the harness then each project in order, above the tabs', async ($, on) => {
+    const { close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    const row = await ui.find({ key: 'loops' })
+    const labels = (row?.children as unknown as { props: { label: string } }[]).map(c => c.props.label)
+    expect(labels).toEqual(['starter', 'alpha', 'beta'])
+    const top = (await ui.drawn()) as unknown as { children: unknown[] }
+    const at = (needle: string) => top.children.findIndex(c => JSON.stringify(c).includes(needle))
+    expect(at('"loop-alpha"')).toBeGreaterThan(-1)
+    expect(at('"loop-alpha"')).toBeLessThan(at('"tab-queue"'))
+    await ui.unmount()
+    await close()
+  })
+  test("pressing a project shows its queue, and its STOP shows as stopping", async ($, on) => {
+    const files = threeLoops()
+    files.set(`${ALPHA}/lock`, '4242')
+    files.set(`${ALPHA}/STOP`, '')
+    files.set(`${HARNESS}/lock`, '4242')
+    const { close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    expect(await titles(ui)).toEqual(['#30 harness job'])
+    await ui.press({ key: 'loop-alpha' })
+    await drain()
+    expect(await titles(ui)).toEqual(['#30 alpha job'])
+    const head = await left(ui)
+    expect(head).toContain('alpha')
+    expect(head).toContain('Stopping after this step')
+    await ui.unmount()
+    await close()
+  })
+  test("Watch it and a job's Watch open the project's own files", async ($, on) => {
+    const files = threeLoops()
+    files.set(`${ALPHA}/status.json`, statusText('alpha job', { tmux: 'loop-alpha', issues: [JOB] }))
+    files.set(`${ALPHA}/lock`, '4242')
+    files.set(`${ALPHA}/watch.command`, '')
+    const { opened, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'watch' })
+    await ui.press({ key: 'watch-12' })
+    await drain()
+    expect(opened()).toEqual([['open', `${ALPHA}/watch.command`], ['open', `${ALPHA}/issue-12/watch.command`]])
+    await ui.unmount()
+    await close()
+  })
+  test('the pane opens on a running project, the pick then holds, and /loop-pane picks again', async ($, on) => {
+    const files = threeLoops()
+    files.set(`${BETA}/lock`, '4242')
+    const { clock, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    expect(await titles(ui)).toEqual(['#30 beta job'])
+    // The harness starts: it comes first when opening, but the pane doesn't jump to it.
+    files.set(`${HARNESS}/lock`, '4242')
+    await clock.advance(POLL)
+    expect(await titles(ui)).toEqual(['#30 beta job'])
+    await open($ as unknown as Dollar)
+    expect(await titles(ui)).toEqual(['#30 harness job'])
+    await ui.unmount()
+    await close()
+  })
+  test("a picked project whose folder has gone falls back to the harness, on the harness's busiest tab", async ($, on) => {
+    const files = threeLoops()
+    const { clock, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'loop-alpha' })
+    await drain()
+    await ui.press({ key: 'tab-finished' })
+    await drain()
+    files.delete(`${ALPHA}/status.json`)
+    await clock.advance(POLL)
+    expect(await titles(ui)).toEqual(['#30 harness job'])
+    expect(await ui.find({ key: 'loop-alpha' })).toBeUndefined()
+    await ui.unmount()
+    await close()
+  })
+  test('switching loops raises no toast, and a change in a loop off screen raises one with its name', async ($, on) => {
+    const files = threeLoops()
+    const issues = [{ ...JOB, state: 'working' }]
+    files.set(`${HARNESS}/status.json`, statusText('harness job', { issues }))
+    files.set(`${BETA}/status.json`, statusText('beta job', { issues }))
+    const { clock, toasts, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'loop-alpha' })
+    await drain()
+    await clock.advance(POLL)
+    await ui.press({ key: 'loop' })
+    await drain()
+    await clock.advance(POLL)
+    expect(toasts).toEqual([])
+    files.set(`${BETA}/status.json`, statusText('beta job', { issues: [{ ...JOB, state: 'pr', pr: 'https://x/pull/2' }] }))
+    await clock.advance(POLL)
+    expect(toasts).toEqual(['beta: #12 has a pull request'])
+    await ui.unmount()
+    await close()
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, modelName, page, parseStatus, sameSeen, usage, waiting, waitingOn, watch, watchCommand } from './logic'
+import { FINISHED_MS, attach, changes, clip, clock, describe, dot, duration, findRoot, firstTab, header, headline, isPulsing, jobAttach, jobWatchFile, lists, lockPid, loopDir, loopLabel, modelName, openingLoop, page, parseStatus, projectNames, sameSeen, usage, waiting, waitingOn, watch, watchCommand } from './logic'
 import type { Row, Seen, Status } from '../types'
 
 const ROW: Row = {
@@ -15,6 +15,46 @@ function status(rows: Row[], queue = [{ number: 12, title: 'a' }, { number: 15, 
 function seen(s: Status | null, isLocked: boolean, isStopping = false, isStaleLock = false, hasWatchFile = false): Seen {
   return { root: '/h/starter', status: s, isLocked, isStaleLock, isStopping, hasWatchFile }
 }
+
+group('project loops', () => {
+  const dir = (name: string) => ({ name, kind: 'dir' })
+  const running = (project: string | undefined, isLocked: boolean): Seen => ({ ...seen(status([]), isLocked), ...(project ? { project } : {}) })
+  test('a project is a folder holding a status file, sorted by name', async () => {
+    const entries = [dir('zeta'), dir('never-ran'), { name: 'notes.txt', kind: 'file' }, { name: 'link', kind: 'other' }, dir('alpha')]
+    const held = new Set(['zeta', 'alpha', 'notes.txt', 'link'])
+    expect(await projectNames(entries, async name => held.has(name))).toEqual(['alpha', 'zeta'])
+    expect(await projectNames([], async () => true)).toEqual([])
+  })
+  test('the pane opens on the first loop running, harness first, else the harness', () => {
+    const open = (...flags: boolean[]) => {
+      const [harness = false, a = false, b = false] = flags
+      return openingLoop([running(undefined, harness), running('a', a), running('b', b)])?.project
+    }
+    expect(open(true, true, true)).toBeUndefined()
+    expect(open(false, false, true)).toBe('b')
+    expect(open(false, true, true)).toBe('a')
+    expect(open(false, false, false)).toBeUndefined()
+    expect(openingLoop([running(undefined, false), running('a', false)])).toEqual(running(undefined, false))
+  })
+  test("a project's name is its label and the header's left side; the harness keeps its folder", () => {
+    expect(loopLabel(running(undefined, false))).toBe('starter')
+    expect(loopLabel(running('app', false))).toBe('app')
+    expect(header(running('app', true), 0, 60).left).toBe('app')
+  })
+  test("a project's paths sit under its own folder, and the harness's don't move", () => {
+    expect(loopDir()).toBe('.loop')
+    expect(loopDir('app')).toBe('.loop/projects/app')
+    expect(jobWatchFile(12, 'app')).toBe('.loop/projects/app/issue-12/watch.command')
+    const inTmux = { ...seen(status([ROW], undefined, true, 'loop-app'), true, false, false, true), project: 'app' }
+    expect(watch(inTmux)).toBe('/h/starter/.loop/projects/app/watch.command')
+  })
+  test("a project's toast starts with its name, and the harness's with Loop", () => {
+    const before = status([ROW])
+    const after = status([{ ...ROW, state: 'pr' }, { ...ROW, number: 9, state: 'blocked' }, { ...ROW, number: 8, state: 'stopped' }])
+    expect(changes(before, after, 'app')).toEqual(['app: #12 has a pull request', 'app: #9 is blocked', 'app: #8 stopped'])
+    expect(changes(before, after)[0]).toBe('Loop: #12 has a pull request')
+  })
+})
 
 group('the status file', () => {
   test('what loop.py writes reads back', () => {
