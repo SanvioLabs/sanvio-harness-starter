@@ -266,7 +266,8 @@ def next_start(hours, ts):
 
 
 # The harness's own generated files: the dashboard's sample, then the picture drawn from it. A project doesn't get this.
-HARNESS_GENERATE = "UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample && python3 scripts/draw_dashboard.py"
+# Joined with ; because the sample's first test reads the old sample, so it can exit 1 on a run that rewrites it.
+HARNESS_GENERATE = "UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample; python3 scripts/draw_dashboard.py"
 
 
 def load_config(root):
