@@ -33,6 +33,19 @@ fine).
 Files: [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md), [`skills/check-starter/capabilities.md`](skills/check-starter/capabilities.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_changelog.py`](tests/test_changelog.py), [`README.md`](README.md), [`AGENTS.md`](AGENTS.md), [`CHANGELOG.md`](CHANGELOG.md).
 
 **Do:** nothing.
+## 2026-10-30: Loop plans carry the ticket's exact content
+
+The loop's planner is now told that the build agent gets only the plan, so what a ticket gives exactly, such as a table's rows, paths, command text or required wording, goes in the plan word for word and marked as content. The 40-line limit now covers only the planner's own words. The ticket's wording now reaches the agent that writes files, as the planner's copy, with no cap on its length.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** a running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
+
+## 2026-10-30: Loop setup command
+
+`setup_command`, in the harness's `loop.json` or a project's own, runs once per worktree before the planner, such as `npm ci`, with the same environment and timeout as `test_command`. If it fails or times out, the issue blocks and its output stays on this machine, in `.loop/issue-N/setup-output.txt`. If it leaves anything git would commit, the issue blocks and the comment names the paths. On a branch that already has the loop's commits and no record of setup, it doesn't run. Empty, the default, runs nothing. It runs with no approval, so use a locked install.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing, unless a project wants its packages installed before the agents start: then set `setup_command`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
 
 ## 2026-10-30: Loop holds tickets that name the same file
 

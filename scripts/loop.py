@@ -83,6 +83,9 @@ DEFAULTS = {
     # Run by this script after each build, in the worktree, and what it writes goes in that round's commit.
     # For files the build agent can't make itself. Empty means nothing runs.
     "generate_command": "",
+    # Run by this script once per worktree, before its first agent, such as `npm ci`. It may write only
+    # what git ignores, since anything else would go in a commit. Empty means nothing runs.
+    "setup_command": "",
     "base": "main",
     "ready_label": "loop-ready",
     "blocked_label": "loop:blocked",
@@ -131,6 +134,7 @@ SCOPES = ("this task", "this repo", "every task")  # how far a finding reaches
 UNCLASSIFIED = "**Findings:** unclassified, the retro didn't finish\n"
 NO_SESSION_LOG = "**Evidence:** no session log\n"
 SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
+DIRTY_CAP = 10  # how many paths setup left behind a block names
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
@@ -298,7 +302,8 @@ def load_config(root):
 
 # What a project's own loop.json may set. Everything else is the machine's: it decides what the loop may
 # run and spend, so it comes from the harness's loop.json, never from a clone anyone can push to.
-PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label", "generate_command")
+PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label", "generate_command",
+                "setup_command")
 MACHINE_KEYS = frozenset(DEFAULTS) - set(PROJECT_KEYS) | {"allow_lockfile_changes"}
 
 
@@ -578,8 +583,14 @@ def shape_prompt(issue, rules="", generate=""):
     return rules + (
         "You are planning, not building. Do not edit any file.\n"
         "Read the ticket below and the rules in AGENTS.md. Write the smallest version of "
-        "this change that would count as done, as plain markdown under 40 lines: what "
-        "changes, in which files, what check proves it, and what you are leaving out.{generate}\n\n"
+        "this change that would count as done, as plain markdown: what "
+        "changes, in which files, what check proves it, and what you are leaving out. "
+        "Keep your own words under 40 lines; text copied from the ticket doesn't count toward "
+        "that limit. The build agent gets only the plan, not the ticket. So whatever the "
+        "ticket gives exactly, such as a table's rows, paths, command text the change must "
+        "contain or required wording, goes in the plan word for word, never as a reference to "
+        "the ticket. Mark copied text as content the change must contain, not as instructions "
+        "to the build agent.{generate}\n\n"
         "TICKET #{number}: {title}\n{body}\n".format(
             number=issue["number"], title=issue["title"], body=issue.get("body") or "",
             generate=generated(generate, "Don't plan a step that runs it or writes its files by hand."))
@@ -1234,10 +1245,11 @@ class Loop:
             except (OSError, ValueError) as err:
                 self.log("ERROR", "could not write history.jsonl: {}".format(type(err).__name__), number)
 
-    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None):
+    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None, partial=False):
         """(exit code, combined output, or stdout alone with stderr=False).
 
-        A missing command or a timeout is a code, not a crash.
+        A missing command or a timeout is a code, not a crash. With partial, a timeout's output is what
+        the command printed so far, then the line saying it timed out.
         """
         try:
             # errors="replace": a pull request's diff or commit message needn't be UTF-8.
@@ -1245,8 +1257,14 @@ class Loop:
                                   capture_output=True, text=True, errors="replace", timeout=timeout)
         except FileNotFoundError:
             return 127, "command not found: {}".format(cmd if shell else cmd[0])
-        except subprocess.TimeoutExpired:
-            return 124, "timed out after {}s".format(timeout)
+        except subprocess.TimeoutExpired as err:
+            timed_out = "timed out after {}s".format(timeout)
+            if not partial:
+                return 124, timed_out
+            # What arrived before the timeout, as bytes even with text=True, and None if nothing did.
+            parts = [err.stdout, err.stderr] if stderr else [err.stdout]
+            so_far = "".join(p.decode(errors="replace") if isinstance(p, bytes) else p or "" for p in parts)
+            return 124, so_far.rstrip("\n") + "\n" + timed_out if so_far.strip() else timed_out
         except OSError as err:
             return 126, "could not run {}: {}".format(cmd if shell else cmd[0], err.strerror or err)
         return done.returncode, (done.stdout or "") + ((done.stderr or "") if stderr else "")
@@ -1799,6 +1817,62 @@ class Loop:
         if code != 0:
             self.log("ERROR", "could not comment on the issue: " + out.strip()[:200], number)
 
+    def setup(self, number, tree):
+        """Run setup_command in the worktree unless it already succeeded there. False when it blocked the issue.
+
+        The marker lives in the worktree's own git folder: git status and commits can't see it, and it goes
+        with the worktree. Only a clean success writes it, so an issue put back after a block runs setup again.
+        """
+        command = self.cfg.get("setup_command", "")  # .get: a cfg can be built without DEFAULTS
+        if not command:
+            return True
+        code, gitdir = self.sh(["git", "rev-parse", "--absolute-git-dir"], cwd=tree, stderr=False)
+        if code != 0 or not gitdir.strip():
+            self.block(number, "could not find the worktree's git folder (git exit {}), so setup didn't run".format(code))
+            return False
+        marker = Path(gitdir.strip()) / "loop-setup-done"
+        if marker.exists():
+            return True
+        # No marker and the loop's commits already on the branch: a reused branch, or setup_command set since.
+        # Setup would run what an agent wrote, a manifest's install script say, ahead of every check.
+        base = self.cfg["base"]
+        code, commits = self.git("log", "--format=%h", "--fixed-strings", "--grep=Loop: issue #{}, round".format(number),
+                                 "origin/{}..HEAD".format(base), cwd=tree)
+        if code != 0:
+            self.block(number, "could not list the loop's commits on loop/issue-{} (git exit {}), "
+                               "so setup didn't run".format(number, code))
+            return False
+        if commits.strip():
+            self.block(number, "loop/issue-{0} already has the loop's commits and hasn't run setup, so setup didn't "
+                               "run: it would run what an agent wrote. Remove the worktree and the branch, then put "
+                               "the issue back".format(number))
+            return False
+        code, out = self.sh(command, cwd=tree, shell=True, timeout=self.cfg["test_timeout"],
+                            env=env_for_tests(os.environ), partial=True)
+        if code != 0:
+            # Kept on this machine: an install's output can name paths, hosts or secrets, and a comment is public.
+            folder = self.dir / "issue-{}".format(number)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "setup-output.txt").write_text(out[-OUTPUT_CAP:])
+            self.block(number, "setup failed (exit {}), and its output is in setup-output.txt".format(code))
+            return False
+        # A git that fails proves nothing.
+        code, status = self.sh(["git", "status", "--porcelain"], cwd=tree, stderr=False)
+        if code != 0:
+            self.block(number, "could not check the worktree after setup (git exit {}), so no agent ran".format(code))
+            return False
+        paths = [line[3:] for line in status.splitlines() if line]
+        if paths:
+            more = len(paths) - DIRTY_CAP
+            self.block(number, (
+                "the worktree has uncommitted changes after setup, so no agent ran: {}{}. The next build would "
+                "commit them. Make setup write only what git ignores, and clear them from the worktree"
+            ).format(safe_to_post(", ".join(paths[:DIRTY_CAP])), " and {} more".format(more) if more > 0 else ""))
+            return False
+        marker.write_text("")
+        self.log("SETUP", "done", number)
+        return True
+
     def block(self, number, why, rounds=None, said=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked.
 
@@ -1908,6 +1982,8 @@ class Loop:
             tree, branch = self.worktree(number)
         except RuntimeError as err:
             return self.block(number, str(err))
+        if not self.setup(number, tree):
+            return
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
