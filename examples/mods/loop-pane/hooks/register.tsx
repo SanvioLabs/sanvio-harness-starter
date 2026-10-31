@@ -35,6 +35,9 @@ let beat = true
 // pull request.
 const JOB_ROWS = 6
 
+// How many items a tab shows at once. Queue's are a line each, so it fits as many as three jobs' rows hold.
+const pageSize = (tab: Tab): number => (tab === 'queue' ? PAGE * (JOB_ROWS + 1) : PAGE)
+
 const EMPTY: Record<Tab, string> = {
   queue: 'Nothing waiting. Label an issue loop-ready to queue it.',
   active: 'Nothing being worked on.',
@@ -71,15 +74,16 @@ function openPullRequest($: EngineInterface, link: string, surface: Parameters<E
 // The tab in view and its first job, kept inside the list. Before the person picks, the busiest tab.
 function current(view: View | null, l: Lists): View {
   const tab = view?.tab ?? firstTab(l)
-  return { tab, start: page(l[tab], view?.tab ? view.start : 0).start }
+  return { tab, start: page(l[tab], view?.tab ? view.start : 0, pageSize(tab)).start }
 }
 
-// Move the tab's list by `by` jobs. Says whether it moved: at either end it doesn't.
+// Move the tab's list by `by`: jobs on Active and Finished, lines on Queue. Says whether it moved: at
+// either end it doesn't.
 async function move($: EngineInterface, by: number): Promise<boolean> {
   const seen = await read($, seenAtom)
   const l = lists(seen?.status ?? null, Date.now())
   const now = current(await read($, viewAtom), l)
-  const next = page(l[now.tab], now.start + by).start
+  const next = page(l[now.tab], now.start + by, pageSize(now.tab)).start
   if (next === now.start) return false
   await update($, viewAtom, () => ({ tab: now.tab, start: next }))
   return true
@@ -220,7 +224,7 @@ export const register: Register = on => {
     }
   })
 
-  // The wheel and scroll keys move the job list, under a header that stays put. At either end of the
+  // The wheel and scroll keys move the tab's list, under a header that stays put. At either end of the
   // list, or with nothing to move, the pane scrolls as usual.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const moved = e.by !== 0 && (await move($, Math.sign(e.by)).catch(() => false))
@@ -253,14 +257,14 @@ export const register: Register = on => {
     const watchFile = watch(seen)
     const l = lists(seen.status, now)
     const view = current(await read($, viewAtom), l)
-    const queue = page(l.queue, view.start)
-    const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start)
+    const queue = page(l.queue, view.start, pageSize('queue'))
+    const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start, pageSize(view.tab))
     const { above, below } = jobs ?? queue
     const isEmpty = (jobs ?? queue).shown.length === 0
 
-    // On the terminal every job takes the same rows, and the list always takes three jobs' worth, so
-    // nothing below it moves as jobs scroll by or gain a result. Desktop and VS Code wrap instead, so
-    // a job takes the rows its text needs.
+    // On the terminal every job takes the same rows, and every tab's list takes three jobs' worth, so
+    // nothing below it moves as jobs scroll by, gain a result or the tab changes. Desktop and VS Code
+    // wrap instead, so a job takes the rows its text needs, and Queue holds only three lines open.
     const job = (row: Row) => {
       const { head: state, detail } = describe(row, seen.isLocked)
       const mark = dot(row, seen.isLocked)
@@ -312,6 +316,7 @@ export const register: Register = on => {
     const gap = (n: number, rows: number) =>
       Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
     const shownCount = (jobs ?? queue).shown.length
+    const held = wraps && !jobs ? PAGE : pageSize(view.tab)
 
     return (
       <Box flexDirection="column">
@@ -392,7 +397,7 @@ export const register: Register = on => {
                 </Box>
               )
             })}
-        {gap(PAGE - shownCount - (isEmpty ? 1 : 0), jobs ? JOB_ROWS : 1)}
+        {gap(Math.max(0, held - shownCount - (isEmpty ? 1 : 0)), jobs ? JOB_ROWS : 1)}
         {below > 0 ? (
           <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1)} />
         ) : (

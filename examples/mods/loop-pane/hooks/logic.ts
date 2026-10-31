@@ -196,7 +196,7 @@ export function waitingOn(item: QueueItem): string | null {
   return on.length ? `waiting on ${on.map(n => `#${n}`).join(', ')}` : null
 }
 
-// Jobs in view at once; the rest scroll.
+// Jobs in view at once on Active and Finished, the rest scrolling. Queue fits its lines to the same rows.
 export const PAGE = 3
 // How long a finished job stays on the Finished tab.
 export const FINISHED_MS = 24 * 60 * 60 * 1000
@@ -228,10 +228,10 @@ export function firstTab(l: Lists): Tab {
   return 'finished'
 }
 
-// Up to PAGE items from `start`, with `start` kept inside the list, and how many sit either side.
-export function page<T>(items: T[], start: number): { shown: T[]; start: number; above: number; below: number } {
-  const from = Math.max(0, Math.min(Math.trunc(start) || 0, items.length - PAGE))
-  const shown = items.slice(from, from + PAGE)
+// Up to `size` items from `start`, with `start` kept inside the list, and how many sit either side.
+export function page<T>(items: T[], start: number, size: number): { shown: T[]; start: number; above: number; below: number } {
+  const from = Math.max(0, Math.min(Math.trunc(start) || 0, items.length - size))
+  const shown = items.slice(from, from + size)
   return { shown, start: from, above: from, below: items.length - from - shown.length }
 }
 

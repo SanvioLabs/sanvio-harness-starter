@@ -123,9 +123,11 @@ it.
 
 Each tab shows its count. The pane opens on **Active** when something is
 being worked, else **Queue**, else **Finished**, and stays on the tab you pick.
-A tab shows three jobs at a time. Scroll over the pane, or press the
-**▲ more** and **▼ more** lines, to move through the rest; the header and the
-tabs stay put.
+**Active** and **Finished** show three jobs at a time and **Queue** up to 21
+issues, in the same 21 rows on the terminal, so nothing moves as you change tabs.
+Scroll over the pane, or press the **▲ more** and **▼ more** lines, to move
+through the rest, a job at a time on a job list and a line at a time on
+**Queue**; the header and the tabs stay put.
 
 `/loop-pane` opens on the first loop running, the harness before the projects,
 else on the harness. After that the loop you're on stays, even when another one
