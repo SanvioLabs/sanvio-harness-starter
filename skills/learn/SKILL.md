@@ -48,6 +48,21 @@ person's answer.
    If a rule that covers it already exists and the agent broke it anyway, the
    rule isn't strong enough where it is. Say so, and move it one row up rather
    than writing it twice.
+
+   A `.loop/lessons.md` entry can carry findings from the loop's retro, each with
+   a cause. The cause says where the fix goes, ahead of the table above. It is
+   evidence too: the mistake and the correct behaviour still come from the
+   person, who confirms before anything is written. Quote a finding marked
+   `(unverified)` as that.
+
+   | Cause | Where the fix goes |
+   |---|---|
+   | `ABSENT`: nothing recorded it | Write it, where the table above says |
+   | `IGNORED`: the text was in context and the agent went against it | A gate first, since the text alone didn't hold |
+   | `UNLOADED`: the text exists but wasn't in context | Fix where or when the text loads, not its wording |
+   | `WRONG`: a file in context said the opposite | Fix the file that said the opposite |
+   | `INHERENT`: no text would have prevented it | A test, or nothing |
+
 3. **Look for a copy or a conflict.** Search the repo for the same rule in other
    words. One copy only. If you find one, edit that one instead of adding
    another. If an existing rule says something different, write nothing: show

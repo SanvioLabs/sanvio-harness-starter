@@ -1,0 +1,13 @@
+{"type":"user","uuid":"rec-0001","timestamp":"2026-10-30T10:00:00.000Z","message":{"role":"user","content":"Make the change. SENTINEL-FROM-THE-LOG"}}
+{"type":"attachment","uuid":"rec-0002","timestamp":"2026-10-30T10:00:01.000Z","attachment":{"type":"nested_memory","path":"/work/tree/steering/building-and-testing.md","content":"SENTINEL-FROM-THE-LOG"}}
+{"type":"attachment","uuid":"rec-0003","timestamp":"2026-10-30T10:00:02.000Z","attachment":{"type":"hook_additional_context","content":"SENTINEL-FROM-THE-LOG"}}
+{"type":"assistant","uuid":"rec-0004","timestamp":"2026-10-30T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"SENTINEL-FROM-THE-LOG"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/work/tree/AGENTS.md"}}]}}
+this line isn't JSON
+[1, 2, 3]
+{"type":"assistant","uuid":"rec-0005","timestamp":"2026-10-30T10:00:04.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"/work/tree/scripts/thing.py","old_string":"SENTINEL-FROM-THE-LOG","new_string":"x"}}]}}
+{"type":"assistant","uuid":"rec-0006","timestamp":"2026-10-30T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Edit","input":{"file_path":"/work/tree/scripts/thing.py","old_string":"x","new_string":"y"}}]}}
+{"type":"assistant","uuid":"rec-0007","timestamp":"2026-10-30T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Write","input":{"file_path":"/work/tree/feature.txt","content":"SENTINEL-FROM-THE-LOG"}}]}}
+{"type":"assistant","uuid":"rec-0008","timestamp":"2026-10-30T10:00:07.000Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","id":"t5","name":"Read","input":{"file_path":"/work/tree/subagent-only.md"}}]}}
+{"type":"assistant","uuid":"rec-0009","timestamp":"2026-10-30T10:00:08.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t6","name":"Read","input":{"file_path":"/work/tree/read-late.md"}}]}}
+{"type":"summary","summary":"a record with no id"}
+{"type":"something-new","uuid":"rec-0010","timestamp":"2026-10-30T10:00:09.000Z"}
