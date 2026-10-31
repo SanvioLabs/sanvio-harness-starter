@@ -179,6 +179,36 @@ const MANY: Seen = {
 const titles = async (ui: { findAll: (q: { type: string; text: RegExp }) => Promise<{ text: string }[]> }) =>
   (await ui.findAll({ type: 'Text', text: /^#\d+ / })).map(t => t.text)
 
+type Drawn = { type: string; props?: { marginTop?: number; height?: number; flexDirection?: string }; children?: (Drawn | string)[] }
+
+// The rows a node takes: its margin and height, or with no height what its children take side by side
+// or stacked. A Text is one.
+function rowsOf(node: Drawn | string): number {
+  if (typeof node === 'string') return 1
+  const { marginTop = 0, height, flexDirection } = node.props ?? {}
+  if (height !== undefined) return marginTop + height
+  if (node.type !== 'Box') return marginTop + 1
+  const inside = (node.children ?? []).map(rowsOf)
+  return marginTop + (flexDirection === 'row' ? Math.max(0, ...inside) : inside.reduce((a, b) => a + b, 0))
+}
+
+// The rows the list takes: the root's children after the line following the tabs' row, up to but not
+// including the last.
+async function listRows(ui: { drawn: () => Promise<unknown> }): Promise<number> {
+  const children = ((await ui.drawn()) as Drawn).children ?? []
+  const tabs = children.findIndex(c => JSON.stringify(c).includes('"tab-queue"'))
+  expect(tabs).toBeGreaterThan(-1)
+  return children.slice(tabs + 2, -1).reduce((rows, c) => rows + rowsOf(c), 0)
+}
+
+// A loop with `n` issues waiting and nothing else, so with none it opens on Finished.
+const queued = (n: number): Seen => ({
+  ...MANY,
+  status: { ...MANY.status!, queue: Array.from({ length: n }, (_, i) => ({ number: i + 1, title: `issue ${i + 1}` })), issues: [] },
+})
+
+const numbered = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `#${from + i} issue ${from + i}`)
+
 group('the tabs', () => {
   test('nothing active opens on the queue; finished shows three from the last day, the rest below', async ($, on) => {
     seed(on, MANY)
@@ -214,6 +244,99 @@ group('the tabs', () => {
     await ui.press({ key: 'tab-active' })
     await drain()
     expect(await ui.find({ text: 'Nothing being worked on.' })).toBeDefined()
+    await ui.unmount()
+  })
+})
+
+group('one height for every tab', () => {
+  const WORKING = (number: number) => ({
+    number, title: `job ${number}`, step: 'BUILD', state: 'working', round: 1, tests: null, review: null, pr: null, note: '',
+  })
+  const active: Seen = { ...queued(0), status: { ...queued(0).status!, issues: [WORKING(1), WORKING(2), WORKING(3), WORKING(4)] } }
+  const tick = {
+    component: 'Pane', requestId: 'loop', offset: 0, bodyRows: 30, contentRows: 60, origin: { kind: 'person' },
+  } as const
+
+  test('a full Queue takes 21 rows', async ($, on) => {
+    seed(on, queued(30))
+    const ui = await $.ui.mount(PANE)
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('an empty Queue takes 21 rows', async ($, on) => {
+    seed(on, queued(0))
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'tab-queue' })
+    await drain()
+    expect(await ui.find({ text: /^Nothing waiting/ })).toBeDefined()
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('a full Active takes 21 rows', async ($, on) => {
+    seed(on, active)
+    const ui = await $.ui.mount(PANE)
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('an empty Active takes 21 rows', async ($, on) => {
+    seed(on, queued(0))
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'tab-active' })
+    await drain()
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('a full Finished takes 21 rows', async ($, on) => {
+    seed(on, MANY)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'tab-finished' })
+    await drain()
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('an empty Finished takes 21 rows', async ($, on) => {
+    seed(on, queued(0))
+    const ui = await $.ui.mount(PANE)
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('a queue of 30 shows 21, with the rest below', async ($, on) => {
+    seed(on, queued(30))
+    const ui = await $.ui.mount(PANE)
+    expect(await titles(ui)).toEqual(numbered(1, 21))
+    expect((await ui.find({ key: 'down' }))?.props.label).toBe('▼ 9 more')
+    expect(await ui.find({ key: 'up' })).toBeUndefined()
+    await ui.unmount()
+  })
+  test('▼ more pages a queue of 30 a line at a time, to its last issue', async ($, on) => {
+    seed(on, queued(30))
+    const ui = await $.ui.mount(PANE)
+    for (let i = 0; i < 9; i++) {
+      await ui.press({ key: 'down' })
+      await drain()
+    }
+    expect(await titles(ui)).toEqual(numbered(10, 30))
+    expect((await ui.find({ key: 'up' }))?.props.label).toBe('▲ 9 more')
+    expect(await ui.find({ key: 'down' })).toBeUndefined()
+    expect(await listRows(ui)).toBe(21)
+    await ui.unmount()
+  })
+  test('the wheel pages a queue of 30 to its last issue, then lets the pane scroll', async ($, on) => {
+    let passedOn = 0
+    on('ui.scroll', async () => {
+      passedOn++
+      return {}
+    })
+    seed(on, queued(30))
+    const ui = await $.ui.mount(PANE)
+    for (let i = 0; i < 9; i++) await $.ui.scroll({ ...tick, by: 1 })
+    await drain()
+    expect(await titles(ui)).toEqual(numbered(10, 30))
+    expect((await ui.find({ key: 'up' }))?.props.label).toBe('▲ 9 more')
+    expect(await ui.find({ key: 'down' })).toBeUndefined()
+    expect(passedOn).toBe(0)
+    await $.ui.scroll({ ...tick, by: 1 })
+    expect(passedOn).toBe(1)
     await ui.unmount()
   })
 })
@@ -663,6 +786,19 @@ group('on Claude Desktop', () => {
     const header = await ui.find({ key: 'header' })
     expect(header?.props.justifyContent).toBe('space-between')
     expect(JSON.stringify(header?.children)).not.toMatch(/"\s{3,}"/)
+    await ui.unmount()
+  })
+  test('a short queue holds no more than three list rows open', async ($, on) => {
+    seed(on, queued(1))
+    const ui = await $.ui.mount(DESKTOP)
+    expect(await listRows(ui)).toBe(3)
+    await ui.unmount()
+  })
+  test('a queue past three draws without holding any rows open', async ($, on) => {
+    seed(on, queued(30))
+    const ui = await $.ui.mount(DESKTOP)
+    expect(await titles(ui)).toEqual(numbered(1, 21))
+    expect(await listRows(ui)).toBe(21)
     await ui.unmount()
   })
   for (const surface of ['desktop', 'vscode'] as const) {

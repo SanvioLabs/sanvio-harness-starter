@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop pane tabs keep one height
+
+The loop pane's **Queue** tab now takes the same 21 rows on the terminal as **Active** and **Finished**, so what's below the list stays put as you change tabs. **Queue** shows up to 21 issues instead of 3, and **▲ more**, **▼ more** and the wheel move it a line at a time. On Desktop and VS Code it shows up to 21 too, and a short queue still holds only three lines open.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/logic.test.ts`](examples/mods/loop-pane/hooks/logic.test.ts), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-30: Open a pull request from the loop pane
 
 A job's button on the loop pane is now **Open pull request** instead of **Copy pull request link**, and it opens the link in the browser. It copies the link instead, and says so, when the link isn't an `https://` link or no browser opens.
