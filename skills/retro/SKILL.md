@@ -47,8 +47,9 @@ is kept, and this skill reads the current session only.
   agent reads them.
 - Nothing from a session log, a prompt file or a lessons entry goes into a
   tracked file, a pull request, an issue, or anything that leaves this machine.
-- If the person says a kept session needs no retro, run `record` with an
-  empty reply. It still writes an entry with no findings, and deletes the copy.
+- If the person says a kept session needs no retro, run
+  `python3 .claude/hooks/session_retro.py drop <session id>`. It deletes the
+  copy and writes nothing.
 
 ## Output
 

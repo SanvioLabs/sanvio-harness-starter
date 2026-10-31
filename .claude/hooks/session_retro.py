@@ -22,6 +22,8 @@ skills/retro/ runs the rest through this file:
   python3 .claude/hooks/session_retro.py record <session id>   (findings on stdin)
       checks the findings against the log, appends a session entry to .loop/lessons.md, and deletes
       the kept copy
+  python3 .claude/hooks/session_retro.py drop <session id>
+      deletes a kept session the person says needs no retro, and writes nothing
 
 The digest, the five causes and the checks are scripts/loop.py's, the same the loop's retro uses.
 """
@@ -177,7 +179,7 @@ def current_log(root):
 def session_rounds(path, root):
     """loop.evidence_digest()'s rounds for one session: one round, one session, no tests or review."""
     log = loop().session_events(path, root)
-    return [{"round": 1, "sessions": [{"step": "session", "session": path.stem,
+    return [{"round": 1, "sessions": [{"step": "ordinary", "session": path.stem,
                                        "log": log if log["ids"] else None}]}]
 
 
@@ -234,6 +236,24 @@ def prompt(root, current=False, out=sys.stdout):
     return 0
 
 
+def forget(folder, session):
+    """Delete a session's kept copy and prompt, and take it off the list. Claude Code's own log stays."""
+    for name in (session + ".jsonl", session + ".prompt.md"):
+        (folder / name).unlink(missing_ok=True)
+    write_listed(folder, [one for one in listed(folder) if one != session])
+
+
+def drop(root, session, out=sys.stdout):
+    """Forget a kept session without an entry. 0 when it was kept, 1 when it wasn't."""
+    folder = retro_folder(root)
+    if not isinstance(session, str) or not SESSION_ID.fullmatch(session) or session not in listed(folder):
+        out.write("Not a kept session: nothing deleted\n")
+        return 1
+    forget(folder, session)
+    out.write("Deleted the kept copy. Nothing written\n")
+    return 0
+
+
 def record(root, session, reply, out=sys.stdout, today=None):
     """Append a session entry, with the findings that pass loop.py's checks, to .loop/lessons.md, then
     delete the session's kept copy and prompt. 0 when it wrote one, 1 when there's no log to check
@@ -256,10 +276,7 @@ def record(root, session, reply, out=sys.stdout, today=None):
     lessons.parent.mkdir(parents=True, exist_ok=True)
     with open(lessons, "a") as handle:
         handle.write(entry + "\n")
-    folder = retro_folder(root)
-    for name in (session + ".jsonl", session + ".prompt.md"):
-        (folder / name).unlink(missing_ok=True)
-    write_listed(folder, [one for one in listed(folder) if one != session])
+    forget(retro_folder(root), session)
     for why in dropped:
         out.write(why + "\n")
     out.write("Wrote this to .loop/lessons.md:\n\n" + entry)
@@ -272,6 +289,8 @@ def main(argv=None):
         return prompt(ROOT, current="--current" in argv[1:])
     if argv and argv[0] == "record" and len(argv) == 2:
         return record(ROOT, argv[1], sys.stdin.read())
+    if argv and argv[0] == "drop" and len(argv) == 2:
+        return drop(ROOT, argv[1])
     if argv:
         sys.stderr.write(__doc__)
         return 2

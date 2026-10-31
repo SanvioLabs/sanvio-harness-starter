@@ -167,6 +167,24 @@ class PromptAndRecord(Base):
         self.assertIn("r2", text)  # the Read, from the loop's digest
         self.assertIn("FINDING: CAUSE | record id or none", text)
 
+    def test_prompt_takes_the_first_kept_of_two(self):
+        self.keep()
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            session_retro.capture(self.root, self.event(self.log(CORRECTED, name="second"), session="second"))
+        self.assertEqual(session_retro.listed(self.folder), [SESSION, "second"])
+        out = io.StringIO()
+        session_retro.prompt(self.root, out=out)
+        self.assertIn("Session {} (kept)".format(SESSION), out.getvalue())
+        self.assertIn("waiting: 2", out.getvalue())
+
+    def test_drop_deletes_a_kept_session_and_writes_nothing(self):
+        self.keep()
+        self.assertEqual(session_retro.drop(self.root, SESSION, out=io.StringIO()), 0)
+        self.assertEqual(self.kept(), [])
+        self.assertEqual(session_retro.listed(self.folder), [])
+        self.assertFalse((self.root / ".loop" / "lessons.md").exists())
+        self.assertEqual(session_retro.drop(self.root, SESSION, out=io.StringIO()), 1)
+
     def test_record_appends_a_session_entry_and_deletes_the_copy(self):
         self.keep()
         reply = ("FINDING: UNLOADED | r3 | this repo | steering | loop.json | The setting's home was never read.\n"
