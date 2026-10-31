@@ -275,7 +275,7 @@ TWO = {"claude-test-1": [20, 40, 60, 80]}
 
 
 class Activity(Harness):
-    """Tokens by subagent type, skill and slash command, for conversations at the root."""
+    """Tokens by subagent type, skill and slash command, for sessions started at the root."""
 
     def activity(self):
         return token_report.activity(self.transcripts, SINCE, self.root, self.loop)
@@ -338,6 +338,89 @@ class Activity(Harness):
         write(self.transcripts, "loop/s2/subagents/agent-c.jsonl", [entry(issue)])
         write(self.transcripts, "loop/s2/subagents/agent-c.meta.json", [{"agentType": "reviewer"}])
         self.assertEqual(self.activity(), {"agents": {}, "skills": {}, "commands": {}})
+
+    def test_a_skill_started_at_the_root_keeps_its_replies_after_the_move_into_projects(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "proj/s1.jsonl", [
+            said(self.root, "review this"), skill_call(self.root, "review-pr", "msg_call", "req_call"),
+            entry(self.root, id="msg_call", req="req_call"), tool_result(app), entry(app), entry(app)])
+        self.assertEqual(self.activity()["skills"], {"review-pr": {"runs": 1, "models": TWO}})
+
+    def test_a_skill_called_after_the_move_into_projects_counts(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "proj/s1.jsonl", [
+            said(self.root, "go"), skill_call(app, "review-pr", "msg_call", "req_call"),
+            entry(app, id="msg_call", req="req_call"), entry(app)])
+        self.assertEqual(self.activity()["skills"], {"review-pr": {"runs": 1, "models": ONE}})
+
+    def test_a_subagent_under_projects_follows_a_session_started_at_the_root(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "proj/s1.jsonl", [entry(self.root)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.jsonl", [entry(app, sidechain=True), entry(app, sidechain=True)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.meta.json", [{"agentType": "reviewer"}])
+        self.assertEqual(self.activity()["agents"], {"reviewer": {"runs": 1, "models": TWO}})
+
+    def test_a_subagent_decides_for_itself_when_its_session_cant(self):
+        app = self.root / "projects" / "app"
+        for session in (None, [{"type": "summary"}], [entry(self.root, sidechain=True)]):
+            with self.subTest(session):
+                folder = Path(tempfile.mkdtemp(dir=self.transcripts))
+                if session:
+                    write(folder, "proj/s1.jsonl", session)
+                write(folder, "proj/s1/subagents/agent-a.jsonl", [entry(self.root, sidechain=True), entry(app, sidechain=True)])
+                found = token_report.activity(folder, SINCE, self.root, self.loop)
+                self.assertEqual(found["agents"], {"agent type not recorded": {"runs": 1, "models": TWO}})
+
+    def test_a_start_out_of_scope_doesnt_use_up_its_key(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "a/s1.jsonl", [said(app, "go"), skill_call(app, "review-pr", "msg_call", "req_call")])
+        write(self.transcripts, "b/s2.jsonl", [said(self.root, "go"), skill_call(self.root, "review-pr", "msg_call", "req_call"),
+                                               entry(self.root)])
+        self.assertEqual(self.activity()["skills"], {"review-pr": {"runs": 1, "models": ONE}})
+
+    def test_a_session_started_under_projects_stays_out_and_so_does_its_subagent(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "proj/s1.jsonl", [command(app, "plan"), entry(app)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.jsonl", [entry(self.root), entry(app)])
+        write(self.transcripts, "proj/s1/subagents/agent-a.meta.json", [{"agentType": "reviewer"}])
+        found = self.activity()
+        self.assertEqual(found["commands"], {})
+        self.assertEqual(found["agents"], {"reviewer": {"runs": 1, "models": ONE}})
+
+    def test_a_line_in_another_folder_doesnt_count_and_leaves_the_span_open(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root.parent), entry(self.root)])
+        self.assertEqual(self.activity()["commands"], {"plan": {"runs": 1, "models": ONE}})
+
+    def test_a_session_that_moves_into_a_loop_worktree_doesnt_count_there(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root), entry(self.loop / "issue-7")])
+        self.assertEqual(self.activity()["commands"], {"plan": {"runs": 1, "models": ONE}})
+
+    def test_a_prompt_typed_elsewhere_closes_the_span(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root),
+                                                  said(self.root.parent, "next"), entry(self.root)])
+        self.assertEqual(self.activity()["commands"], {"plan": {"runs": 1, "models": ONE}})
+
+    def test_a_skill_called_elsewhere_closes_the_span_and_isnt_a_run(self):
+        write(self.transcripts, "proj/s1.jsonl", [command(self.root, "plan"), entry(self.root),
+                                                  skill_call(self.root.parent, "review-pr", "msg_call", "req_call"),
+                                                  entry(self.root)])
+        found = self.activity()
+        self.assertEqual(found["commands"], {"plan": {"runs": 1, "models": ONE}})
+        self.assertEqual(found["skills"], {})
+
+    def test_a_first_line_before_since_still_says_where_the_session_started(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "proj/s1.jsonl", [entry(self.root, ts="2026-09-01T12:00:00.000Z"),
+                                                  command(app, "plan"), entry(app)])
+        self.assertEqual(self.activity()["commands"], {"plan": {"runs": 1, "models": ONE}})
+
+    def test_a_reply_repeated_across_two_files_counts_once(self):
+        app = self.root / "projects" / "app"
+        write(self.transcripts, "a/s1.jsonl", [command(self.root, "plan"), entry(app, id="msg_r", req="req_r")])
+        write(self.transcripts, "b/s2.jsonl", [command(self.root, "review"), entry(app, id="msg_r", req="req_r")])
+        found = self.activity()["commands"]
+        self.assertEqual(found["plan"], {"runs": 1, "models": ONE})
+        self.assertEqual(found["review"], {"runs": 1, "models": {}})
 
     def test_the_section_is_printed_most_tokens_first_without_prompts_or_arguments(self):
         write(self.transcripts, "proj/s1.jsonl", [

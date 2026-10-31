@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Activity after a session moves into projects
+
+A session started at the harness's root now keeps counting by subagent type, skill and slash command after it moves into [`projects/`](projects/), and so do its subagents. A session started under [`projects/`](projects/) still stays out. The figures in `## By activity` in [`scripts/token_report.py`](scripts/token_report.py)'s report and the dashboard's spend columns can go up, and `.harness/cache/activity.json` is replaced on the first dashboard read once it's over 15 minutes old.
+Files: [`scripts/token_report.py`](scripts/token_report.py), [`tests/test_token_report.py`](tests/test_token_report.py), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing.
+
 ## 2026-10-30: Generated files in the loop's commit
 
 The loop now runs a new `generate_command` after each build and before the commit, so files the build agent can't make itself land in that round's commit and count as a change. The harness's runs `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample; python3 scripts/draw_dashboard.py`; a project's is empty unless its own `loop.json` sets it. It gets the same environment and timeout as `test_command`, and one that fails logs a `GENERATE` line and the round goes on. The plan, build and review prompts say what it does when it's set. [`scripts/check_mod_versions.py`](scripts/check_mod_versions.py) no longer counts a change to a mod's `hooks/sample.ts`, since only tests read it.
