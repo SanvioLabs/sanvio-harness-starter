@@ -299,14 +299,16 @@ group('project loops', () => {
   const JOB = { number: 12, title: 'Gate', step: 'BUILD', state: 'working', round: 1, tests: null, review: null, pr: null, note: '', window: 'issue-12' }
 
   // The engine beneath the plugin: a harness whose loop files are `files`, by path, and an open pane.
-  // The folders under .loop/projects come from those paths. The test changes `files` between polls.
+  // The folders under .loop/projects come from those paths. The test changes `files` between polls,
+  // `panes` to stand a pane behind another, and `flip` to refuse a close or take the root away.
   function world(on: On, files: Map<string, string>) {
     const clock = mock.clock(on, { now: 1_800_000_000_000 })
     const toasts: string[] = []
     const ran: string[][] = []
-    let isUp = true
+    const panes: { id: string; isShown: boolean; isPlaced: boolean }[] = []
+    const flip = { closeFails: false, rootGone: false }
     on('session.root', async () => ({ value: ROOT }))
-    on('fs.exists', async (_$, e) => ({ value: e.path === `${ROOT}/scripts/loop.py` || files.has(e.path) }))
+    on('fs.exists', async (_$, e) => ({ value: (e.path === `${ROOT}/scripts/loop.py` && !flip.rootGone) || files.has(e.path) }))
     on('fs.read', async (_$, e) => {
       const text = files.get(e.path)
       return text === undefined ? { deny: `no ${e.path}` } : { value: text }
@@ -320,23 +322,34 @@ group('project loops', () => {
       ran.push([...e.argv])
       return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     })
-    on('ui.open', async () => ({ value: { isPlaced: true } }))
-    on('ui.panes', async () => ({ value: isUp ? [{ id: 'loop' }] : [] }) as never)
+    on('ui.open', async () => {
+      panes.length = 0
+      panes.push({ id: 'loop', isShown: true, isPlaced: true })
+      return { value: { isPlaced: true } }
+    })
+    on('ui.close', async () => {
+      if (flip.closeFails) return { deny: 'refused' }
+      panes.length = 0
+      return { value: undefined }
+    })
+    on('ui.panes', async () => ({ value: [...panes] }) as never)
     on('ui.toast', async (_$, e) => {
       toasts.push(e.text)
       return { value: undefined }
     })
     // Closes the pane, so the poll stops itself and the next test can start its own.
     const close = async () => {
-      isUp = false
+      panes.length = 0
       await clock.advance(500)
     }
-    return { clock, toasts, close, opened: () => ran.filter(argv => argv[0] === 'open') }
+    return { clock, toasts, panes, flip, close, opened: () => ran.filter(argv => argv[0] === 'open') }
   }
 
   type Dollar = { command: { run: (i: object) => Promise<unknown> } }
   const typed = { command: 'loop-pane', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }
   const open = async ($: Dollar) => { await $.command.run(typed) }
+  // The command again, for what it says.
+  const say = async ($: Dollar) => ((await $.command.run(typed)) as { text?: string }).text ?? ''
   // Past the poll's next read of the loop's files.
   const POLL = 2000
 
@@ -442,7 +455,7 @@ group('project loops', () => {
     await ui.unmount()
     await close()
   })
-  test('the pane opens on a running project, the pick then holds, and /loop-pane picks again', async ($, on) => {
+  test('the pane opens on a running project, the pick then holds, and closing and reopening picks again', async ($, on) => {
     const files = threeLoops()
     files.set(`${BETA}/lock`, '4242')
     const { clock, close } = world(on, files)
@@ -453,8 +466,74 @@ group('project loops', () => {
     files.set(`${HARNESS}/lock`, '4242')
     await clock.advance(POLL)
     expect(await titles(ui)).toEqual(['#30 beta job'])
+    // On a showing pane the command closes it, which isn't a new pick.
+    await open($ as unknown as Dollar)
+    expect(await titles(ui)).toEqual(['#30 beta job'])
+    await clock.advance(500)
     await open($ as unknown as Dollar)
     expect(await titles(ui)).toEqual(['#30 harness job'])
+    await ui.unmount()
+    await close()
+  })
+  test('/loop-pane closes a showing pane and says so', async ($, on) => {
+    const { panes, close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane closed.')
+    expect(panes).toEqual([])
+    await close()
+  })
+  test('a close that fails points at the ×, keeps the pick and keeps polling', async ($, on) => {
+    const files = threeLoops()
+    const { clock, panes, flip, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    await ui.press({ key: 'loop-beta' })
+    await drain()
+    flip.closeFails = true
+    expect(await say($ as unknown as Dollar)).toBe("The loop pane couldn't close. The × in its corner closes it.")
+    expect(panes.length).toBe(1)
+    expect(await titles(ui)).toEqual(['#30 beta job'])
+    files.set(`${BETA}/status.json`, statusText('beta changed'))
+    await clock.advance(POLL)
+    expect(await titles(ui)).toEqual(['#30 beta changed'])
+    await ui.unmount()
+    await close()
+  })
+  test('a showing pane whose root has gone still closes', async ($, on) => {
+    const { panes, flip, close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    flip.rootGone = true
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane closed.')
+    expect(panes).toEqual([])
+    await close()
+  })
+  test('a pane behind another opens instead of closing', async ($, on) => {
+    const { panes, close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    panes[0] = { id: 'loop', isShown: false, isPlaced: true }
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane opened.')
+    expect(panes).toEqual([{ id: 'loop', isShown: true, isPlaced: true }])
+    await close()
+  })
+  test('a pane not placed opens instead of closing', async ($, on) => {
+    const { panes, close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    panes[0] = { id: 'loop', isShown: false, isPlaced: false }
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane opened.')
+    expect(panes).toEqual([{ id: 'loop', isShown: true, isPlaced: true }])
+    await close()
+  })
+  test('closed and reopened, the pane polls again', async ($, on) => {
+    const files = threeLoops()
+    const { clock, close } = world(on, files)
+    await open($ as unknown as Dollar)
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane closed.')
+    await clock.advance(500)
+    expect(await say($ as unknown as Dollar)).toBe('Loop pane opened.')
+    const ui = await $.ui.mount(PANE)
+    files.set(`${HARNESS}/status.json`, statusText('harness changed'))
+    await clock.advance(POLL)
+    expect(await titles(ui)).toEqual(['#30 harness changed'])
     await ui.unmount()
     await close()
   })

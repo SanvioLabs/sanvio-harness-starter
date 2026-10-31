@@ -134,7 +134,8 @@ async function refresh($: EngineInterface): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
-// Show another loop, from its last look, on its busiest tab. The pick holds until /loop-pane is run again.
+// Show another loop, from its last look, on its busiest tab. The pick holds until the pane is closed and
+// opened again, which picks again.
 async function show($: EngineInterface, loop: Seen): Promise<void> {
   await update($, pickedAtom, () => loop.project ?? '')
   await update($, seenAtom, () => loop)
@@ -173,7 +174,7 @@ export const register: Register = on => {
     await update($, launchAtom, prev => prev ?? e.cwd)
     await $.command.register({
       name: COMMAND,
-      description: "Open a pane showing the loop: what's waiting, what each issue is on, and its pull request",
+      description: "Open or close a pane showing the loop: what's waiting, what each issue is on, and its pull request",
     })
     // A pane left open across a reload keeps updating.
     if ((await $.ui.panes()).some(pane => pane.id === PANE)) startPolling($)
@@ -182,6 +183,16 @@ export const register: Register = on => {
 
   on('command.run', { command: COMMAND }, async $ => {
     try {
+      // A pane in view closes, before the root is looked for: one whose root has gone still closes. One
+      // behind another or not placed isn't in view, so it opens. The poll stops itself once it's gone.
+      if ((await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown)) {
+        try {
+          await $.ui.close({ id: PANE })
+          return { text: 'Loop pane closed.' }
+        } catch {
+          return { text: "The loop pane couldn't close. The × in its corner closes it." }
+        }
+      }
       const root = await rootOf($)
       if (!root) return { text: `No scripts/loop.py at or above ${await $.session.root()}, so there is no loop to show.` }
       // Opening picks again: the first loop running, else the harness.

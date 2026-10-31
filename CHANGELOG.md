@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: `/loop-pane` closes a showing pane
+
+`/loop-pane` now closes the pane when it's showing, and says so. A pane behind another or not placed still opens. Because the command no longer reopens a showing pane, the loop you're on stays until you press another or close and reopen the pane, which picks again.
+Files: [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-30: Activity after a session moves into projects
 
 A session started at the harness's root now keeps counting by subagent type, skill and slash command after it moves into [`projects/`](projects/), and so do its subagents. A session started under [`projects/`](projects/) still stays out. The figures in `## By activity` in [`scripts/token_report.py`](scripts/token_report.py)'s report and the dashboard's spend columns can go up, and `.harness/cache/activity.json` is replaced on the first dashboard read once it's over 15 minutes old.
