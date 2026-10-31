@@ -78,7 +78,7 @@ steps in order.
 | [`skills/harness-report/SKILL.md`](skills/harness-report/SKILL.md) | At the end of a sprint, or asked for a harness report, a sprint follow-up, or what to add to the harness, or how many tokens the harness or the loop used |
 | [`skills/work-report/SKILL.md`](skills/work-report/SKILL.md) | Asked for a work report, what got done or shipped over a period, which milestones were met, or a report on the team's work for a lead |
 | [`skills/whats-new/SKILL.md`](skills/whats-new/SKILL.md) | Asked what's new, what changed, or whether this copy is up to date with its remote |
-| [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md) | Asked to "check the starter", "what's new in the starter", "what has the starter added", or "should we take the starter's changes" |
+| [`skills/starter-updates/SKILL.md`](skills/starter-updates/SKILL.md) | Asked to "check the starter", "starter updates", "what's new in the starter", "what has the starter added", or "should we take the starter's changes". It asks what you want to bring over, one question at a time |
 | [`skills/standup/SKILL.md`](skills/standup/SKILL.md) | Asked for a standup or a morning check, or what's on them today: reviews waiting, issues assigned, what the loop finished or blocked, today's meetings |
 | [`skills/inbox/SKILL.md`](skills/inbox/SKILL.md) | Asked to check their email or inbox: what needs a reply, what's waiting on someone, what matters today |
 

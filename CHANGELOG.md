@@ -34,6 +34,19 @@ Files: [`.claude/hooks/session_retro.py`](.claude/hooks/session_retro.py), [`.cl
 
 **Do:** nothing to leave it off. To turn it on, set `HARNESS_RETRO=on` in your environment and start a new session.
 
+## 2026-10-31: Check-starter is now starter-updates
+
+The `check-starter` skill is now `starter-updates`, so its name says what it's for. What it does hasn't changed. "check the starter" still triggers it, and so does "starter updates".
+Files: [`skills/starter-updates/SKILL.md`](skills/starter-updates/SKILL.md), [`skills/starter-updates/capabilities.md`](skills/starter-updates/capabilities.md), [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_changelog.py`](tests/test_changelog.py), [`README.md`](README.md), [`AGENTS.md`](AGENTS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** run `git mv skills/check-starter skills/starter-updates`, then take the starter's files over it. Take [`tests/test_changelog.py`](tests/test_changelog.py), [`tests/test_skills.py`](tests/test_skills.py) and the lines naming the skill in [`AGENTS.md`](AGENTS.md), [`README.md`](README.md) and [`skills/review-skill/SKILL.md`](skills/review-skill/SKILL.md) in the same step.
+
+## 2026-10-30: Check-starter asks what's worth bringing over
+
+`check-starter` now reads a table of the starter's capabilities and asks, one question at a time, whether to bring over each one this copy lacks and whether to take updates to the ones it has. A copy level with the starter is still offered what it lacks. Its output opens with what you said yes to and the commands for it, and names what `cp` doesn't bring. Every commit is still listed, with the same answers, plus a note where you said no or left it undecided. The windows themselves aren't tested: the tests cover the table and the command that reads it.
+Files: [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md), [`skills/check-starter/capabilities.md`](skills/check-starter/capabilities.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_changelog.py`](tests/test_changelog.py), [`README.md`](README.md), [`AGENTS.md`](AGENTS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing.
 ## 2026-10-30: Loop plans carry the ticket's exact content
 
 The loop's planner is now told that the build agent gets only the plan, so what a ticket gives exactly, such as a table's rows, paths, command text or required wording, goes in the plan word for word and marked as content. The 40-line limit now covers only the planner's own words. The ticket's wording now reaches the agent that writes files, as the planner's copy, with no cap on its length.
