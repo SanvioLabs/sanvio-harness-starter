@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { LOOP_BUTTONS, PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, loopOptions, openingLoop, othersWorking, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -245,6 +245,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
+    // The mobile app draws no Select, so there the loops stay as buttons however many there are.
+    const Select = e.surface === 'mobile' ? null : $.ui.resolve(e).Select
     const seen = await read($, seenAtom)
     const loops = (await read($, loopsAtom)) ?? []
     const width = Math.max(10, e.props.bodyColumns)
@@ -330,6 +332,7 @@ export const register: Register = on => {
       Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
     const shownCount = (jobs ?? queue).shown.length
     const held = wraps && !jobs ? PAGE : pageSize(view.tab, bodyRows)
+    const others = othersWorking(loops, seen)
 
     return (
       <Box flexDirection="column">
@@ -360,18 +363,33 @@ export const register: Register = on => {
           </Box>
         )}
         <Text dimColor>{'─'.repeat(width)}</Text>
-        {loops.length > 1 && (
-          <Box key="loops" flexDirection="row" flexWrap="wrap" columnGap={1}>
-            {loops.map(loop => (
-              <Button
-                key={loop.project ? `loop-${loop.project}` : 'loop'}
-                label={loopButtonLabel(loop)}
-                variant={loop.project === seen.project ? 'primary' : undefined}
-                dimColor={loop.project !== seen.project}
-                onPress={() => show($, loop)}
-              />
-            ))}
+        {Select && loops.length > LOOP_BUTTONS ? (
+          <Box key="loop-picker" flexDirection="row" columnGap={1}>
+            <Select
+              key="loop-pick"
+              options={loopOptions(loops)}
+              value={seen.project ?? ''}
+              onSelect={value => {
+                const loop = loops.find(l => (l.project ?? '') === value)
+                return loop && show($, loop)
+              }}
+            />
+            {others && <Text dimColor>{others}</Text>}
           </Box>
+        ) : (
+          loops.length > 1 && (
+            <Box key="loops" flexDirection="row" flexWrap="wrap" columnGap={1}>
+              {loops.map(loop => (
+                <Button
+                  key={loop.project ? `loop-${loop.project}` : 'loop'}
+                  label={loopButtonLabel(loop)}
+                  variant={loop.project === seen.project ? 'primary' : undefined}
+                  dimColor={loop.project !== seen.project}
+                  onPress={() => show($, loop)}
+                />
+              ))}
+            </Box>
+          )
         )}
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {TABS.map(({ tab, label }) => (
