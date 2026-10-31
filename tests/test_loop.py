@@ -797,18 +797,18 @@ class TestAPass(unittest.TestCase):
     def test_a_retro_classifies_the_entry_from_the_digest(self):
         self.retro_setup()
         self.retro_says("Some thinking first, which isn't a finding.",
-                        "FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | The agent read it and went on.",
-                        "FINDING: UNLOADED | rec-0004 | project | skill | not-read.md | It never saw this file.",
-                        "FINDING: INHERENT | rev-0001 | person | none | none | No text would have helped.")
+                        "FINDING: IGNORED | rec-0004 | every task | steering | AGENTS.md | The agent read it and went on.",
+                        "FINDING: UNLOADED | rec-0004 | this repo | skill | not-read.md | It never saw this file.",
+                        "FINDING: INHERENT | rev-0001 | this task | none | none | No text would have helped.")
         self.assertEqual(self.go(), 0)
         self.assertEqual(self.started_steps()[-1], "retro")
         lessons = self.lessons()
         self.assertIn("**What went wrong:** round 1: feature.txt is wrong.", lessons)
-        self.assertIn("- IGNORED (everyone, steering) AGENTS.md: The agent read it and went on. [record rec-0004]\n",
+        self.assertIn("- IGNORED (every task, steering) AGENTS.md: The agent read it and went on. [record rec-0004]\n",
                       lessons)
-        self.assertIn("- UNLOADED (project, skill) not-read.md: It never saw this file. [record rec-0004]\n", lessons)
+        self.assertIn("- UNLOADED (this repo, skill) not-read.md: It never saw this file. [record rec-0004]\n", lessons)
         inherent = lessons.split("**Inherent:**\n", 1)[1]
-        self.assertIn("- INHERENT (person, none) no named file: No text would have helped. [record rev-0001]", inherent)
+        self.assertIn("- INHERENT (this task, none) no named file: No text would have helped. [record rev-0001]", inherent)
         self.assertNotIn("IGNORED", inherent)
         self.assertNotIn("(unverified)", lessons)
         self.assertNotIn("no session log", lessons)
@@ -825,23 +825,32 @@ class TestAPass(unittest.TestCase):
         entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
         self.assertEqual(entries[-1]["step"], "retro")
 
+    def test_a_finding_that_nothing_recorded_it_is_kept_and_needs_no_file(self):
+        self.retro_setup()
+        (self.state / "verdict").write_text("FIX")
+        self.retro_says("FINDING: ABSENT | rec-0009 | this repo | steering | none | Nothing said so anywhere.")
+        self.go()
+        self.assertIn("- ABSENT (this repo, steering) no named file: Nothing said so anywhere. [record rec-0009]\n",
+                      self.lessons())
+        self.assertNotIn("(unverified)", self.lessons())
+
     def test_a_blocked_run_gets_a_retro_and_stays_blocked(self):
         self.retro_setup()
         (self.state / "verdict").write_text("FIX")
-        self.retro_says("FINDING: WRONG | rec-0009 | everyone | steering | AGENTS.md | It said the opposite.")
+        self.retro_says("FINDING: WRONG | rec-0009 | every task | steering | AGENTS.md | It said the opposite.")
         self.go()
-        self.assertIn("- WRONG (everyone, steering) AGENTS.md: It said the opposite. [record rec-0009]\n", self.lessons())
+        self.assertIn("- WRONG (every task, steering) AGENTS.md: It said the opposite. [record rec-0009]\n", self.lessons())
         self.assertEqual(self.status()["issues"][0]["state"], "blocked")
         self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
 
     def test_a_finding_that_cant_be_checked_is_dropped_with_a_fixed_log_line(self):
         self.retro_setup()
-        self.retro_says("FINDING: IGNORED | rec-not-there | everyone | steering | AGENTS.md | MADE-UP-TEXT one.",
-                        "FINDING: IGNORED | none | everyone | steering | AGENTS.md | MADE-UP-TEXT two.",
-                        "FINDING: BORED | rec-0004 | everyone | steering | AGENTS.md | MADE-UP-TEXT three.",
+        self.retro_says("FINDING: IGNORED | rec-not-there | every task | steering | AGENTS.md | MADE-UP-TEXT one.",
+                        "FINDING: IGNORED | none | every task | steering | AGENTS.md | MADE-UP-TEXT two.",
+                        "FINDING: BORED | rec-0004 | every task | steering | AGENTS.md | MADE-UP-TEXT three.",
                         "FINDING: IGNORED | rec-0004 | galaxy | steering | AGENTS.md | MADE-UP-TEXT four.",
                         "FINDING: IGNORED | rec-0004 | MADE-UP-TEXT five.",
-                        "FINDING: INHERENT | rec-0004 | person | none | none | This one stays.")
+                        "FINDING: INHERENT | rec-0004 | this task | none | none | This one stays.")
         self.go()
         self.assertNotIn("MADE-UP-TEXT", self.lessons())
         self.assertIn("This one stays.", self.lessons())
@@ -858,7 +867,7 @@ class TestAPass(unittest.TestCase):
                                             {"step": "review", "session": "b", "log": other}]}]
 
         def marked(*line):
-            kept, dropped = loop.parse_findings("FINDING: {} | {} | everyone | s | {} | x".format(*line),
+            kept, dropped = loop.parse_findings("FINDING: {} | {} | every task | s | {} | x".format(*line),
                                                 rounds, "/work/tree")
             self.assertEqual(dropped, [])
             return kept[0]["unverified"]
@@ -903,8 +912,8 @@ class TestAPass(unittest.TestCase):
         folder = self.work / ".loop" / "issue-12"
         folder.mkdir(parents=True)
         (folder / "evidence.md").write_text("an earlier run's")
-        self.retro_says("FINDING: IGNORED | none | everyone | steering | AGENTS.md | Nothing to cite.",
-                        "FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | MADE-UP-TEXT.")
+        self.retro_says("FINDING: IGNORED | none | every task | steering | AGENTS.md | Nothing to cite.",
+                        "FINDING: IGNORED | rec-0004 | every task | steering | AGENTS.md | MADE-UP-TEXT.")
         self.assertEqual(self.go(), 0)
         self.assertIn("**Evidence:** no session log", self.lessons())
         self.assertIn("Nothing to cite. [record none] (unverified)", self.lessons())
@@ -922,7 +931,7 @@ class TestAPass(unittest.TestCase):
     def test_a_session_whose_log_is_missing_is_marked_in_its_round_and_the_others_still_count(self):
         self.retro_setup()
         (Path(self.tmp.name) / "transcripts" / "some-project" / "review-session.jsonl").unlink()
-        self.retro_says("FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | From the build.")
+        self.retro_says("FINDING: IGNORED | rec-0004 | every task | steering | AGENTS.md | From the build.")
         self.go()
         digest = (self.work / ".loop" / "issue-12" / "evidence.md").read_text()
         self.assertIn("### review: no session log", digest)
@@ -994,7 +1003,7 @@ class TestAPass(unittest.TestCase):
                 self.setUp()
                 self.retro_setup()
                 (self.state / "verdict").write_text(verdict)
-                self.retro_says("FINDING: IGNORED | rec-0004 | everyone | steering | SENTINEL-FROM-THE-LOG.md | "
+                self.retro_says("FINDING: IGNORED | rec-0004 | every task | steering | SENTINEL-FROM-THE-LOG.md | "
                                 "SENTINEL-FROM-THE-LOG")
                 self.go()
                 self.assertIn("SENTINEL-FROM-THE-LOG", self.lessons())

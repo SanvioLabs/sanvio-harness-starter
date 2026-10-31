@@ -125,8 +125,8 @@ TRANSCRIPTS = Path.home() / ".claude" / "projects"  # Claude Code's session logs
 SESSION_ID = re.compile(r"[\w-]+")  # whole, by fullmatch: ids come from agent output and go into a glob
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 FINDING = re.compile(r"^[ \t]*FINDING:[ \t]*(.*)$", re.M)
-CAUSES = ("IGNORED", "UNLOADED", "WRONG", "INHERENT")  # why a lesson reached the agent late; skills/learn routes each
-SCOPES = ("everyone", "project", "person")  # who a finding applies to, as skills/learn asks
+CAUSES = ("ABSENT", "IGNORED", "UNLOADED", "WRONG", "INHERENT")  # why a lesson reached the agent late; skills/learn routes each
+SCOPES = ("this task", "this repo", "every task")  # how far a finding reaches
 UNCLASSIFIED = "**Findings:** unclassified, the retro didn't finish\n"
 NO_SESSION_LOG = "**Evidence:** no session log\n"
 SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
@@ -602,6 +602,7 @@ def retro_prompt(digest, plan, review, diff, rules=""):
         "Reply with one line per finding and nothing else, exactly in this shape:\n"
         "FINDING: CAUSE | record id or none | scope | surface | named file or none | one sentence\n\n"
         "CAUSE is one of:\n"
+        "ABSENT: nothing in the repo, skills or context recorded it\n"
         "IGNORED: text saying the right thing was in the session's context, and the agent went against it\n"
         "UNLOADED: the text exists, but it wasn't in the session's context when it was needed\n"
         "WRONG: a file in the session's context said the opposite\n"
@@ -609,7 +610,7 @@ def retro_prompt(digest, plan, review, diff, rules=""):
         "The record id is the one the finding rests on, copied from the digest. Each session starts fresh, so "
         "what one session read isn't in another's context. Write none only for a session marked as having no "
         "session log.\n"
-        "scope is who it applies to: everyone, project or person.\n"
+        "scope is how far it reaches: this task, this repo or every task.\n"
         "surface is the kind of thing the text is or would be, in a word or two, such as gate, skill, steering "
         "or ticket.\n"
         "The named file is the file the cause is about, relative to the worktree.\n"
@@ -767,8 +768,8 @@ def finding_unverified(cause, log, record, named):
     """Whether the log fails to bear a finding out. One with no record has nothing to be checked against."""
     if log is None:
         return True
-    if cause == "INHERENT":
-        return False
+    if cause in ("ABSENT", "INHERENT"):
+        return False  # neither says anything about a file
     if named is None:
         return True
     seen = any(event["file"] == named and event["kind"] in ("read", "injected") and event["at"] <= log["ids"][record]

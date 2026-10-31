@@ -57,6 +57,7 @@ person's answer.
 
    | Cause | Where the fix goes |
    |---|---|
+   | `ABSENT`: nothing recorded it | Write it, where the table above says |
    | `IGNORED`: the text was in context and the agent went against it | A gate first, since the text alone didn't hold |
    | `UNLOADED`: the text exists but wasn't in context | Fix where or when the text loads, not its wording |
    | `WRONG`: a file in context said the opposite | Fix the file that said the opposite |

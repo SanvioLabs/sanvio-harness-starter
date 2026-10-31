@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { LOOP_BUTTONS, PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, loopOptions, openingLoop, othersWorking, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -35,8 +35,20 @@ let beat = true
 // pull request.
 const JOB_ROWS = 6
 
-// How many items a tab shows at once. Queue's are a line each, so it fits as many as three jobs' rows hold.
-const pageSize = (tab: Tab): number => (tab === 'queue' ? PAGE * (JOB_ROWS + 1) : PAGE)
+// The rows around the list: the header's two, the buttons, the rule, the loop buttons, the tabs, and the
+// lines above and below it.
+const AROUND_LIST = 8
+
+// How many jobs fit the pane's height, and never fewer than PAGE. The finite check is for Infinity, which
+// would otherwise pass the minimum, and for a height that isn't there.
+function jobsInView(bodyRows?: number): number {
+  const fits = Math.floor(((bodyRows ?? NaN) - AROUND_LIST) / (JOB_ROWS + 1))
+  return Number.isFinite(fits) && fits >= PAGE ? fits : PAGE
+}
+
+// How many items a tab shows at once. Queue's are a line each, so it fits as many as that many jobs' rows hold.
+const pageSize = (tab: Tab, bodyRows?: number): number =>
+  tab === 'queue' ? jobsInView(bodyRows) * (JOB_ROWS + 1) : jobsInView(bodyRows)
 
 const EMPTY: Record<Tab, string> = {
   queue: 'Nothing waiting. Label an issue loop-ready to queue it.',
@@ -72,18 +84,18 @@ function openPullRequest($: EngineInterface, link: string, surface: Parameters<E
 }
 
 // The tab in view and its first job, kept inside the list. Before the person picks, the busiest tab.
-function current(view: View | null, l: Lists): View {
+function current(view: View | null, l: Lists, bodyRows?: number): View {
   const tab = view?.tab ?? firstTab(l)
-  return { tab, start: page(l[tab], view?.tab ? view.start : 0, pageSize(tab)).start }
+  return { tab, start: page(l[tab], view?.tab ? view.start : 0, pageSize(tab, bodyRows)).start }
 }
 
 // Move the tab's list by `by`: jobs on Active and Finished, lines on Queue. Says whether it moved: at
 // either end it doesn't.
-async function move($: EngineInterface, by: number): Promise<boolean> {
+async function move($: EngineInterface, by: number, bodyRows?: number): Promise<boolean> {
   const seen = await read($, seenAtom)
   const l = lists(seen?.status ?? null, Date.now())
-  const now = current(await read($, viewAtom), l)
-  const next = page(l[now.tab], now.start + by, pageSize(now.tab)).start
+  const now = current(await read($, viewAtom), l, bodyRows)
+  const next = page(l[now.tab], now.start + by, pageSize(now.tab, bodyRows)).start
   if (next === now.start) return false
   await update($, viewAtom, () => ({ tab: now.tab, start: next }))
   return true
@@ -227,15 +239,18 @@ export const register: Register = on => {
   // The wheel and scroll keys move the tab's list, under a header that stays put. At either end of the
   // list, or with nothing to move, the pane scrolls as usual.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const moved = e.by !== 0 && (await move($, Math.sign(e.by)).catch(() => false))
+    const moved = e.by !== 0 && (await move($, Math.sign(e.by), e.bodyRows).catch(() => false))
     return moved ? {} : next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
+    // The mobile app draws no Select, so there the loops stay as buttons however many there are.
+    const Select = e.surface === 'mobile' ? null : $.ui.resolve(e).Select
     const seen = await read($, seenAtom)
     const loops = (await read($, loopsAtom)) ?? []
     const width = Math.max(10, e.props.bodyColumns)
+    const bodyRows = e.props.scroll?.bodyRows
     // A job's lines sit under its title, past the dot.
     const inner = width - 2
     const now = Date.now()
@@ -256,15 +271,15 @@ export const register: Register = on => {
     const tmux = attach(seen)
     const watchFile = watch(seen)
     const l = lists(seen.status, now)
-    const view = current(await read($, viewAtom), l)
-    const queue = page(l.queue, view.start, pageSize('queue'))
-    const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start, pageSize(view.tab))
+    const view = current(await read($, viewAtom), l, bodyRows)
+    const queue = page(l.queue, view.start, pageSize('queue', bodyRows))
+    const jobs = view.tab === 'queue' ? null : page(l[view.tab], view.start, pageSize(view.tab, bodyRows))
     const { above, below } = jobs ?? queue
     const isEmpty = (jobs ?? queue).shown.length === 0
 
-    // On the terminal every job takes the same rows, and every tab's list takes three jobs' worth, so
-    // nothing below it moves as jobs scroll by, gain a result or the tab changes. Desktop and VS Code
-    // wrap instead, so a job takes the rows its text needs, and Queue holds only three lines open.
+    // On the terminal every job takes the same rows, and every tab's list takes as many jobs' worth as
+    // fit the pane, so nothing below it moves as jobs scroll by, gain a result or the tab changes. Desktop
+    // and VS Code wrap instead, so a job takes the rows its text needs, and Queue holds only three lines open.
     const job = (row: Row) => {
       const { head: state, detail } = describe(row, seen.isLocked)
       const mark = dot(row, seen.isLocked)
@@ -316,7 +331,8 @@ export const register: Register = on => {
     const gap = (n: number, rows: number) =>
       Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
     const shownCount = (jobs ?? queue).shown.length
-    const held = wraps && !jobs ? PAGE : pageSize(view.tab)
+    const held = wraps && !jobs ? PAGE : pageSize(view.tab, bodyRows)
+    const others = othersWorking(loops, seen)
 
     return (
       <Box flexDirection="column">
@@ -347,18 +363,33 @@ export const register: Register = on => {
           </Box>
         )}
         <Text dimColor>{'─'.repeat(width)}</Text>
-        {loops.length > 1 && (
-          <Box key="loops" flexDirection="row" flexWrap="wrap" columnGap={1}>
-            {loops.map(loop => (
-              <Button
-                key={loop.project ? `loop-${loop.project}` : 'loop'}
-                label={loopButtonLabel(loop)}
-                variant={loop.project === seen.project ? 'primary' : undefined}
-                dimColor={loop.project !== seen.project}
-                onPress={() => show($, loop)}
-              />
-            ))}
+        {Select && loops.length > LOOP_BUTTONS ? (
+          <Box key="loop-picker" flexDirection="row" columnGap={1}>
+            <Select
+              key="loop-pick"
+              options={loopOptions(loops)}
+              value={seen.project ?? ''}
+              onSelect={value => {
+                const loop = loops.find(l => (l.project ?? '') === value)
+                return loop && show($, loop)
+              }}
+            />
+            {others && <Text dimColor>{others}</Text>}
           </Box>
+        ) : (
+          loops.length > 1 && (
+            <Box key="loops" flexDirection="row" flexWrap="wrap" columnGap={1}>
+              {loops.map(loop => (
+                <Button
+                  key={loop.project ? `loop-${loop.project}` : 'loop'}
+                  label={loopButtonLabel(loop)}
+                  variant={loop.project === seen.project ? 'primary' : undefined}
+                  dimColor={loop.project !== seen.project}
+                  onPress={() => show($, loop)}
+                />
+              ))}
+            </Box>
+          )
         )}
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {TABS.map(({ tab, label }) => (
@@ -373,7 +404,7 @@ export const register: Register = on => {
         </Box>
         {/* The lines above and below the list are always there, so it doesn't jump as it scrolls. */}
         {above > 0 ? (
-          <Button key="up" plain label={`▲ ${above} more`} dimColor onPress={() => move($, -1)} />
+          <Button key="up" plain label={`▲ ${above} more`} dimColor onPress={() => move($, -1, bodyRows)} />
         ) : (
           <Text> </Text>
         )}
@@ -399,7 +430,7 @@ export const register: Register = on => {
             })}
         {gap(Math.max(0, held - shownCount - (isEmpty ? 1 : 0)), jobs ? JOB_ROWS : 1)}
         {below > 0 ? (
-          <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1)} />
+          <Button key="down" plain label={`▼ ${below} more`} dimColor onPress={() => move($, 1, bodyRows)} />
         ) : (
           <Text> </Text>
         )}

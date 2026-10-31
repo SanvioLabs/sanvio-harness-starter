@@ -57,7 +57,8 @@ class LearnSkillTest(unittest.TestCase):
 
     def test_each_retro_cause_names_where_its_fix_goes(self):
         # Wording only: this can't prove what the skill does with them.
-        for row in ("`IGNORED`: the text was in context and the agent went against it | A gate first",
+        for row in ("`ABSENT`: nothing recorded it | Write it, where the table above says",
+                    "`IGNORED`: the text was in context and the agent went against it | A gate first",
                     "`UNLOADED`: the text exists but wasn't in context | Fix where or when the text loads",
                     "`WRONG`: a file in context said the opposite | Fix the file that said the opposite",
                     "`INHERENT`: no text would have prevented it | A test, or nothing"):

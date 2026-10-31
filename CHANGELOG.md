@@ -29,10 +29,23 @@ fine).
 
 ## 2026-10-30: Loop retro classifies its lessons
 
-With `"retro": true` in `loop.json`, each entry the loop writes to `.loop/lessons.md` also gets findings on why the lesson reached the agent late, `IGNORED`, `UNLOADED`, `WRONG` or `INHERENT`, each citing a record in the run's session logs and checked against them. `usage.json` entries now hold a `session_id` when the agent names one. [`skills/learn/`](skills/learn/) says where each cause's fix goes. With it unset, the loop does what it did. The log checks come from a made-up session log, so run one real retro before relying on the `(unverified)` marks.
+With `"retro": true` in `loop.json`, each entry the loop writes to `.loop/lessons.md` also gets findings on why the lesson reached the agent late, `ABSENT`, `IGNORED`, `UNLOADED`, `WRONG` or `INHERENT`, each citing a record in the run's session logs and checked against them. `usage.json` entries now hold a `session_id` when the agent names one. [`skills/learn/`](skills/learn/) says where each cause's fix goes. With it unset, the loop does what it did. The log checks come from a made-up session log, so run one real retro before relying on the `(unverified)` marks.
 Files: [`scripts/loop.py`](scripts/loop.py), [`skills/learn/SKILL.md`](skills/learn/SKILL.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_loop.py`](tests/test_loop.py), [`tests/test_skills.py`](tests/test_skills.py), [`tests/fixtures/retro_session.jsonl`](tests/fixtures/retro_session.jsonl), [`CHANGELOG.md`](CHANGELOG.md).
 
 **Do:** nothing, and set `retro` to use it.
+## 2026-10-30: Loop pane dropdown past four loops
+
+Past four loops, the loop pane's row of loop buttons becomes a dropdown in the terminal, VS Code and Claude Desktop, with the loops working a job first and, beside it, how many other loops are working. Four or fewer keep their buttons, and so does the mobile app, which draws no dropdown.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
+## 2026-10-30: Loop pane lists fill its height
+
+The loop pane's lists now grow with the pane: at 60 rows **Active** and **Finished** show 7 jobs and **Queue** 49 issues, on the terminal in the same rows on every tab. They never drop below today's 3 jobs and 21 issues, and a pane that reports no height keeps those numbers. On Desktop and VS Code a short queue still holds only three lines open.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
 
 ## 2026-10-30: Loop pane tabs keep one height
 
