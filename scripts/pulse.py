@@ -143,7 +143,11 @@ def day_question(questions, day):
 
 
 def login_name():
-    return SAFE_NAME.sub("_", getpass.getuser()) or "unknown"
+    try:
+        login = getpass.getuser()
+    except (KeyError, OSError):  # no login variable and no account entry: KeyError before Python 3.13
+        raise Refused("pulse can't tell your login: set LOGNAME or USER")
+    return SAFE_NAME.sub("_", login) or "unknown"
 
 
 def parse_answer_line(raw):

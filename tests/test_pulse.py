@@ -1,6 +1,7 @@
 """Run with: python3 -m unittest discover -s tests"""
 import ast
 import datetime
+import importlib.util
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "pulse.py"
@@ -529,6 +531,17 @@ class TheScript(unittest.TestCase):
         pattern = 're.compile(r"[^A-Za-z0-9._-]")'
         self.assertIn(pattern, (ROOT / ".claude" / "hooks" / "usage_log.py").read_text(encoding="utf-8"))
         self.assertIn(pattern, SCRIPT.read_text(encoding="utf-8"))
+
+
+    def test_no_login_is_a_refusal_not_a_traceback(self):
+        spec = importlib.util.spec_from_file_location("pulse_under_test", str(SCRIPT))
+        pulse = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pulse)
+        for error in (KeyError("uid"), OSError("no login")):
+            with mock.patch.object(pulse.getpass, "getuser", side_effect=error):
+                with self.assertRaises(pulse.Refused) as refused:
+                    pulse.login_name()
+                self.assertIn("LOGNAME", str(refused.exception))
 
 
 class TheExampleBank(PulseCase):
