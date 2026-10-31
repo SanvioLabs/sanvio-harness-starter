@@ -425,8 +425,9 @@ that check, so the text it checked is the text the agents get.
 
 **What the issue's text can reach.** The planner and the reviewer run in the
 build checkout with read tools only, so they can't read the rest of your clone
-(`company/`, [`projects/`](projects/)) into a plan that ends up in a pull request. The loop
-commits with git hooks off, so a hook the agent writes doesn't run. It runs your
+(`company/`, [`projects/`](projects/)) into a plan that ends up in a pull request.
+The build agent gets the ticket's exact wording where the planner copies it into the plan, so it's steered by the issue too.
+The loop commits with git hooks off, so a hook the agent writes doesn't run. It runs your
 test command without anything named like a secret in its environment (tokens,
 keys, passwords, `AWS_*`, the SSH agent). The tests still run code the agent
 wrote, as you, so they can reach whatever your user can on disk. Run the loop

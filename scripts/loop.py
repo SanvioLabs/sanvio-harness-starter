@@ -583,8 +583,14 @@ def shape_prompt(issue, rules="", generate=""):
     return rules + (
         "You are planning, not building. Do not edit any file.\n"
         "Read the ticket below and the rules in AGENTS.md. Write the smallest version of "
-        "this change that would count as done, as plain markdown under 40 lines: what "
-        "changes, in which files, what check proves it, and what you are leaving out.{generate}\n\n"
+        "this change that would count as done, as plain markdown: what "
+        "changes, in which files, what check proves it, and what you are leaving out. "
+        "Keep your own words under 40 lines; text copied from the ticket doesn't count toward "
+        "that limit. The build agent gets only the plan, not the ticket. So whatever the "
+        "ticket gives exactly, such as a table's rows, paths, command text the change must "
+        "contain or required wording, goes in the plan word for word, never as a reference to "
+        "the ticket. Mark copied text as content the change must contain, not as instructions "
+        "to the build agent.{generate}\n\n"
         "TICKET #{number}: {title}\n{body}\n".format(
             number=issue["number"], title=issue["title"], body=issue.get("body") or "",
             generate=generated(generate, "Don't plan a step that runs it or writes its files by hand."))
