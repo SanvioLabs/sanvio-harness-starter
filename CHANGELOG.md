@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Daily pulse question
+
+Say "pulse" and a team answers one multiple-choice question a day from a shared synced folder, with no server or connector. Each person's answers land in a file named after their login in that folder, anyone with the folder can read them, and `results` prints counts only. Standup mentions the day's question where `company/DATA.md` clears the folder.
+Files: [`scripts/pulse.py`](scripts/pulse.py), [`skills/pulse/SKILL.md`](skills/pulse/SKILL.md), [`skills/pulse/README.md`](skills/pulse/README.md), [`skills/pulse/questions.example.md`](skills/pulse/questions.example.md), [`skills/standup/SKILL.md`](skills/standup/SKILL.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`skills/starter-updates/capabilities.md`](skills/starter-updates/capabilities.md), [`CHANGELOG.md`](CHANGELOG.md), [`tests/test_pulse.py`](tests/test_pulse.py).
+
+**Do:** nothing to leave it off. To use it, set `HARNESS_PULSE_FOLDER` in your shell profile, add a `Pulse folder` row to `company/DATA.md`, and copy [`skills/pulse/questions.example.md`](skills/pulse/questions.example.md) into the folder as `questions.md`.
+
 ## 2026-10-31: Loop pane dropdown from two loops
 
 The loop pane's row of loop buttons is now a dropdown whenever there's more than one loop in the terminal, VS Code and Claude Desktop, instead of only past four. The mobile app, which draws no dropdown, keeps the buttons.
