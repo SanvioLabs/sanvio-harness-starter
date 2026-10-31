@@ -14,9 +14,10 @@ and for the loop, estimated dollars. Claude Code only: Codex, Kiro and other
 tools keep their own logs. The dollars are the estimate at API prices each loop
 run recorded in .loop/**/usage.json, not what was billed; a conversation's
 transcript carries no cost, so it stays in tokens. A last section splits the
-conversations at the root by subagent type, skill and slash command, a skill's
-or command's share attributed from where it started to the next prompt. The
-skills/harness-report/ skill runs this next to usage_report.py.
+sessions started at the root, including after they move into projects/, by
+subagent type, skill and slash command, a skill's or command's share attributed
+from where it started to the next prompt. The skills/harness-report/ skill runs
+this next to usage_report.py.
 """
 import argparse
 import datetime
@@ -37,7 +38,8 @@ FIELDS = (("input_tokens", "Input"), ("output_tokens", "Output"),
 GROUPS = (("Conversations", "Where"), ("projects/", "Repo"), ("Loop", "Issue"))
 TOP = 5
 NO_AGENT_TYPE = "agent type not recorded"
-ATTRIBUTED = "Attributed from where each started to the next prompt, not measured."
+ATTRIBUTED = ("Attributed from where each started to the next prompt, not measured. "
+              "This section covers sessions started at the root, including after they move into projects/.")
 
 
 def loop_dir(root):
@@ -191,27 +193,53 @@ def group(entry, root, loop_dir):
 
 
 def activity(projects_dir, since, root, loop_dir):
-    """Runs and tokens by model for each subagent type, skill and slash command, at the harness's root.
+    """Runs and tokens by model for each subagent type, skill and slash command, for sessions started at the root.
 
     Returns {"agents": {...}, "skills": {...}, "commands": {...}}, each name mapping to
     {"runs": n, "models": {model: [input, output, cache writes, cache reads]}}. Only lines dated on or
-    after `since` whose folder group() puts in Conversations count, and each reply counts once, as in
-    read(). It reads every line itself, because read_file() drops the lines without a usage.
+    after `since` count, and each reply counts once, as in read(). A line counts when group() puts its
+    folder in Conversations, or in projects/ for a session started at the root, including after it moves
+    there. It reads every line itself, because read_file() drops the lines without a usage.
+
+    A session started where its first line with a cwd says, whatever that line's date. A subagent started
+    where its session did, or, when its session's file is missing, unreadable or has no cwd, where its
+    own first line with a cwd says.
 
     A subagent's file, in a session's subfolder, is one run of the agentType in the .meta.json beside
     it, from its first line in scope, even if it has no tokens. In a session's own file, a
     <command-name> line or a Skill call opens a span, and a typed prompt closes it; a new start replaces
-    the open span. A reply counts toward the span open when its id pair is first seen, so the reply that
-    calls a skill stays with what came before it. A start already seen, by its line's uuid for a command
-    or its block's id for a skill, isn't a second run: the same line written twice, or repeated in a
-    resumed session's file. isSidechain lines in a session's own file are a subagent's, so they don't
-    open, close or count toward a span.
+    the open span. A start out of scope closes the span and isn't a run. A reply counts toward the span
+    open when its id pair is first seen, so the reply that calls a skill stays with what came before it.
+    A start already seen, by its line's uuid for a command or its block's id for a skill, isn't a second
+    run: the same line written twice, or repeated in a resumed session's file. isSidechain lines in a
+    session's own file are a subagent's, so they don't open, close or count toward a span.
     """
     out = {"agents": {}, "skills": {}, "commands": {}}
     projects_dir = Path(projects_dir)
     if not projects_dir.is_dir():
         return out
-    seen, started, where = set(), set(), {}
+    seen, started, where, sessions = set(), set(), {}, {}
+    rooted = None
+
+    def started_at_root(lines, skip_sidechain):
+        """Whether the first line with a cwd is in Conversations, or None when no line has one.
+
+        A subagent's lines are normally isSidechain, so only a session's own file skips them.
+        """
+        for entry in lines:
+            cwd = entry.get("cwd")
+            if isinstance(cwd, str) and cwd and not (skip_sidechain and entry.get("isSidechain")):
+                return group(entry, root, loop_dir) == ("Conversations", "")
+        return None
+
+    def session_rooted(path):
+        """started_at_root() for a session's file, read once, or None when it can't be read."""
+        if path not in sessions:
+            try:
+                sessions[path] = started_at_root(transcript(path), True)
+            except OSError:
+                sessions[path] = None
+        return sessions[path]
 
     def once(kind, key):
         """False for a start already seen: the same line written twice, or repeated in a resumed session's file."""
@@ -229,7 +257,8 @@ def activity(projects_dir, since, root, loop_dir):
         key = cwd if isinstance(cwd, str) else None
         if key not in where:
             where[key] = group(entry, root, loop_dir)
-        return where[key] == ("Conversations", "")
+        side = where[key][0] if where[key] else None
+        return side == "Conversations" or (side == "projects/" and bool(rooted))
 
     def counts(entry):
         """True for a reply with a usage, in scope, not counted before."""
@@ -250,18 +279,29 @@ def activity(projects_dir, since, root, loop_dir):
         row["runs"] += 1
         return row
 
+    def opened(kind, name, key, entry, span):
+        """The span after a start: none out of scope, the open one for a start already seen, else a new one."""
+        if not in_scope(entry):
+            return None
+        return start(out[kind + "s"], name, entry) if once(kind, key) else span
+
     for path in sorted(projects_dir.rglob("*.jsonl")):
         try:
             lines = transcript(path)
         except OSError:
             continue
-        if len(path.relative_to(projects_dir).parts) > 2:
+        parts = path.relative_to(projects_dir).parts
+        if len(parts) > 2:
+            rooted = session_rooted(projects_dir / parts[0] / (parts[1] + ".jsonl"))
+            if rooted is None:
+                rooted = started_at_root(lines, False)
             name, row = agent_type(path), None
             for entry in lines:
                 row = row or start(out["agents"], name, entry)
                 if counts(entry) and row is not None:
                     add_usage(row, entry)
             continue
+        rooted = started_at_root(lines, True)
         span, owner = None, {}
         for entry in lines:
             if entry.get("isSidechain"):
@@ -271,8 +311,8 @@ def activity(projects_dir, since, root, loop_dir):
                 if name is None:
                     if typed_prompt(entry):
                         span = None
-                elif name and once("command", entry.get("uuid")):
-                    span = start(out["commands"], name, entry)
+                elif name:
+                    span = opened("command", name, entry.get("uuid"), entry, span)
                 continue
             message = entry.get("message")
             if entry.get("type") != "assistant" or not isinstance(message, dict):
@@ -282,8 +322,8 @@ def activity(projects_dir, since, root, loop_dir):
             if counts(entry) and target is not None:
                 add_usage(target, entry)
             skill, call = skill_called(entry)
-            if skill and once("skill", call):
-                span = start(out["skills"], skill, entry)
+            if skill:
+                span = opened("skill", skill, call, entry, span)
     return out
 
 
