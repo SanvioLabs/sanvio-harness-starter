@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -53,6 +54,8 @@ class Base(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name) / "harness"
         self.root.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        (self.root / ".gitignore").write_text("local-data/\n")
         self.folder = self.root / "local-data" / "retro"
 
     def log(self, records, name=SESSION, where=None):
@@ -123,6 +126,23 @@ class Capture(Base):
         self.assertEqual(session_retro.listed(self.folder), [SESSION])
         self.assertIn('"r4"', (self.folder / (SESSION + ".jsonl")).read_text())
 
+    def test_the_copy_and_its_folder_are_readable_by_their_owner_alone(self):
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            session_retro.capture(self.root, self.event(self.log(CORRECTED)))
+        self.assertEqual(stat.S_IMODE(self.folder.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE((self.folder / (SESSION + ".jsonl")).stat().st_mode), 0o600)
+
+    def test_nothing_is_copied_where_git_does_not_ignore_the_folder(self):
+        (self.root / ".gitignore").write_text("")  # as a ticket that dropped the line would leave it
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            self.assertIsNone(session_retro.capture(self.root, self.event(self.log(CORRECTED))))
+        outside = Path(self.tmp.name) / "not-a-checkout"
+        outside.mkdir()
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            self.assertIsNone(session_retro.capture(outside, self.event(self.log(CORRECTED))))
+        self.assertEqual(self.kept(), [])
+        self.assertFalse((outside / "local-data").exists())
+
     def test_a_run_bin_harness_started_is_not_copied(self):
         with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on", "HARNESS_HEADLESS": "1"}):
             self.assertIsNone(session_retro.capture(self.root, self.event(self.log(CORRECTED))))
@@ -145,18 +165,34 @@ class Capture(Base):
         self.assertEqual(session_retro.listed(self.folder), [])
 
 
-class PromptAndRecord(Base):
+class Kept(Base):
+    """A transcripts folder of its own, and no session id from the session running the tests."""
+
     def setUp(self):
         super().setUp()
         self.transcripts = Path(self.tmp.name) / "projects"
         patcher = mock.patch.object(loop, "TRANSCRIPTS", self.transcripts)
         patcher.start()
         self.addCleanup(patcher.stop)
+        environ = mock.patch.dict(os.environ)  # put back as it was after each test
+        environ.start()
+        self.addCleanup(environ.stop)
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+
+    def own(self):
+        """Claude Code's folder for this root's session logs."""
+        return self.transcripts / re.sub(r"[^A-Za-z0-9-]", "-", os.path.abspath(str(self.root)))
+
+    def replied(self, text, session=SESSION):
+        session_retro.private_folder(self.folder)
+        (self.folder / (session + ".reply.txt")).write_text(text)
 
     def keep(self, records=CORRECTED):
         with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
             return session_retro.capture(self.root, self.event(self.log(records)))
 
+
+class PromptAndRecord(Kept):
     def test_prompt_takes_the_oldest_kept_session_and_carries_what_the_person_corrected(self):
         self.keep()
         out = io.StringIO()
@@ -190,10 +226,13 @@ class PromptAndRecord(Base):
         reply = ("FINDING: UNLOADED | r3 | this repo | steering | loop.json | The setting's home was never read.\n"
                  "FINDING: IGNORED | r-not-in-the-log | this repo | steering | AGENTS.md | Made up.\n"
                  "FINDING: GUESSED | r3 | this repo | steering | none | Not a cause.\n")
+        self.replied(reply)
         out = io.StringIO()
-        self.assertEqual(session_retro.record(self.root, SESSION, reply, out=out), 0)
+        self.assertEqual(session_retro.record(self.root, SESSION, out=out), 0)
         entry = (self.root / ".loop" / "lessons.md").read_text()
         self.assertIn("session {}: 1 signal".format(SESSION), entry)
+        self.assertIn("the person corrected the agent [record r3]", entry)
+        self.assertNotIn("it goes in loop.json", entry)  # lessons.md is never pruned: no words of theirs
         self.assertIn("- UNLOADED (this repo, steering) loop.json: The setting's home was never read. [record r3]", entry)
         self.assertNotIn("Made up", entry)
         self.assertNotIn("Not a cause", entry)
@@ -204,27 +243,98 @@ class PromptAndRecord(Base):
 
     def test_an_ignored_finding_the_log_contradicts_is_marked_unverified(self):
         self.keep()
-        reply = "FINDING: IGNORED | r3 | this repo | steering | /work/README.md | It was never read.\n"
-        session_retro.record(self.root, SESSION, reply, out=io.StringIO())
+        self.replied("FINDING: IGNORED | r3 | this repo | steering | /work/README.md | It was never read.\n")
+        session_retro.record(self.root, SESSION, out=io.StringIO())
         self.assertIn("(unverified)", (self.root / ".loop" / "lessons.md").read_text())
 
     def test_with_none_kept_prompt_reads_this_session(self):
-        folder = self.transcripts / re.sub(r"[^A-Za-z0-9-]", "-", os.path.abspath(str(self.root)))
+        folder = self.own()
         self.log(QUIET, name="older", where=folder)
         os.utime(folder / "older.jsonl", (1, 1))
         self.log(CORRECTED, name="newest", where=folder)
         out = io.StringIO()
         self.assertEqual(session_retro.prompt(self.root, out=out), 0)
         self.assertIn("Session newest (this session)", out.getvalue())
-        session_retro.record(self.root, "newest", "", out=io.StringIO())
+        self.replied("", session="newest")
+        session_retro.record(self.root, "newest", out=io.StringIO())
         self.assertIn("session newest: 1 signal", (self.root / ".loop" / "lessons.md").read_text())
         self.assertTrue((folder / "newest.jsonl").exists())  # Claude Code's own log is never deleted
 
     def test_no_session_to_read_says_so(self):
         out = io.StringIO()
         self.assertEqual(session_retro.prompt(self.root, out=out), 1)
-        self.assertEqual(session_retro.record(self.root, "../etc", "", out=io.StringIO()), 1)
+        self.assertEqual(session_retro.record(self.root, "../etc", out=io.StringIO()), 1)
         self.assertFalse((self.root / ".loop" / "lessons.md").exists())
+
+    def test_current_is_the_session_claude_code_names_not_the_newest_log(self):
+        self.log(CORRECTED, name="this-one", where=self.own())
+        os.utime(self.own() / "this-one.jsonl", (1, 1))
+        self.log(QUIET, name="a-peer", where=self.own())
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "this-one"
+        out = io.StringIO()
+        self.assertEqual(session_retro.prompt(self.root, current=True, out=out), 0)
+        self.assertIn("Session this-one (this session)", out.getvalue())
+
+    def test_record_never_reads_another_projects_session(self):
+        self.log(CORRECTED, name="elsewhere", where=self.transcripts / "-some-client-repo")
+        self.replied("", session="elsewhere")
+        out = io.StringIO()
+        self.assertEqual(session_retro.record(self.root, "elsewhere", out=out), 1)
+        self.assertIn("No log for that session", out.getvalue())
+        self.assertFalse((self.root / ".loop" / "lessons.md").exists())
+
+    def test_record_without_a_saved_reply_writes_nothing(self):
+        self.keep()
+        out = io.StringIO()
+        self.assertEqual(session_retro.record(self.root, SESSION, out=out), 1)
+        self.assertIn("run classify first", out.getvalue())
+        self.assertFalse((self.root / ".loop" / "lessons.md").exists())
+        self.assertEqual(self.kept(), [SESSION + ".jsonl"])
+
+
+class Classify(Kept):
+    def ran(self, code=0, said="FINDING: ABSENT | r3 | this repo | steering | none | Nothing said it.\n"):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return subprocess.CompletedProcess(cmd, code, said, "")
+        return calls, run
+
+    def test_a_fresh_claude_that_can_only_read_gets_the_prompt_on_stdin_and_its_reply_is_saved(self):
+        self.keep()
+        session_retro.prompt(self.root, out=io.StringIO())
+        calls, run = self.ran()
+        out = io.StringIO()
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "the-session-running-the-command"
+        self.assertEqual(session_retro.classify(self.root, SESSION, out=out, run=run), 0)
+        cmd, kwargs = calls[0]
+        self.assertEqual(cmd, ["claude", "-p"] + loop.UNTRUSTED_CLAUDE)
+        self.assertEqual(kwargs["input"], (self.folder / (SESSION + ".prompt.md")).read_text())
+        self.assertEqual((kwargs["env"]["HARNESS_RETRO"], kwargs["env"]["HARNESS_HEADLESS"]), ("off", "1"))
+        self.assertNotIn("CLAUDE_CODE_SESSION_ID", kwargs["env"])
+        reply = self.folder / (SESSION + ".reply.txt")
+        self.assertIn("ABSENT", reply.read_text())
+        self.assertEqual(stat.S_IMODE(reply.stat().st_mode), 0o600)
+        self.assertIn("1 FINDING line", out.getvalue())
+        self.assertEqual(session_retro.record(self.root, SESSION, out=io.StringIO()), 0)
+        self.assertIn("- ABSENT", (self.root / ".loop" / "lessons.md").read_text())
+        self.assertEqual(list(self.folder.iterdir()), [self.folder / "candidates.txt"])
+
+    def test_a_classifier_that_fails_saves_nothing(self):
+        self.keep()
+        session_retro.prompt(self.root, out=io.StringIO())
+        calls, run = self.ran(code=3)
+        out = io.StringIO()
+        self.assertEqual(session_retro.classify(self.root, SESSION, out=out, run=run), 1)
+        self.assertIn("exited 3", out.getvalue())
+        self.assertFalse((self.folder / (SESSION + ".reply.txt")).exists())
+
+    def test_no_prompt_or_a_bad_id_runs_nothing(self):
+        calls, run = self.ran()
+        self.assertEqual(session_retro.classify(self.root, SESSION, out=io.StringIO(), run=run), 1)
+        self.assertEqual(session_retro.classify(self.root, "../x", out=io.StringIO(), run=run), 1)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

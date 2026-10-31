@@ -25,26 +25,30 @@ is kept, and this skill reads the current session only.
    the classifier's prompt to a file. Add `--current` to read this session
    whatever is kept. Tell the person which session it is and how many are
    waiting, from what it prints.
-2. **Have a fresh agent classify it.** Give a new subagent only this: "Read
-   `<the prompt file>` and do what it says. Reply with only its FINDING
-   lines." It has to be fresh. An agent asked about its own session tends to
-   make up the turn where it learned something. In a tool with no subagents,
-   run it as a separate session.
-3. **Record it.** Pass the subagent's reply, unchanged, to
-   `python3 .claude/hooks/session_retro.py record <session id>` on stdin, with
-   a quoted heredoc (`<<'EOF'`). It drops any finding it can't place in the log,
-   appends an entry to `.loop/lessons.md` marked as from a session, and deletes
-   the kept copy and the prompt file.
+2. **Have a fresh agent classify it.** Run
+   `python3 .claude/hooks/session_retro.py classify <session id>`, and give
+   the command up to 10 minutes. It starts a new `claude` that can only read,
+   gives it the prompt, and saves its reply beside the prompt. It has to be
+   fresh. An agent asked about its own session tends to make up the turn where
+   it learned something. Where `claude` isn't installed it says so: run the
+   prompt in a separate session that can only read files, and save its reply
+   where the message says.
+3. **Record it.** Run
+   `python3 .claude/hooks/session_retro.py record <session id>`. It reads the
+   saved reply, drops any finding it can't place in the log, appends an entry
+   to `.loop/lessons.md` marked as from a session, and deletes the kept copy,
+   the prompt and the reply. The entry names each correction by its record in
+   the log, never in the person's words.
 4. **Offer to learn from it.** Show the entry it printed, and offer
    [`skills/learn/`](../learn/) on it. The mistake and the right behaviour still
    come from the person.
 
 ## Rules
 
-- Never write, change or add a finding yourself. The subagent classifies and
-  the script checks.
-- Never read the kept log or the prompt file into this session. The fresh
-  agent reads them.
+- Never write, change or add a finding yourself, and never edit the saved
+  reply. The fresh agent classifies and the script checks.
+- Never read the kept log, the prompt file or the reply into this session.
+  The fresh agent reads them.
 - Nothing from a session log, a prompt file or a lessons entry goes into a
   tracked file, a pull request, an issue, or anything that leaves this machine.
 - If the person says a kept session needs no retro, run

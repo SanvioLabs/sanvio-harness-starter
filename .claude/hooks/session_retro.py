@@ -6,10 +6,11 @@ From the Sanvio Labs harness starter, MIT: https://github.com/SanvioLabs/sanvio-
 Wired in .claude/settings.json on SessionEnd and PreCompact. Off unless HARNESS_RETRO=on, because it
 keeps a copy of a whole session log: everything said in it and every file it read. A session counts
 when a message the person wrote opens with "no," or carries a phrase in CORRECTIONS, or one file was
-edited EDITS_FOR_SIGNAL or more times. Its log is copied to local-data/retro/, which is gitignored,
-and its id listed once in local-data/retro/candidates.txt. A later run copies it again, so a session
-that compacted and then ended keeps all of it. A run bin/harness started is never copied: nobody
-corrected it. Nothing here leaves this machine.
+edited EDITS_FOR_SIGNAL or more times. Its log is copied to local-data/retro/, readable by its owner
+alone, and its id listed once in local-data/retro/candidates.txt. It copies nothing unless git says
+that folder is ignored, so a .gitignore that lost the line can't put a session in a commit. A later
+run copies it again, so a session that compacted and then ended keeps all of it. A run bin/harness
+or scripts/loop.py started is never copied: nobody corrected it. Nothing here leaves this machine.
 
 Each run also deletes whatever in local-data/retro/ is older than KEEP_DAYS, on or off, so turning it
 off doesn't keep old copies forever. It never blocks, never prints, and never stops a session if it
@@ -19,9 +20,11 @@ skills/retro/ runs the rest through this file:
 
   python3 .claude/hooks/session_retro.py prompt [--current]
       writes the classifier's prompt for the oldest kept session, or this one when none is kept
-  python3 .claude/hooks/session_retro.py record <session id>   (findings on stdin)
-      checks the findings against the log, appends a session entry to .loop/lessons.md, and deletes
-      the kept copy
+  python3 .claude/hooks/session_retro.py classify <session id>
+      has a fresh claude that can only read classify the prompt, and saves its reply beside it
+  python3 .claude/hooks/session_retro.py record <session id>
+      checks the saved reply's findings against the log, appends a session entry to .loop/lessons.md,
+      and deletes the kept copy, the prompt and the reply
   python3 .claude/hooks/session_retro.py drop <session id>
       deletes a kept session the person says needs no retro, and writes nothing
 
@@ -31,6 +34,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -45,7 +49,10 @@ KEEP_DAYS = 30
 SCAN_SECONDS = 3  # inside the hook's 5-second timeout in .claude/settings.json
 SESSION_ID = re.compile(r"[\w-]+")  # whole, by fullmatch: an id becomes a file name
 CANDIDATES = "candidates.txt"
-SAID_CAP = 300  # how much of each correction the digest and the lessons entry quote
+SAID_CAP = 300  # how much of each correction the classifier's prompt quotes
+CLASSIFY_SECONDS = 540  # inside the 10 minutes a Bash call in Claude Code can be given
+OWN_SESSION = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_MESSAGING_SOCKET",
+               "CLAUDE_CODE_MESSAGING_TOKEN")  # what Claude Code tells a command about the session running it
 
 
 def loop():
@@ -120,6 +127,40 @@ def retro_folder(root):
     return Path(root) / "local-data" / "retro"
 
 
+def private_folder(folder):
+    """The folder, made if it isn't there, readable by its owner alone."""
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    return folder
+
+
+def open_private(path):
+    """path, opened to write over, readable by its owner alone. It never follows a link at path."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)  # a file already there keeps its old mode otherwise
+    return os.fdopen(fd, "wb")
+
+
+def write_private(path, text):
+    with open_private(path) as handle:
+        handle.write(text.encode("utf-8"))
+
+
+def copy_private(source, path):
+    with open(source, "rb") as original, open_private(path) as handle:
+        shutil.copyfileobj(original, handle)
+
+
+def ignored(root, path):
+    """Whether git says path is ignored in root's checkout. Not a checkout, or no answer, is a no."""
+    try:
+        return subprocess.run(["git", "-C", str(root), "check-ignore", "-q", "--", str(path)],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              timeout=1).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def listed(folder):
     """The session ids in the candidate list, oldest first, each once."""
     try:
@@ -147,6 +188,7 @@ def prune(folder, now=None):
 
 def capture(root, event, now=None):
     """Keep this session's log when it shows a correction. The session's id when it was kept, else None."""
+    deadline = time.monotonic() + SCAN_SECONDS
     folder = retro_folder(root)
     prune(folder, now)
     if not switched_on() or os.environ.get("HARNESS_HEADLESS") == "1":
@@ -156,23 +198,33 @@ def capture(root, event, now=None):
         return None
     if not isinstance(path, str) or not os.path.isfile(path):
         return None
-    if not signals(path, time.monotonic() + SCAN_SECONDS):
+    copy = folder / (session + ".jsonl")
+    if not ignored(root, copy):
         return None
-    folder.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(path, folder / (session + ".jsonl"))  # again on a later run: the copy grows with the session
+    if not signals(path, deadline):
+        return None
+    copy_private(path, private_folder(folder) / copy.name)  # again on a later run: the copy grows with the session
     ids = listed(folder)
     if session not in ids:
         write_listed(folder, ids + [session])
     return session
 
 
-def current_log(root):
-    """This session's log: the newest in Claude Code's folder for this root, or None. A command can't
-    learn its session's id, and the running session is the one writing to its log."""
+def own_logs(root):
+    """Every session log in Claude Code's folder for this root, and no other project's."""
     base = loop().TRANSCRIPTS
     folders = {base / re.sub(r"[^A-Za-z0-9-]", "-", name)
                for name in (os.path.abspath(str(root)), os.path.realpath(str(root)))}
-    logs = [path for folder in folders if folder.is_dir() for path in folder.glob("*.jsonl")]
+    return [path for folder in folders if folder.is_dir() for path in folder.glob("*.jsonl")]
+
+
+def current_log(root):
+    """This session's log, or None. Claude Code names the session in CLAUDE_CODE_SESSION_ID for the
+    commands it runs; without that, the newest log for this root, which a peer session can be."""
+    logs = own_logs(root)
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if SESSION_ID.fullmatch(session):
+        return next((path for path in logs if path.stem == session), None)
     return max(logs, key=lambda path: path.stat().st_mtime, default=None)
 
 
@@ -203,11 +255,11 @@ def corrections_section(found, root):
 
 
 def log_for(root, session):
-    """The kept copy of a session's log, else its log under Claude Code's folder, else None."""
+    """The kept copy of a session's log, else its log in Claude Code's folder for this root, else None."""
     if not isinstance(session, str) or not SESSION_ID.fullmatch(session):
         return None
     kept = retro_folder(root) / (session + ".jsonl")
-    return kept if kept.is_file() else loop().session_log(session)
+    return kept if kept.is_file() else next((path for path in own_logs(root) if path.stem == session), None)
 
 
 def prompt(root, current=False, out=sys.stdout):
@@ -228,17 +280,52 @@ def prompt(root, current=False, out=sys.stdout):
     digest = loop().evidence_digest(rounds) + "\n" + corrections_section(found, root)
     none = "none: an ordinary session has no {}"
     text = loop().retro_prompt(digest, none.format("plan"), none.format("review"), none.format("diff"))
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / (path.stem + ".prompt.md")).write_text(text)
+    write_private(private_folder(folder) / (path.stem + ".prompt.md"), text)
     out.write("Session {} ({}), {} correction signal{}. Kept sessions waiting: {}\nPrompt: {}\n".format(
         path.stem, source, len(found), "" if len(found) == 1 else "s", len(waiting),
         folder / (path.stem + ".prompt.md")))
     return 0
 
 
+def classify(root, session, out=sys.stdout, run=subprocess.run):
+    """Have a fresh claude classify a session's prompt and save its reply as <id>.reply.txt. It runs
+    held to loop.py's UNTRUSTED_CLAUDE, so it can only read, with the prompt on stdin: the prompt
+    quotes the log, and nothing in a log is an instruction. 0 when it saved a reply, else 1."""
+    folder = retro_folder(root)
+    if not isinstance(session, str) or not SESSION_ID.fullmatch(session):
+        out.write("Not a session id: nothing run\n")
+        return 1
+    asked = folder / (session + ".prompt.md")
+    if not asked.is_file():
+        out.write("No prompt for that session: run prompt first. Nothing run\n")
+        return 1
+    reply = folder / (session + ".reply.txt")
+    # A session of its own, not attached to the one running this command.
+    env = {key: value for key, value in os.environ.items() if key not in OWN_SESSION}
+    env.update(HARNESS_RETRO="off", HARNESS_HEADLESS="1")
+    try:
+        done = run(loop().confined(["claude", "-p"]), input=asked.read_text(), capture_output=True, text=True,
+                   errors="replace", cwd=str(root), env=env, timeout=CLASSIFY_SECONDS)
+    except FileNotFoundError:
+        out.write("claude isn't on the PATH: run the prompt in a separate session that can only read files, "
+                  "and save its reply as {}\n".format(reply))
+        return 1
+    except subprocess.TimeoutExpired:
+        out.write("The classifier ran past {} seconds: nothing saved\n".format(CLASSIFY_SECONDS))
+        return 1
+    if done.returncode != 0:
+        out.write("The classifier exited {}: nothing saved\n".format(done.returncode))
+        return 1
+    write_private(reply, done.stdout)
+    count = sum(1 for line in done.stdout.splitlines() if line.strip().startswith("FINDING:"))
+    out.write("Reply: {}, {} FINDING line{}\n".format(reply, count, "" if count == 1 else "s"))
+    return 0
+
+
 def forget(folder, session):
-    """Delete a session's kept copy and prompt, and take it off the list. Claude Code's own log stays."""
-    for name in (session + ".jsonl", session + ".prompt.md"):
+    """Delete a session's kept copy, prompt and reply, and take it off the list. Claude Code's own log
+    stays."""
+    for name in (session + ".jsonl", session + ".prompt.md", session + ".reply.txt"):
         (folder / name).unlink(missing_ok=True)
     write_listed(folder, [one for one in listed(folder) if one != session])
 
@@ -254,19 +341,25 @@ def drop(root, session, out=sys.stdout):
     return 0
 
 
-def record(root, session, reply, out=sys.stdout, today=None):
-    """Append a session entry, with the findings that pass loop.py's checks, to .loop/lessons.md, then
-    delete the session's kept copy and prompt. 0 when it wrote one, 1 when there's no log to check
-    against. Every line it prints besides the entry is fixed text."""
+def record(root, session, out=sys.stdout, today=None):
+    """Append a session entry, with the saved reply's findings that pass loop.py's checks, to
+    .loop/lessons.md, then delete the session's kept copy, prompt and reply. 0 when it wrote one, 1 when
+    there's no log to check against or no reply. Every line it prints besides the entry is fixed text,
+    and the entry cites each correction by its record, never in the person's words: lessons.md is
+    never pruned."""
     path = log_for(root, session)
     if path is None:
         out.write("No log for that session: nothing written\n")
         return 1
+    saved = retro_folder(root) / (session + ".reply.txt")
+    if not saved.is_file():
+        out.write("No reply for that session: run classify first. Nothing written\n")
+        return 1
     module = loop()
     rounds = session_rounds(path, root)
-    kept, dropped = module.parse_findings(reply, rounds, root)
+    kept, dropped = module.parse_findings(saved.read_text(errors="replace"), rounds, root)
     found = signals(path)
-    went_wrong = ['the person wrote "{}"'.format(module.one_line(one["text"], SAID_CAP)) if one["kind"] == "said"
+    went_wrong = ["the person corrected the agent [record {}]".format(one["uuid"]) if one["kind"] == "said"
                   else "{} edited {} times".format(shown(one, root), one["count"]) for one in found]
     entry = "## {} session {}: {} signal{}\n**What went wrong:** {}\n**What should have happened:** {}\n".format(
         (today or datetime.now()).strftime("%Y-%m-%d"), session, len(found), "" if len(found) == 1 else "s",
@@ -287,8 +380,10 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "prompt":
         return prompt(ROOT, current="--current" in argv[1:])
+    if argv and argv[0] == "classify" and len(argv) == 2:
+        return classify(ROOT, argv[1])
     if argv and argv[0] == "record" and len(argv) == 2:
-        return record(ROOT, argv[1], sys.stdin.read())
+        return record(ROOT, argv[1])
     if argv and argv[0] == "drop" and len(argv) == 2:
         return drop(ROOT, argv[1])
     if argv:
