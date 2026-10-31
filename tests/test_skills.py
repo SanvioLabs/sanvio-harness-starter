@@ -262,14 +262,14 @@ def backticked(text):
     return re.findall(r"`([^`]+)`", text)
 
 
-class CheckStarterCapabilities(unittest.TestCase):
-    """skills/check-starter/capabilities.md, checked only in the starter's own repo."""
+class StarterUpdatesCapabilities(unittest.TestCase):
+    """skills/starter-updates/capabilities.md, checked only in the starter's own repo."""
 
     def read(self):
         origin = check_setup.git(ROOT, "remote", "get-url", "origin")
         if skips_the_capabilities(origin):
             self.skipTest("origin isn't the public starter, so this copy's table can differ")
-        return (ROOT / "skills" / "check-starter" / "capabilities.md").read_text()
+        return (ROOT / "skills" / "starter-updates" / "capabilities.md").read_text()
 
     def rows(self):
         lines = [line for line in self.read().splitlines() if line.startswith("|")]
@@ -330,6 +330,34 @@ class CheckStarterCapabilities(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom) and node.module:
                 names.add(node.module.split(".")[0])
         return names
+
+
+class StarterUpdatesRename(unittest.TestCase):
+    """The skill's new name, and the only places its old one may still appear."""
+
+    ALLOWED = {"skills/starter-updates/SKILL.md": 1, "tests/test_skills.py": 1}
+
+    def test_the_skill_has_its_new_name(self):
+        skill = ROOT / "skills" / "starter-updates" / "SKILL.md"
+        self.assertTrue(skill.exists())
+        self.assertEqual(frontmatter(skill.read_text())["name"], "starter-updates")
+
+    def test_the_old_folder_is_gone(self):
+        self.assertFalse((ROOT / "skills" / "check-starter").exists())
+
+    def test_no_tracked_file_keeps_the_old_name(self):
+        if skips_the_capabilities(check_setup.git(ROOT, "remote", "get-url", "origin")):
+            self.skipTest("origin isn't the public starter, so this copy can mention the old name")
+        files = [name for name in (check_setup.git(ROOT, "ls-files", "-z") or "").split("\0") if name]
+        self.assertTrue(files, "git ls-files listed nothing")
+        old_name = re.compile(r"check.?starter", re.I)
+        for name in files:
+            self.assertIsNone(old_name.search(name), name)
+            path = ROOT / name
+            if name == "CHANGELOG.md" or not path.is_file():
+                continue
+            found = len(old_name.findall(path.read_text(errors="replace")))
+            self.assertEqual(found, self.ALLOWED.get(name, 0), name)
 
 
 if __name__ == "__main__":

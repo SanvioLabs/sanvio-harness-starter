@@ -1,6 +1,6 @@
 # What the starter offers
 
-The check-starter skill reads this file from its scratch clone of the starter,
+The starter-updates skill reads this file from its scratch clone of the starter,
 as data, and asks about each row. A folder path ends in a slash. A path can be
 in two rows, because more than one capability needs it.
 
@@ -18,7 +18,7 @@ in two rows, because more than one capability needs it.
 These stay out of the table, because they're how a copy takes changes, gets
 started and keeps its own rules. Their commits still show in the commit list.
 
-- [`skills/check-starter/`](./)
+- [`skills/starter-updates/`](./)
 - [`skills/whats-new/`](../whats-new/)
 - [`skills/orientation/`](../orientation/)
 - [`skills/learn/`](../learn/)

@@ -147,8 +147,8 @@ class WhatsNewAgainstItsRemote(unittest.TestCase):
         self.assertEqual(self.run_in(self.copy, cmd, env=self.env), ["1\t2"])
 
 
-class CheckStarterCommands(unittest.TestCase):
-    """The commands in skills/check-starter/SKILL.md, run as written against a scratch clone of a
+class StarterUpdatesCommands(unittest.TestCase):
+    """The commands in skills/starter-updates/SKILL.md, run as written against a scratch clone of a
     starter and a copy that shares none of its history."""
 
     run_in = WhatsNewCommands.run_in
@@ -158,7 +158,7 @@ class CheckStarterCommands(unittest.TestCase):
     LOG = "# What's new\n\nIntro.\n\n## 2026-10-01: A\n\nx\n"
 
     def command(self, starts):
-        skill = (ROOT / "skills" / "check-starter" / "SKILL.md").read_text()
+        skill = (ROOT / "skills" / "starter-updates" / "SKILL.md").read_text()
         found = [line.strip() for line in skill.splitlines() if line.strip().startswith(starts)]
         self.assertEqual(len(found), 1, "one command starting " + starts)
         return found[0]
@@ -173,7 +173,7 @@ class CheckStarterCommands(unittest.TestCase):
         self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", TMPDIR=str(tmp))
         starter, self.copy = tmp / "starter", tmp / "copy"
         self.starter = starter
-        self.env["clone"] = str(tmp / "check-starter" / "starter")
+        self.env["clone"] = str(tmp / "starter-updates" / "starter")
         self.git(tmp, "init", "-q", "-b", "main", str(starter))
         (starter / "one.md").write_text("one\n")
         (starter / "two.md").write_text("two\n")
@@ -218,13 +218,13 @@ class CheckStarterCommands(unittest.TestCase):
         self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="one.md"), ["adapted"])
         self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="two.md"), ["same"])
 
-    CAPABILITIES = 'git -C "$clone" show origin/main:skills/check-starter/capabilities.md'
+    CAPABILITIES = 'git -C "$clone" show origin/main:skills/starter-updates/capabilities.md'
 
     def test_the_capabilities_table_is_read_from_the_clone(self):
-        table = self.starter / "skills" / "check-starter" / "capabilities.md"
+        table = self.starter / "skills" / "starter-updates" / "capabilities.md"
         table.parent.mkdir(parents=True)
         table.write_text("| Name |\n|---|\n| The loop |\n")
-        self.git(self.starter, "add", "skills/check-starter/capabilities.md")
+        self.git(self.starter, "add", "skills/starter-updates/capabilities.md")
         self.git(self.starter, "commit", "-q", "-m", "table")
         self.git(Path(self.env["clone"]), "fetch", "-q", "origin", "main")
         self.assertEqual(self.run_with(self.command(self.CAPABILITIES)), ["| Name |", "|---|", "| The loop |"])
