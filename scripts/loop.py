@@ -133,7 +133,7 @@ CAUSES = ("ABSENT", "IGNORED", "UNLOADED", "WRONG", "INHERENT")  # why a lesson 
 SCOPES = ("this task", "this repo", "every task")  # how far a finding reaches
 UNCLASSIFIED = "**Findings:** unclassified, the retro didn't finish\n"
 NO_SESSION_LOG = "**Evidence:** no session log\n"
-SAID_CAP = 2_000  # how much of the build agent's last reply, or setup's output, a block comment quotes, from its end
+SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
 DIRTY_CAP = 10  # how many paths setup left behind a block names
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
@@ -1070,18 +1070,12 @@ def pr_comment(url, rounds):
         url, rounds, "" if rounds == 1 else "s")
 
 
-def quoted_tail(text):
-    """The last SAID_CAP characters of text as a quote, with its mentions made harmless."""
-    return "\n".join("> " + line for line in safe_to_post(text[-SAID_CAP:].strip()).splitlines())
-
-
-def block_comment(number, why, rounds, cfg, said=None, usage=None, output=None):
+def block_comment(number, why, rounds, cfg, said=None, usage=None):
     """Why it stopped and how to put it back. The reason is the loop's own words, never agent output.
 
     said, when given, is the build agent's reply. Its tail follows the reason as a quote, apart from
     it, with its mentions made harmless: the agent wrote it, and the issue's text shaped it.
     usage, when given, is the issue's usage.json entries: one sentence says what the run used.
-    output, when given, is what setup_command printed, and is quoted the same way under its own heading.
     """
     took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
     text = ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
@@ -1097,9 +1091,8 @@ def block_comment(number, why, rounds, cfg, said=None, usage=None, output=None):
                 "{:,}".format(tokens) if tokens is not None else "an unreported number of",
                 "" if cost is None else ", an estimated ${:,.2f} at API prices".format(cost))
     if said and said.strip():
-        text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted_tail(said))
-    if output and output.strip():
-        text += "\n\nThe setup command's output (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted_tail(output))
+        quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
+        text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
     return text
 
 
@@ -1834,10 +1827,28 @@ class Loop:
         marker = Path(gitdir.strip()) / "loop-setup-done"
         if marker.exists():
             return True
+        # No marker and the loop's commits already on the branch: a reused branch, or setup_command set since.
+        # Setup would run what an agent wrote, a manifest's install script say, ahead of every check.
+        base = self.cfg["base"]
+        code, commits = self.git("log", "--format=%h", "--fixed-strings", "--grep=Loop: issue #{}, round".format(number),
+                                 "origin/{}..HEAD".format(base), cwd=tree)
+        if code != 0:
+            self.block(number, "could not list the loop's commits on loop/issue-{} (git exit {}), "
+                               "so setup didn't run".format(number, code))
+            return False
+        if commits.strip():
+            self.block(number, "loop/issue-{0} already has the loop's commits and hasn't run setup, so setup didn't "
+                               "run: it would run what an agent wrote. Remove the worktree and the branch, then put "
+                               "the issue back".format(number))
+            return False
         code, out = self.sh(command, cwd=tree, shell=True, timeout=self.cfg["test_timeout"],
                             env=env_for_tests(os.environ), partial=True)
         if code != 0:
-            self.block(number, "setup failed (exit {})".format(code), output=out)
+            # Kept on this machine: an install's output can name paths, hosts or secrets, and a comment is public.
+            folder = self.dir / "issue-{}".format(number)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "setup-output.txt").write_text(out[-OUTPUT_CAP:])
+            self.block(number, "setup failed (exit {}), and its output is in setup-output.txt".format(code))
             return False
         # A git that fails proves nothing.
         code, status = self.sh(["git", "status", "--porcelain"], cwd=tree, stderr=False)
@@ -1850,23 +1861,22 @@ class Loop:
             self.block(number, (
                 "the worktree has uncommitted changes after setup, so no agent ran: {}{}. The next build would "
                 "commit them. Make setup write only what git ignores, and clear them from the worktree"
-            ).format(", ".join(paths[:DIRTY_CAP]), " and {} more".format(more) if more > 0 else ""))
+            ).format(safe_to_post(", ".join(paths[:DIRTY_CAP])), " and {} more".format(more) if more > 0 else ""))
             return False
         marker.write_text("")
         self.log("SETUP", "done", number)
         return True
 
-    def block(self, number, why, rounds=None, said=None, output=None):
+    def block(self, number, why, rounds=None, said=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked.
 
-        said, the build agent's reply, and output, what setup_command printed, go on the issue's comment
-        only, never the log or status.
+        said, the build agent's reply, goes on the issue's comment only, never the log or status.
         """
         self.halt_if_interrupted()  # whatever failed, a Ctrl-C caused it: the issue stays as it was
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
-        self.comment(number, block_comment(number, why, rounds, self.cfg, said, self.usage(number), output))
+        self.comment(number, block_comment(number, why, rounds, self.cfg, said, self.usage(number)))
         self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):

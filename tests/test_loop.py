@@ -2233,36 +2233,60 @@ class TestAPass(unittest.TestCase):
         self.assertNotRegex(seen, r"(?m)^\w*_TOKEN=")
         self.assertIn("PATH=", seen)
 
-    def test_a_setup_that_fails_blocks_and_quotes_the_end_of_its_output_on_the_comment_only(self):
-        self.cfg["setup_command"] = ("python3 -c \"print('OUTPUT-START ' + 'x' * 3000 + ' ping @someone')\"; "
-                                     "echo SETUP-END >&2; exit 3")
+    def setup_output(self):
+        return (self.work / ".loop" / "issue-12" / "setup-output.txt").read_text()
+
+    def test_a_setup_that_fails_blocks_and_keeps_its_output_on_this_machine(self):
+        self.cfg["setup_command"] = "echo SETUP-OUT; echo SETUP-ERR >&2; exit 3"
         self.go()
         self.assertEqual(self.started_steps(), [])
         self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
         comments = self.comments()
         self.assertEqual(len(comments), 1)
-        self.assertIn("setup failed (exit 3)", comments[0])
-        self.assertIn("The setup command's output", comments[0])
-        self.assertIn("SETUP-END", comments[0])
-        self.assertNotIn("OUTPUT-START", comments[0])
-        self.assertIn("@​someone", comments[0])
-        self.assertNotIn("@someone", comments[0])
-        self.assertNotIn("build agent's last reply", comments[0])
-        for kept in ((self.work / ".loop" / "loop.log").read_text(), (self.work / ".loop" / "status.json").read_text()):
-            self.assertIn("setup failed (exit 3)", kept)
-            self.assertNotIn("SETUP-END", kept)
+        self.assertIn("setup failed (exit 3), and its output is in setup-output.txt", comments[0])
+        self.assertIn("SETUP-OUT", self.setup_output())
+        self.assertIn("SETUP-ERR", self.setup_output())
+        for kept in (comments[0], (self.work / ".loop" / "loop.log").read_text(),
+                     (self.work / ".loop" / "status.json").read_text()):
+            self.assertNotIn("SETUP-OUT", kept)
+            self.assertNotIn("SETUP-ERR", kept)
 
-    def test_a_setup_that_times_out_blocks_and_quotes_what_it_printed_so_far(self):
+    def test_a_setup_that_times_out_blocks_and_keeps_what_it_printed_so_far(self):
         self.cfg["test_timeout"] = 1
         self.cfg["setup_command"] = "echo started; echo warned >&2; sleep 5"
         self.go()
         self.assertEqual(self.started_steps(), [])
-        comment = self.comments()[0]
-        self.assertIn("setup failed (exit 124)", comment)
-        self.assertIn("> started", comment)
-        self.assertIn("> warned", comment)
-        self.assertIn("> timed out after 1s", comment)
+        self.assertIn("setup failed (exit 124)", self.comments()[0])
+        self.assertNotIn("warned", self.comments()[0])
+        for line in ("started", "warned", "timed out after 1s"):
+            self.assertIn(line, self.setup_output())
         self.assertFalse(self.setup_marker().exists())
+
+    def test_setup_does_not_run_on_a_branch_with_the_loops_commits_and_no_marker(self):
+        (self.state / "fix-once").write_text("")
+        self.assertEqual(self.go(), 0)  # with no setup_command: the branch now has the loop's commits
+        self.assertTrue(self.started_steps())
+        self.setup_counts()
+        self.go()
+        self.assertEqual(self.setup_runs(), 0)
+        self.assertIn("already has the loop's commits and hasn't run setup", self.comments()[-1])
+        self.assertFalse(self.setup_marker().exists())
+
+    def test_setup_runs_on_a_branch_with_only_a_persons_commit(self):
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        git(self.work, "worktree", "add", "-q", "-b", "loop/issue-12", str(tree), "origin/main")
+        (tree / "mine.txt").write_text("mine\n")
+        git(tree, "add", "-A")
+        git(tree, "commit", "-q", "-m", "A person's own commit")
+        self.setup_counts()
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.setup_runs(), 1)
+
+    def test_a_path_setup_leaves_can_not_ping_anyone(self):
+        self.cfg["setup_command"] = "touch @someone"
+        self.go()
+        self.assertIn("@\u200bsomeone", self.comments()[0])
+        self.assertNotIn("@someone", self.comments()[0])
 
     def test_setup_runs_again_when_an_issue_is_put_back_after_it_failed(self):
         self.setup_counts("test -f {}/setup-fixed".format(self.state))
@@ -2297,7 +2321,6 @@ class TestAPass(unittest.TestCase):
         for comment in comments:
             self.assertIn("uncommitted changes after setup", comment)
             self.assertIn("junk.txt", comment)
-            self.assertNotIn("The setup command's output", comment)
         self.assertFalse(self.setup_marker().exists())
         self.assertNotIn("junk.txt", git(self.work, "log", "--all", "--name-only", "--format=").stdout)
 

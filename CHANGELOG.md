@@ -29,7 +29,7 @@ fine).
 
 ## 2026-10-30: Loop setup command
 
-`setup_command`, in the harness's `loop.json` or a project's own, runs once per worktree before the planner, such as `npm ci`, with the same environment and timeout as `test_command`. If it fails or times out, the issue blocks and the comment quotes the end of its output. If it leaves anything git would commit, the issue blocks and the comment names the paths. Empty, the default, runs nothing. It runs with no approval, so use a locked install.
+`setup_command`, in the harness's `loop.json` or a project's own, runs once per worktree before the planner, such as `npm ci`, with the same environment and timeout as `test_command`. If it fails or times out, the issue blocks and its output stays on this machine, in `.loop/issue-N/setup-output.txt`. If it leaves anything git would commit, the issue blocks and the comment names the paths. On a branch that already has the loop's commits and no record of setup, it doesn't run. Empty, the default, runs nothing. It runs with no approval, so use a locked install.
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
 
 **Do:** nothing, unless a project wants its packages installed before the agents start: then set `setup_command`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
