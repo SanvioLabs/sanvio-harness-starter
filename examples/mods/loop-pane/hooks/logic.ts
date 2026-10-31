@@ -43,6 +43,25 @@ export function loopButtonLabel(seen: Seen): string {
   return `● ${loopLabel(seen)}${working > 1 ? ` ${working}` : ''}`
 }
 
+// The most loops that get a button each: four fit a row at the pane's usual width.
+export const LOOP_BUTTONS = 4
+
+// The dropdown's options past that: the loops on a job first, each group in its own order. A project's
+// value is its name, the harness's ''.
+export function loopOptions(loops: Seen[]): { value: string; label: string }[] {
+  const working = loops.filter(l => workingCount(l) > 0)
+  const rest = loops.filter(l => workingCount(l) === 0)
+  return [...working, ...rest].map(loop => ({ value: loop.project ?? '', label: loopButtonLabel(loop) }))
+}
+
+// What sits beside the dropdown, whose closed face shows only the loop on screen: how many other loops
+// are on a job, whatever number of jobs each has. Null when none is.
+export function othersWorking(loops: Seen[], seen: Seen): string | null {
+  const others = loops.filter(l => l.project !== seen.project && workingCount(l) > 0).length
+  if (!others) return null
+  return `● ${others} ${others > 1 ? 'others' : 'other'} working`
+}
+
 const STEPS: Record<string, string> = {
   SHAPE: 'planning',
   BUILD: 'building',
@@ -196,7 +215,7 @@ export function waitingOn(item: QueueItem): string | null {
   return on.length ? `waiting on ${on.map(n => `#${n}`).join(', ')}` : null
 }
 
-// Jobs in view at once on Active and Finished, the rest scrolling. Queue fits its lines to the same rows.
+// The fewest jobs in view at once on Active and Finished, the rest scrolling. Queue fits its lines to the same rows.
 export const PAGE = 3
 // How long a finished job stays on the Finished tab.
 export const FINISHED_MS = 24 * 60 * 60 * 1000

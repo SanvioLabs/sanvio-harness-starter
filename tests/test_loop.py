@@ -267,6 +267,10 @@ class TestPureParts(unittest.TestCase):
         body = "## Scope\n\n**In:** `max_workers` `run --dry-run` `-x/y` `/etc/hosts` `scripts` `./` `.`\n**Out:** none\n"
         self.assertEqual(loop.scope_paths(body), [])
 
+    def test_scope_paths_leaves_out_the_changelog_nearly_every_ticket_names(self):
+        self.assertEqual(loop.scope_paths("## Scope\n\n**In:** `CHANGELOG.md`, `./CHANGELOG.md`, `docs/CHANGELOG.md`\n"),
+                         ["docs/CHANGELOG.md"])
+
     def test_scope_paths_finds_nothing_without_a_scope_or_an_in_half(self):
         for body in (None, "", "body", "**In:** `a/b.py`", "## Scope\n\n**Out:** `a/b.py`\n", "## Scope\n\n**In:** all of it\n"):
             self.assertEqual(loop.scope_paths(body), [], body)
@@ -2347,6 +2351,13 @@ class TestAPass(unittest.TestCase):
         t = self.times()
         self.assertGreater(t[(13, "start")], t[(12, "end")])
         self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13"])
+
+    def test_two_tickets_that_share_only_the_changelog_run_at_the_same_time(self):
+        self.timed(scoped(12, "a.py", "CHANGELOG.md"), scoped(13, "b.py", "CHANGELOG.md"))
+        self.go_workers()
+        t = self.times()
+        self.assertLess(t[(13, "start")], t[(12, "end")])
+        self.assertNotIn(" HELD ", "\n".join(self.lines()))
 
     def test_a_hold_leaves_an_issue_that_names_other_files_free_to_start(self):
         self.timed(scoped(12, "a.py"), scoped(13, "a.py"), scoped(14, "b.py"))

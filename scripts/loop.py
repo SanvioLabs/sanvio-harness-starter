@@ -157,6 +157,7 @@ SCOPE = re.compile(r"(?ims)^##[ \t]+scope[ \t]*$(.*?)(?=^#{1,2}\s|\Z)")  # a tic
 SCOPE_IN = re.compile(r"(?is)\*\*in:\*\*(.*?)(?=\*\*out:\*\*|\Z)")  # the In half of it
 BACKTICKED = re.compile(r"`([^`\n]+)`")
 PATH_TOKEN = re.compile(r"[\w./-]+")
+NEVER_HELD = ("CHANGELOG.md",)  # nearly every ticket names it, and a hold wouldn't stop its entries conflicting
 DURATION = re.compile(r"[1-9][0-9]*[mhd]")  # --for's value, whole
 UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")  # in datetime.weekday() order
@@ -419,7 +420,7 @@ def scope_paths(body):
     """The files and folders an issue's Scope names in backticks under **In:**, in order, each once.
 
     A token counts when it's only path characters, doesn't start with - or /, and has a slash or a
-    dot: `src/app`, `dir/` and `README.md` do; `max_workers` and `run --dry-run` don't.
+    dot: `src/app`, `dir/` and `README.md` do; `max_workers` and `run --dry-run` don't. NEVER_HELD doesn't.
     """
     section = SCOPE.search((body or "").replace("\r\n", "\n"))
     part = SCOPE_IN.search(section.group(1)) if section else None
@@ -430,7 +431,7 @@ def scope_paths(body):
         if "/" not in token and "." not in token:
             continue
         path = (token[2:] if token.startswith("./") else token).rstrip("/")
-        if path.strip("./") and path not in found:
+        if path.strip("./") and path not in found and path not in NEVER_HELD:
             found.append(path)
     return found
 

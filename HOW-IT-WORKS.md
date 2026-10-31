@@ -177,7 +177,8 @@ that many ready issues side by side, each in its own worktree. One that depends
 on an issue still being worked waits for it. So does one held by a path: when a
 ticket's Scope **In** names, in backticks, a file or folder that a running
 issue's ticket also named, it waits until that issue's worker ends, and any
-ready issue that doesn't overlap can start meanwhile. The log says
+ready issue that doesn't overlap can start meanwhile. [`CHANGELOG.md`](CHANGELOG.md) never holds anything: nearly every ticket names it, and a
+hold wouldn't stop two entries conflicting. The log says
 `#13 HELD waits on #12 for src/app/main.py` once, its queue row in `status.json`
 has `waiting_on` and `held_path` while it's held, and with more than one worker
 a `--dry-run` prints a `HELD` line for each issue that overlaps its pick. The

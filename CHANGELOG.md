@@ -29,10 +29,23 @@ fine).
 
 ## 2026-10-30: Loop holds tickets that name the same file
 
-With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.
+With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. `CHANGELOG.md` doesn't count, since nearly every ticket names it. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.
 Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`steering/tickets.md`](steering/tickets.md), [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), [`CHANGELOG.md`](CHANGELOG.md).
 
 **Do:** name exact files in backticks in a ticket's Scope **In**, with folders as `dir/` or `a/b`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
+## 2026-10-30: Loop pane dropdown past four loops
+
+Past four loops, the loop pane's row of loop buttons becomes a dropdown in the terminal, VS Code and Claude Desktop, with the loops working a job first and, beside it, how many other loops are working. Four or fewer keep their buttons, and so does the mobile app, which draws no dropdown.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
+## 2026-10-30: Loop pane lists fill its height
+
+The loop pane's lists now grow with the pane: at 60 rows **Active** and **Finished** show 7 jobs and **Queue** 49 issues, on the terminal in the same rows on every tab. They never drop below today's 3 jobs and 21 issues, and a pane that reports no height keeps those numbers. On Desktop and VS Code a short queue still holds only three lines open.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
 
 ## 2026-10-30: Loop pane tabs keep one height
 
