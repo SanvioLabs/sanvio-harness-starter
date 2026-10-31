@@ -22,7 +22,8 @@ quote to them, and only what they confirm is used.
 
 If `.loop/lessons.md` exists, its entries are already in this shape (written by
 [`scripts/loop.py`](../../scripts/loop.py)). Offer the oldest one and quote it
-to them. An entry that says "unknown" for what should have happened still needs the
+to them. An entry headed `session` came from [`skills/retro/`](../retro/), out of an
+ordinary session rather than a loop run; offer it the same way. An entry that says "unknown" for what should have happened still needs the
 person's answer.
 
 ## Steps
@@ -49,7 +50,7 @@ person's answer.
    rule isn't strong enough where it is. Say so, and move it one row up rather
    than writing it twice.
 
-   A `.loop/lessons.md` entry can carry findings from the loop's retro, each with
+   A `.loop/lessons.md` entry can carry findings from a retro, the loop's or a session's, each with
    a cause. The cause says where the fix goes, ahead of the table above. It is
    evidence too: the mistake and the correct behaviour still come from the
    person, who confirms before anything is written. Quote a finding marked

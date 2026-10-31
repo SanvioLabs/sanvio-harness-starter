@@ -508,6 +508,7 @@ with open(os.path.join(state, "agents-started"), "a") as f:
 # Each step's last prompt, and its words whole, as plan-prompt and plan-argv.
 open(os.path.join(state, step + "-prompt"), "w").write(prompt)
 open(os.path.join(state, step + "-argv"), "w").write(json.dumps(sys.argv[1:]))
+open(os.path.join(state, step + "-retro-switch"), "w").write(os.environ.get("HARNESS_RETRO", "unset"))
 if step == "retro":
     if os.path.exists(os.path.join(state, "retro-edits")):
         open("retro-sneaky.txt", "w").write("x")
@@ -787,6 +788,12 @@ class TestAPass(unittest.TestCase):
     def go(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=True, **kwargs)
+
+    def test_no_agent_keeps_its_session_for_a_session_retro_even_with_it_switched_on(self):
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            self.go()
+        for step in ("plan", "build", "review"):
+            self.assertEqual((self.state / (step + "-retro-switch")).read_text(), "off", step)
 
     # -- the retro ---------------------------------------------------------
 
@@ -3766,6 +3773,7 @@ import os, sys
 prompt = sys.stdin.read()
 state = os.environ["LOOP_TEST_STATE"]
 open(os.path.join(state, "argv"), "w").write(" ".join(sys.argv[1:]))
+open(os.path.join(state, "retro-switch"), "w").write(os.environ.get("HARNESS_RETRO", "unset"))
 with open(os.path.join(state, "prompts"), "a") as f:
     f.write(prompt + "\\n=====\\n")
 with open(os.path.join(state, "cwds"), "a") as f:
@@ -3955,6 +3963,13 @@ class TestReview(unittest.TestCase):
         self.assertEqual(len(comments), 2)
         self.assertEqual(comments[0]["body"], loop.REVIEW_MARKER + "\nSam's own text.")
         self.assertEqual(comments[1]["user"], "pat")
+
+    def test_the_review_agent_is_never_kept_for_a_session_retro(self):
+        self.list_prs(self.pr(7, self.push(7, "thing.txt")))
+        with mock.patch.dict(os.environ, {"HARNESS_RETRO": "on"}):
+            self.go()
+        self.assertEqual(self.agents_started(), 1)
+        self.assertEqual((self.state / "retro-switch").read_text(), "off")
 
     def test_a_draft_is_skipped_without_an_agent_or_a_record(self):
         sha = self.push(7, "thing.txt")

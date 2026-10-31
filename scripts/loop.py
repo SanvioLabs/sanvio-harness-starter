@@ -1379,8 +1379,9 @@ class Loop:
         if cmd is None:
             self.record_usage(number, step, round_no, None, configured_model(self.cfg, which))
             return REFUSED, why
-        if number is None:
-            return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr)
+        if number is None:  # never kept for a session retro either: see stream()
+            return self.sh(cmd, cwd=cwd, stdin=prompt, timeout=self.cfg["agent_timeout"], stderr=stderr,
+                           env=dict(os.environ, HARNESS_RETRO="off"))
         self.halt_if_interrupted()
         folder = self.dir / "issue-{}".format(number)
         folder.mkdir(exist_ok=True)
@@ -1448,10 +1449,13 @@ class Loop:
         streaming = Path(cmd[0]).name == "claude" and output_format(cmd) == "stream-json"
         try:
             # A session of its own: a timeout kills whatever it started too, which would otherwise hold
-            # its output open, and a Ctrl-C meant for the loop's terminal doesn't reach it.
+            # its output open, and a Ctrl-C meant for the loop's terminal doesn't reach it. Its session
+            # log is never kept by .claude/hooks/session_retro.py, whatever HARNESS_RETRO says here:
+            # nobody corrected it, and a copy in a worktree is one commit from being pushed.
             proc = subprocess.Popen(cmd, cwd=str(cwd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT if stderr else subprocess.DEVNULL,
-                                    text=True, errors="replace", start_new_session=True)
+                                    text=True, errors="replace", start_new_session=True,
+                                    env=dict(os.environ, HARNESS_RETRO="off"))
         except FileNotFoundError:
             self.record_usage(number, step, round_no, None, model)
             return 127, "command not found: {}".format(cmd[0])
