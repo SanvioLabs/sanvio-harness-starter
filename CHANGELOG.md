@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop pane dropdown past four loops
+
+Past four loops, the loop pane's row of loop buttons becomes a dropdown in the terminal, VS Code and Claude Desktop, with the loops working a job first and, beside it, how many other loops are working. Four or fewer keep their buttons, and so does the mobile app, which draws no dropdown.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-30: Loop pane lists fill its height
 
 The loop pane's lists now grow with the pane: at 60 rows **Active** and **Finished** show 7 jobs and **Queue** 49 issues, on the terminal in the same rows on every tab. They never drop below today's 3 jobs and 21 issues, and a pane that reports no height keeps those numbers. On Desktop and VS Code a short queue still holds only three lines open.
