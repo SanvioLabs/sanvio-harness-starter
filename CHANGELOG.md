@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Session retro
+
+Ordinary sessions can now get the same retro the loop's lessons get. With `HARNESS_RETRO=on`, a hook on `SessionEnd` and `PreCompact` keeps a copy of the session's log in `local-data/retro/` when the person corrected the agent ("that's wrong", "not what I asked", "don't do that", "learn from that", or a message opening "no,") or one file was edited three or more times. Say "retro" and the `retro` skill has a fresh agent classify why the agent didn't know, from the loop's digest of the log plus what the person corrected; [`scripts/loop.py`](scripts/loop.py)'s checks drop what the log doesn't bear out, and the entry goes in `.loop/lessons.md`, headed `session`, for `learn`. A kept copy is deleted once read, and anything in `local-data/retro/` older than 30 days on the next session end, whether the switch is on or off. With none kept, `retro` reads the current session. Copies hold everything said in a session and never leave the machine.
+Files: [`.claude/hooks/session_retro.py`](.claude/hooks/session_retro.py), [`.claude/settings.json`](.claude/settings.json), [`skills/retro/SKILL.md`](skills/retro/SKILL.md), [`skills/learn/SKILL.md`](skills/learn/SKILL.md), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`tests/test_session_retro.py`](tests/test_session_retro.py), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing to leave it off. To turn it on, set `HARNESS_RETRO=on` in your environment and start a new session.
+
 ## 2026-10-30: Loop plans carry the ticket's exact content
 
 The loop's planner is now told that the build agent gets only the plan, so what a ticket gives exactly, such as a table's rows, paths, command text or required wording, goes in the plan word for word and marked as content. The 40-line limit now covers only the planner's own words. The ticket's wording now reaches the agent that writes files, as the planner's copy, with no cap on its length.
