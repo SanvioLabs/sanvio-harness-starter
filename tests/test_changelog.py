@@ -172,6 +172,7 @@ class CheckStarterCommands(unittest.TestCase):
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", TMPDIR=str(tmp))
         starter, self.copy = tmp / "starter", tmp / "copy"
+        self.starter = starter
         self.env["clone"] = str(tmp / "check-starter" / "starter")
         self.git(tmp, "init", "-q", "-b", "main", str(starter))
         (starter / "one.md").write_text("one\n")
@@ -216,6 +217,21 @@ class CheckStarterCommands(unittest.TestCase):
         cmd = self.command('git -C "$clone" show "$base:$path" |') + " && echo same || echo adapted"
         self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="one.md"), ["adapted"])
         self.assertEqual(self.run_with(cmd, base=self.sha["A"], path="two.md"), ["same"])
+
+    CAPABILITIES = 'git -C "$clone" show origin/main:skills/check-starter/capabilities.md'
+
+    def test_the_capabilities_table_is_read_from_the_clone(self):
+        table = self.starter / "skills" / "check-starter" / "capabilities.md"
+        table.parent.mkdir(parents=True)
+        table.write_text("| Name |\n|---|\n| The loop |\n")
+        self.git(self.starter, "add", "skills/check-starter/capabilities.md")
+        self.git(self.starter, "commit", "-q", "-m", "table")
+        self.git(Path(self.env["clone"]), "fetch", "-q", "origin", "main")
+        self.assertEqual(self.run_with(self.command(self.CAPABILITIES)), ["| Name |", "|---|", "| The loop |"])
+
+    def test_a_starter_without_the_capabilities_table_fails_the_command(self):
+        cmd = self.command(self.CAPABILITIES) + " && echo found || echo missing"
+        self.assertEqual(self.run_with(cmd), ["missing"])
 
 
 if __name__ == "__main__":

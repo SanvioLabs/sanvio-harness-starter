@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Check-starter asks what's worth bringing over
+
+`check-starter` now reads a table of the starter's capabilities and asks, one question at a time, whether to bring over each one this copy lacks and whether to take updates to the ones it has. A copy level with the starter is still offered what it lacks. Its output opens with what you said yes to and the commands for it, and names what `cp` doesn't bring. Every commit is still listed, with the same answers, plus a note where you said no or left it undecided. The windows themselves aren't tested: the tests cover the table and the command that reads it.
+Files: [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md), [`skills/check-starter/capabilities.md`](skills/check-starter/capabilities.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_changelog.py`](tests/test_changelog.py), [`README.md`](README.md), [`AGENTS.md`](AGENTS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing.
+
 ## 2026-10-30: Loop holds tickets that name the same file
 
 With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. `CHANGELOG.md` doesn't count, since nearly every ticket names it. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.
