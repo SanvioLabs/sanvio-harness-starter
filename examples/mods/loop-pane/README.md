@@ -86,7 +86,8 @@ Type `/loop-pane`. Not `/loop`: that's Claude Code's own command for running a
 prompt on a schedule.
 
 In fullscreen, from 110 columns, the pane docks beside the conversation.
-Narrower, it sits above the prompt. Close it with the `×` in its corner.
+Narrower, it sits above the prompt. While it's showing, the `×` in its corner
+or `/loop-pane` closes it.
 
 It loads by itself, the same way as the [harness lens](../harness-lens/): the harness's
 [`.claude/settings.json`](../../../.claude/settings.json) turns it on. Don't see `/loop-pane`? Install it from
@@ -127,8 +128,8 @@ tabs stay put.
 
 `/loop-pane` opens on the first loop running, the harness before the projects,
 else on the harness. After that the loop you're on stays, even when another one
-starts, until you press another or run `/loop-pane` again. If a project's folder
-goes while you're on it, the pane falls back to the harness.
+starts, until you press another or close and reopen the pane. If a project's
+folder goes while you're on it, the pane falls back to the harness.
 
 While the pane is open, an issue that reaches an end in any loop, on screen or
 not, also pops up a short notice, so you hear about it without reading the pane.
