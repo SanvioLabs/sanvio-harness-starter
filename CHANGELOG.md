@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop setup command
+
+`setup_command`, in the harness's `loop.json` or a project's own, runs once per worktree before the planner, such as `npm ci`, with the same environment and timeout as `test_command`. If it fails or times out, the issue blocks and the comment quotes the end of its output. If it leaves anything git would commit, the issue blocks and the comment names the paths. Empty, the default, runs nothing. It runs with no approval, so use a locked install.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing, unless a project wants its packages installed before the agents start: then set `setup_command`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
+
 ## 2026-10-30: Loop holds tickets that name the same file
 
 With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. `CHANGELOG.md` doesn't count, since nearly every ticket names it. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.

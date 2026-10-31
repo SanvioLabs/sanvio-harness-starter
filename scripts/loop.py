@@ -83,6 +83,9 @@ DEFAULTS = {
     # Run by this script after each build, in the worktree, and what it writes goes in that round's commit.
     # For files the build agent can't make itself. Empty means nothing runs.
     "generate_command": "",
+    # Run by this script once per worktree, before its first agent, such as `npm ci`. It may write only
+    # what git ignores, since anything else would go in a commit. Empty means nothing runs.
+    "setup_command": "",
     "base": "main",
     "ready_label": "loop-ready",
     "blocked_label": "loop:blocked",
@@ -130,7 +133,8 @@ CAUSES = ("ABSENT", "IGNORED", "UNLOADED", "WRONG", "INHERENT")  # why a lesson 
 SCOPES = ("this task", "this repo", "every task")  # how far a finding reaches
 UNCLASSIFIED = "**Findings:** unclassified, the retro didn't finish\n"
 NO_SESSION_LOG = "**Evidence:** no session log\n"
-SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
+SAID_CAP = 2_000  # how much of the build agent's last reply, or setup's output, a block comment quotes, from its end
+DIRTY_CAP = 10  # how many paths setup left behind a block names
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
@@ -298,7 +302,8 @@ def load_config(root):
 
 # What a project's own loop.json may set. Everything else is the machine's: it decides what the loop may
 # run and spend, so it comes from the harness's loop.json, never from a clone anyone can push to.
-PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label", "generate_command")
+PROJECT_KEYS = ("test_command", "test_timeout", "base", "ready_label", "blocked_label", "generate_command",
+                "setup_command")
 MACHINE_KEYS = frozenset(DEFAULTS) - set(PROJECT_KEYS) | {"allow_lockfile_changes"}
 
 
@@ -1065,12 +1070,18 @@ def pr_comment(url, rounds):
         url, rounds, "" if rounds == 1 else "s")
 
 
-def block_comment(number, why, rounds, cfg, said=None, usage=None):
+def quoted_tail(text):
+    """The last SAID_CAP characters of text as a quote, with its mentions made harmless."""
+    return "\n".join("> " + line for line in safe_to_post(text[-SAID_CAP:].strip()).splitlines())
+
+
+def block_comment(number, why, rounds, cfg, said=None, usage=None, output=None):
     """Why it stopped and how to put it back. The reason is the loop's own words, never agent output.
 
     said, when given, is the build agent's reply. Its tail follows the reason as a quote, apart from
     it, with its mentions made harmless: the agent wrote it, and the issue's text shaped it.
     usage, when given, is the issue's usage.json entries: one sentence says what the run used.
+    output, when given, is what setup_command printed, and is quoted the same way under its own heading.
     """
     took = " after {} round{}".format(rounds, "" if rounds == 1 else "s") if rounds else ""
     text = ("The loop stopped on this issue{took}: {why}. The plan, test output and review are in "
@@ -1086,8 +1097,9 @@ def block_comment(number, why, rounds, cfg, said=None, usage=None):
                 "{:,}".format(tokens) if tokens is not None else "an unreported number of",
                 "" if cost is None else ", an estimated ${:,.2f} at API prices".format(cost))
     if said and said.strip():
-        quoted = "\n".join("> " + line for line in safe_to_post(said[-SAID_CAP:].strip()).splitlines())
-        text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted)
+        text += "\n\nThe build agent's last reply (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted_tail(said))
+    if output and output.strip():
+        text += "\n\nThe setup command's output (its last {:,} characters):\n\n{}".format(SAID_CAP, quoted_tail(output))
     return text
 
 
@@ -1234,10 +1246,11 @@ class Loop:
             except (OSError, ValueError) as err:
                 self.log("ERROR", "could not write history.jsonl: {}".format(type(err).__name__), number)
 
-    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None):
+    def sh(self, cmd, cwd=None, stdin=None, timeout=None, shell=False, stderr=True, env=None, partial=False):
         """(exit code, combined output, or stdout alone with stderr=False).
 
-        A missing command or a timeout is a code, not a crash.
+        A missing command or a timeout is a code, not a crash. With partial, a timeout's output is what
+        the command printed so far, then the line saying it timed out.
         """
         try:
             # errors="replace": a pull request's diff or commit message needn't be UTF-8.
@@ -1245,8 +1258,14 @@ class Loop:
                                   capture_output=True, text=True, errors="replace", timeout=timeout)
         except FileNotFoundError:
             return 127, "command not found: {}".format(cmd if shell else cmd[0])
-        except subprocess.TimeoutExpired:
-            return 124, "timed out after {}s".format(timeout)
+        except subprocess.TimeoutExpired as err:
+            timed_out = "timed out after {}s".format(timeout)
+            if not partial:
+                return 124, timed_out
+            # What arrived before the timeout, as bytes even with text=True, and None if nothing did.
+            parts = [err.stdout, err.stderr] if stderr else [err.stdout]
+            so_far = "".join(p.decode(errors="replace") if isinstance(p, bytes) else p or "" for p in parts)
+            return 124, so_far.rstrip("\n") + "\n" + timed_out if so_far.strip() else timed_out
         except OSError as err:
             return 126, "could not run {}: {}".format(cmd if shell else cmd[0], err.strerror or err)
         return done.returncode, (done.stdout or "") + ((done.stderr or "") if stderr else "")
@@ -1799,16 +1818,55 @@ class Loop:
         if code != 0:
             self.log("ERROR", "could not comment on the issue: " + out.strip()[:200], number)
 
-    def block(self, number, why, rounds=None, said=None):
+    def setup(self, number, tree):
+        """Run setup_command in the worktree unless it already succeeded there. False when it blocked the issue.
+
+        The marker lives in the worktree's own git folder: git status and commits can't see it, and it goes
+        with the worktree. Only a clean success writes it, so an issue put back after a block runs setup again.
+        """
+        command = self.cfg.get("setup_command", "")  # .get: a cfg can be built without DEFAULTS
+        if not command:
+            return True
+        code, gitdir = self.sh(["git", "rev-parse", "--absolute-git-dir"], cwd=tree, stderr=False)
+        if code != 0 or not gitdir.strip():
+            self.block(number, "could not find the worktree's git folder (git exit {}), so setup didn't run".format(code))
+            return False
+        marker = Path(gitdir.strip()) / "loop-setup-done"
+        if marker.exists():
+            return True
+        code, out = self.sh(command, cwd=tree, shell=True, timeout=self.cfg["test_timeout"],
+                            env=env_for_tests(os.environ), partial=True)
+        if code != 0:
+            self.block(number, "setup failed (exit {})".format(code), output=out)
+            return False
+        # A git that fails proves nothing.
+        code, status = self.sh(["git", "status", "--porcelain"], cwd=tree, stderr=False)
+        if code != 0:
+            self.block(number, "could not check the worktree after setup (git exit {}), so no agent ran".format(code))
+            return False
+        paths = [line[3:] for line in status.splitlines() if line]
+        if paths:
+            more = len(paths) - DIRTY_CAP
+            self.block(number, (
+                "the worktree has uncommitted changes after setup, so no agent ran: {}{}. The next build would "
+                "commit them. Make setup write only what git ignores, and clear them from the worktree"
+            ).format(", ".join(paths[:DIRTY_CAP]), " and {} more".format(more) if more > 0 else ""))
+            return False
+        marker.write_text("")
+        self.log("SETUP", "done", number)
+        return True
+
+    def block(self, number, why, rounds=None, said=None, output=None):
         """Take the issue off the queue: drop the ready label first, then mark it blocked.
 
-        said, the build agent's reply, goes on the issue's comment only, never the log or status.
+        said, the build agent's reply, and output, what setup_command printed, go on the issue's comment
+        only, never the log or status.
         """
         self.halt_if_interrupted()  # whatever failed, a Ctrl-C caused it: the issue stays as it was
         self.gh("issue", "edit", str(number), "--remove-label", self.cfg["ready_label"])
         self.gh("issue", "edit", str(number), "--add-label", self.cfg["blocked_label"])
         self.log("BLOCKED", why, number)
-        self.comment(number, block_comment(number, why, rounds, self.cfg, said, self.usage(number)))
+        self.comment(number, block_comment(number, why, rounds, self.cfg, said, self.usage(number), output))
         self.mark(number, state="blocked", note=why)
 
     def lesson(self, number, rounds, problems, passed):
@@ -1908,6 +1966,8 @@ class Loop:
             tree, branch = self.worktree(number)
         except RuntimeError as err:
             return self.block(number, str(err))
+        if not self.setup(number, tree):
+            return
 
         # The planner reads the issue's text, so it runs in the clean checkout with read tools
         # only, not in this clone, which holds company/ and projects/ beside the harness.
