@@ -1,10 +1,15 @@
 """Run with: python3 -m unittest discover -s tests"""
+import ast
 import re
+import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_setup  # noqa: E402 (the import needs scripts/ on the path first)
 
 
 def frontmatter(text):
@@ -245,6 +250,86 @@ class Skills(unittest.TestCase):
     def test_a_skill_missing_from_agents_md_fails(self):
         found = self.problems(GOOD, agents_text="| `skills/draft-proposal/SKILL.md` | Proposals |")
         self.assertIn("skills/weekly-status/SKILL.md: not listed in AGENTS.md", found)
+
+
+def skips_the_capabilities(url):
+    """A copy adapts its own skills and mods, so the table only has to fit the starter itself."""
+    return not url or not check_setup.STARTER.search(url)
+
+
+def backticked(text):
+    """The names in backticks: link_files.py may have made them links, so never read the targets."""
+    return re.findall(r"`([^`]+)`", text)
+
+
+class CheckStarterCapabilities(unittest.TestCase):
+    """skills/check-starter/capabilities.md, checked only in the starter's own repo."""
+
+    def read(self):
+        origin = check_setup.git(ROOT, "remote", "get-url", "origin")
+        if skips_the_capabilities(origin):
+            self.skipTest("origin isn't the public starter, so this copy's table can differ")
+        return (ROOT / "skills" / "check-starter" / "capabilities.md").read_text()
+
+    def rows(self):
+        lines = [line for line in self.read().splitlines() if line.startswith("|")]
+        cells = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in lines]
+        rows = [dict(zip(cells[0], row)) for row in cells[2:]]
+        self.assertTrue(rows, "the table has no rows")
+        return rows
+
+    def never_asked(self):
+        names = backticked(self.read().split("## Never asked about", 1)[1])
+        self.assertTrue(names, "the never-asked list is empty")
+        return names
+
+    def test_only_the_starter_itself_runs_the_table_checks(self):
+        self.assertTrue(skips_the_capabilities(None))
+        self.assertTrue(skips_the_capabilities(""))
+        self.assertTrue(skips_the_capabilities("https://github.com/acme/our-harness"))
+        self.assertFalse(skips_the_capabilities("https://github.com/SanvioLabs/sanvio-harness-starter"))
+        self.assertFalse(skips_the_capabilities("git@github.com:SanvioLabs/sanvio-harness-starter.git"))
+
+    def test_every_path_exists(self):
+        named = [path for row in self.rows() for path in backticked(row["Paths"])] + self.never_asked()
+        for path in named:
+            self.assertTrue((ROOT / path).exists(), path)
+
+    def test_every_skill_and_mod_is_named_exactly_once(self):
+        named = [path for row in self.rows() for path in backticked(row["Paths"])] + self.never_asked()
+        counts = Counter(named)
+        skills = [p.parent.relative_to(ROOT) for p in (ROOT / "skills").glob("*/SKILL.md")]
+        mods = [p.parent.parent.relative_to(ROOT)
+                for p in (ROOT / "examples" / "mods").glob("*/.claude-plugin/plugin.json")]
+        self.assertTrue(skills and mods)
+        for folder in skills + mods:
+            self.assertEqual(counts[folder.as_posix() + "/"], 1, folder)
+
+    def test_every_chip_fits_a_window_title(self):
+        for row in self.rows():
+            self.assertLessEqual(len(row["Chip"]), 12, row["Chip"])
+
+    def test_a_row_holds_every_local_module_its_scripts_import(self):
+        for row in self.rows():
+            paths = backticked(row["Paths"])
+            for path in paths:
+                if not (path.startswith("scripts/") and path.endswith(".py")):
+                    continue
+                for module in self.imports(ROOT / path):
+                    for folder in ("scripts", ".claude/hooks"):
+                        local = "{}/{}.py".format(folder, module)
+                        if (ROOT / local).exists():
+                            self.assertIn(local, paths, "{} imports it, in {}".format(path, row["Name"]))
+                            break
+
+    def imports(self, script):
+        names = set()
+        for node in ast.parse(script.read_text()).body:
+            if isinstance(node, ast.Import):
+                names.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names.add(node.module.split(".")[0])
+        return names
 
 
 if __name__ == "__main__":

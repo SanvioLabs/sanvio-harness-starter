@@ -27,6 +27,12 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Check-starter asks what's worth bringing over
+
+`check-starter` now reads a table of the starter's capabilities and asks, one question at a time, whether to bring over each one this copy lacks and whether to take updates to the ones it has. A copy level with the starter is still offered what it lacks. Its output opens with what you said yes to and the commands for it, and names what `cp` doesn't bring. Every commit is still listed, with the same answers, plus a note where you said no or left it undecided. The windows themselves aren't tested: the tests cover the table and the command that reads it.
+Files: [`skills/check-starter/SKILL.md`](skills/check-starter/SKILL.md), [`skills/check-starter/capabilities.md`](skills/check-starter/capabilities.md), [`tests/test_skills.py`](tests/test_skills.py), [`tests/test_changelog.py`](tests/test_changelog.py), [`README.md`](README.md), [`AGENTS.md`](AGENTS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing.
 ## 2026-10-30: Loop plans carry the ticket's exact content
 
 The loop's planner is now told that the build agent gets only the plan, so what a ticket gives exactly, such as a table's rows, paths, command text or required wording, goes in the plan word for word and marked as content. The 40-line limit now covers only the planner's own words. The ticket's wording now reaches the agent that writes files, as the planner's copy, with no cap on its length.
