@@ -14,7 +14,10 @@ Objective: the outcome when it's done, in one or two sentences, at least 8 words
 Why: the reason, for someone who wasn't there, at least 12 words.
 Acceptance Criteria: flat checkboxes, one observable outcome each, in order.
 For the loop, at least one is proved by a test the loop's test command runs.
-Scope: what it changes, and what it leaves alone.
+Scope: what it changes, and what it leaves alone. Under In, name exact files in
+backticks, such as `src/app/main.py`, and folders as `dir/` or `a/b`: a bare
+folder name with no slash doesn't count. The loop holds a ticket that names a
+path a running issue named.
 Risk: one level word, with a reason if it's one of the top two.
 
 Add Verification, Context, Dependencies or References as their own sections

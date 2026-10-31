@@ -33,6 +33,13 @@ def issue(number, labels=("loop-ready",), assignees=(), title="Add the thing"):
             "assignees": [{"login": a} for a in assignees]}
 
 
+def scoped(number, *paths):
+    """issue(number) whose Scope names these paths under **In:**, and one no test claims under **Out:**."""
+    named = " ".join("`{}`".format(p) for p in paths)
+    return dict(issue(number), body="## Objective\n\nAdd it.\n\n## Scope\n\n**In:** {}\n"
+                                    "**Out:** `out/never.py`\n\n## Risk\n\nLow\n".format(named))
+
+
 def loop_copy(folder):
     """A copy of loop.py in folder, for loop.SELF to point at, so a test can change it under a running loop."""
     copy = Path(folder) / "loop_copy.py"
@@ -248,6 +255,41 @@ class TestPureParts(unittest.TestCase):
         self.assertEqual(loop.depends_on(body), [3, 5, 7])
         self.assertEqual(loop.depends_on("Mentions #9 only."), [])
         self.assertEqual(loop.depends_on(None), [])
+
+    def test_scope_paths_reads_only_the_in_half_of_the_scope_section(self):
+        body = ("## Why\n\n`why/not.py`\n\n## Scope\n\n"
+                "**In:** `scripts/loop.py`, `README.md`, `src/app`, `./docs/guide.md`, `dir/`\n"
+                "and `README.md` again\n"
+                "**Out:** `tests/test_loop.py`\n\n## Risk\n\n`risk/not.py`\n")
+        self.assertEqual(loop.scope_paths(body),
+                         ["scripts/loop.py", "README.md", "src/app", "docs/guide.md", "dir"])
+
+    def test_scope_paths_drops_a_token_that_is_not_a_path(self):
+        body = "## Scope\n\n**In:** `max_workers` `run --dry-run` `-x/y` `/etc/hosts` `scripts` `./` `.`\n**Out:** none\n"
+        self.assertEqual(loop.scope_paths(body), [])
+
+    def test_scope_paths_leaves_out_the_changelog_nearly_every_ticket_names(self):
+        self.assertEqual(loop.scope_paths("## Scope\n\n**In:** `CHANGELOG.md`, `./CHANGELOG.md`, `docs/CHANGELOG.md`\n"),
+                         ["docs/CHANGELOG.md"])
+
+    def test_scope_paths_finds_nothing_without_a_scope_or_an_in_half(self):
+        for body in (None, "", "body", "**In:** `a/b.py`", "## Scope\n\n**Out:** `a/b.py`\n", "## Scope\n\n**In:** all of it\n"):
+            self.assertEqual(loop.scope_paths(body), [], body)
+
+    def test_scope_paths_reads_crlf_and_in_and_out_on_one_line(self):
+        self.assertEqual(loop.scope_paths("## Scope\r\n\r\n**In:** `a/b.py`\r\n**Out:** `c/d.py`\r\n\r\n## Risk\r\n"), ["a/b.py"])
+        self.assertEqual(loop.scope_paths("## Scope\n**In:** `a/b.py` **Out:** `c/d.py`"), ["a/b.py"])
+
+    def test_scope_paths_ends_the_section_at_a_heading_of_its_own_level_or_above(self):
+        self.assertEqual(loop.scope_paths("## Scope\n\n### Notes\n\n**In:** `a/b.py`\n\n### More\n\n`c/d.py`\n"),
+                         ["a/b.py", "c/d.py"])
+        self.assertEqual(loop.scope_paths("## Scope\n\n**In:** `a/b.py`\n\n# Next\n\n`c/d.py`\n"), ["a/b.py"])
+
+    def test_overlaps_needs_the_same_path_or_a_folder_that_holds_it(self):
+        for a, b in (("README.md", "README.md"), ("src/app", "src/app/main.py"), ("src/app/main.py", "src/app")):
+            self.assertTrue(loop.overlaps(a, b), (a, b))
+        for a, b in (("src/app", "src/app2/main.py"), ("src/app2/main.py", "src/app"), ("README.md", "docs/README.md")):
+            self.assertFalse(loop.overlaps(a, b), (a, b))
 
     def test_config_overlays_defaults_from_loop_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2138,6 +2180,27 @@ class TestAPass(unittest.TestCase):
         self.assertIn("would pick", self.lines()[0])
         self.assertFalse((self.work / ".loop" / "issue-12").exists())
 
+    def test_a_dry_run_with_two_workers_says_what_its_pick_would_hold(self):
+        (self.state / "issues.json").write_text(json.dumps(
+            [scoped(12, "a.py"), scoped(13, "a.py"), scoped(14, "b.py")]))
+        self.cfg["max_workers"] = 2
+        self.go(dry_run=True)
+        self.assertEqual(len(self.lines()), 2)
+        self.assertRegex(next(l for l in self.lines() if "would pick" in l), r" #12 DISCOVER would pick ")
+        self.assertEqual([l.split(" ", 1)[1] for l in self.lines() if " HELD " in l], ["#13 HELD waits on #12 for a.py"])
+        self.assertEqual(self.started_steps(), [])
+        self.assertFalse((self.work / ".loop" / "issue-12").exists())
+
+    def test_a_dry_run_says_nothing_of_holds_with_one_worker_or_one_issue(self):
+        (self.state / "issues.json").write_text(json.dumps([scoped(12, "a.py"), scoped(13, "a.py")]))
+        self.go(dry_run=True)
+        self.assertEqual(len(self.lines()), 1)
+        self.assertIn("would pick", self.lines()[0])
+        self.cfg["max_workers"] = 2
+        self.go(dry_run=True, only=12)
+        self.assertEqual(len(self.lines()), 2)
+        self.assertNotIn(" HELD ", "\n".join(self.lines()))
+
     def test_an_old_ready_issue_is_found_among_many_newer_unlabelled_ones(self):
         (self.state / "issues.json").write_text(json.dumps(
             [issue(1)] + [issue(n, labels=()) for n in range(2, 61)]))
@@ -2577,6 +2640,55 @@ class TestAPass(unittest.TestCase):
         self.assertGreater(closed[0], t[(2, "end")])
         self.assertGreater(t[(4, "start")], closed[0])
         self.assertEqual(self.prs_opened(), ["loop/issue-2", "loop/issue-4"])
+
+    def test_an_issue_waits_for_a_running_issue_whose_ticket_names_the_same_file(self):
+        self.timed(scoped(12, "scripts/loop.py"), scoped(13, "scripts/loop.py"))
+        self.assertEqual(self.go_workers(), 0)
+        t = self.times()
+        self.assertGreater(t[(13, "start")], t[(12, "end")])
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13"])
+
+    def test_two_tickets_that_share_only_the_changelog_run_at_the_same_time(self):
+        self.timed(scoped(12, "a.py", "CHANGELOG.md"), scoped(13, "b.py", "CHANGELOG.md"))
+        self.go_workers()
+        t = self.times()
+        self.assertLess(t[(13, "start")], t[(12, "end")])
+        self.assertNotIn(" HELD ", "\n".join(self.lines()))
+
+    def test_a_hold_leaves_an_issue_that_names_other_files_free_to_start(self):
+        self.timed(scoped(12, "a.py"), scoped(13, "a.py"), scoped(14, "b.py"))
+        self.go_workers()
+        t = self.times()
+        self.assertLess(t[(14, "start")], t[(12, "end")])
+        self.assertGreater(t[(13, "start")], t[(12, "end")])
+        self.assertEqual(self.prs_opened(), ["loop/issue-12", "loop/issue-13", "loop/issue-14"])
+
+    def test_a_hold_logs_one_line_however_many_polls_it_lasts(self):
+        self.timed(scoped(12, "scripts/loop.py"), scoped(13, "scripts/loop.py"))
+        self.go_workers()
+        self.assertGreater(sum(c.startswith("issue list") for c in self.calls()), 3)
+        self.assertEqual([l.split(" ", 1)[1] for l in self.lines() if " HELD " in l],
+                         ["#13 HELD waits on #12 for scripts/loop.py"])
+
+    def test_a_held_issue_shows_it_on_its_queue_row_until_the_claim_is_gone(self):
+        (self.state / "issues.json").write_text(json.dumps([scoped(13, "scripts/")]))
+        runner = loop.Loop(self.work, self.cfg)
+        runner.claims = {12: ["scripts/loop.py"]}
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertIsNone(runner.discover(busy={12}))
+            self.assertEqual(self.status()["queue"], [{"number": 13, "title": "Add the thing",
+                                                       "waiting_on": [12], "held_path": "scripts"}])
+            runner.claims = {}
+            self.assertEqual(runner.discover()["number"], 13)
+        self.assertEqual(self.status()["queue"], [{"number": 13, "title": "Add the thing"}])
+
+    def test_tickets_with_no_path_in_scope_run_at_the_same_time(self):
+        prose = "Changes `scripts/loop.py`, as a mention outside any Scope."
+        self.timed(dict(issue(12), body=prose), dict(issue(13), body=prose))
+        self.go_workers()
+        t = self.times()
+        self.assertLess(t[(13, "start")], t[(12, "end")])
+        self.assertNotIn(" HELD ", "\n".join(self.lines()))
 
     def test_a_ctrl_c_ends_the_workers_without_blocking_their_issues(self):
         self.timed(issue(12), issue(13), seconds=30)

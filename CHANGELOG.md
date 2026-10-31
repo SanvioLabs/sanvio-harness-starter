@@ -27,6 +27,12 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop holds tickets that name the same file
+
+With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. `CHANGELOG.md` doesn't count, since nearly every ticket names it. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`steering/tickets.md`](steering/tickets.md), [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** name exact files in backticks in a ticket's Scope **In**, with folders as `dir/` or `a/b`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
 ## 2026-10-30: Loop retro classifies its lessons
 
 With `"retro": true` in `loop.json`, each entry the loop writes to `.loop/lessons.md` also gets findings on why the lesson reached the agent late, `ABSENT`, `IGNORED`, `UNLOADED`, `WRONG` or `INHERENT`, each citing a record in the run's session logs and checked against them. `usage.json` entries now hold a `session_id` when the agent names one. [`skills/learn/`](skills/learn/) says where each cause's fix goes. With it unset, the loop does what it did. The log checks come from a made-up session log, so run one real retro before relying on the `(unverified)` marks.

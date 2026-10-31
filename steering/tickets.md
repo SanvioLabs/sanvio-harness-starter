@@ -17,7 +17,7 @@ a missing required section, whatever else the ticket gets right.
 | **Objective** | The outcome when it's done, in one or two sentences. At least 8 words | It describes a task or a feeling ("make the gate better") rather than a result |
 | **Why** | The reason, legible to someone who wasn't there. At least 12 words | It leans on a conversation the reader didn't have |
 | **Acceptance Criteria** | Flat `- [ ]` items, one observable outcome each, in order, failure behaviour included | Nobody could check one. "Works well" is not a check |
-| **Scope** | **In:** what it changes. **Out:** what it leaves alone | The Out half is missing |
+| **Scope** | **In:** what it changes, with the exact files in backticks, such as `src/app/main.py`, and folders as `dir/` or `a/b`. A bare folder name with no slash doesn't count. The loop holds a ticket that names a path a running issue named. **Out:** what it leaves alone | The Out half is missing |
 | **Risk** | Low, Medium, High or Critical, with a reason for the top two | It's missing |
 | Verification, Context, Dependencies, References | Only when they carry something: a command the tests can't express, a past decision, `Depends on #N`, files to start from, a `Spec: docs/specs/<name>` line naming the spec it builds | They're there as `N/A`, or References turns into instructions for writing the code |
 
