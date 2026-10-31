@@ -34,6 +34,13 @@ Files: [`scripts/pulse.py`](scripts/pulse.py), [`skills/pulse/SKILL.md`](skills/
 
 **Do:** nothing to leave it off. To use it, set `HARNESS_PULSE_FOLDER` in your shell profile, add a `Pulse folder` row to `company/DATA.md`, and copy [`skills/pulse/questions.example.md`](skills/pulse/questions.example.md) into the folder as `questions.md`.
 
+## 2026-10-31: Loop pane dropdown from two loops
+
+The loop pane's row of loop buttons is now a dropdown whenever there's more than one loop in the terminal, VS Code and Claude Desktop, instead of only past four. The mobile app, which draws no dropdown, keeps the buttons.
+Files: [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-31: Tester writes new files only
 
 With `test_first` on, the tester may only add new files: [`scripts/loop.py`](scripts/loop.py) blocks the issue if it changes or deletes a file that already existed. The planner now leaves those tests out of its plan, and the build can change any existing test file.

@@ -657,6 +657,10 @@ group('project loops', () => {
   // Past the poll's next read of the loop's files.
   const POLL = 2000
 
+  const twoLoops = () => new Map([
+    [`${HARNESS}/status.json`, statusText('harness job')],
+    [`${ALPHA}/status.json`, statusText('alpha job')],
+  ])
   const threeLoops = () => new Map([
     [`${HARNESS}/status.json`, statusText('harness job')],
     [`${ALPHA}/status.json`, statusText('alpha job')],
@@ -664,12 +668,16 @@ group('project loops', () => {
     [`${ROOT}/.loop/projects/never-ran/notes`, 'a clone with no status file'],
   ])
   const left = async (ui: { find: (q: { key: string }) => Promise<unknown> }) => JSON.stringify(await ui.find({ key: 'header' }))
+  // The dropdown's options as drawn now.
+  const pickOptions = async (ui: { find: (q: { key: string }) => Promise<unknown> }) =>
+    ((await ui.find({ key: 'loop-pick' })) as { props: { options: { value: string; label: string }[] } }).props.options
 
   test('there is no row without projects', async ($, on) => {
     const { close } = world(on, new Map([[`${HARNESS}/status.json`, statusText('harness job')]]))
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
     expect(await ui.find({ key: 'loops' })).toBeUndefined()
+    expect(await ui.find({ key: 'loop-pick' })).toBeUndefined()
     expect(await ui.find({ key: 'tab-queue' })).toBeDefined()
     await ui.unmount()
     await close()
@@ -678,22 +686,20 @@ group('project loops', () => {
     const { close } = world(on, threeLoops())
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
-    const row = await ui.find({ key: 'loops' })
-    const labels = (row?.children as unknown as { props: { label: string } }[]).map(c => c.props.label)
-    expect(labels).toEqual(['starter', 'alpha', 'beta'])
+    expect((await pickOptions(ui)).map(o => o.label)).toEqual(['starter', 'alpha', 'beta'])
     const top = (await ui.drawn()) as unknown as { children: unknown[] }
     const at = (needle: string) => top.children.findIndex(c => JSON.stringify(c).includes(needle))
-    expect(at('"loop-alpha"')).toBeGreaterThan(-1)
-    expect(at('"loop-alpha"')).toBeLessThan(at('"tab-queue"'))
+    expect(at('"loop-pick"')).toBeGreaterThan(-1)
+    expect(at('"loop-pick"')).toBeLessThan(at('"tab-queue"'))
     await ui.unmount()
     await close()
   })
   test('with the row showing, the whole pane fits its height on every tab', async ($, on) => {
-    const { close } = world(on, threeLoops())
+    const { close } = world(on, twoLoops())
     await open($ as unknown as Dollar)
     for (const bodyRows of [30, 45, 60]) {
       const ui = await $.ui.mount(atHeight(bodyRows))
-      expect(await ui.find({ key: 'loops' })).toBeDefined()
+      expect(await ui.find({ key: 'loop-pick' })).toBeDefined()
       for (const key of ['tab-queue', 'tab-active', 'tab-finished']) {
         await ui.press({ key })
         await drain()
@@ -710,11 +716,12 @@ group('project loops', () => {
     const { clock, close } = world(on, files)
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
-    expect((await ui.find({ key: 'loop-alpha' }))?.props.label).toBe('● alpha')
-    expect((await ui.find({ key: 'loop-beta' }))?.props.label).toBe('beta')
+    const label = async (value: string) => (await pickOptions(ui)).find(o => o.value === value)?.label
+    expect(await label('alpha')).toBe('● alpha')
+    expect(await label('beta')).toBe('beta')
     files.set(`${ALPHA}/status.json`, statusText('alpha job', { issues: [JOB, { ...JOB, number: 13 }] }))
     await clock.advance(POLL)
-    expect((await ui.find({ key: 'loop-alpha' }))?.props.label).toBe('● alpha 2')
+    expect(await label('alpha')).toBe('● alpha 2')
     await ui.unmount()
     await close()
   })
@@ -726,7 +733,7 @@ group('project loops', () => {
     }
     const { close } = world(on, files)
     await open($ as unknown as Dollar)
-    const ui = await $.ui.mount(PANE)
+    const ui = await $.ui.mount({ ...PANE, surface: 'mobile' })
     await ui.press({ key: 'loop-beta' })
     await drain()
     const alpha = await ui.find({ key: 'loop-alpha' })
@@ -750,7 +757,7 @@ group('project loops', () => {
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
     expect(await titles(ui)).toEqual(['#30 harness job'])
-    await ui.press({ key: 'loop-alpha' })
+    await ui.select({ key: 'loop-pick', value: 'alpha' })
     await drain()
     expect(await titles(ui)).toEqual(['#30 alpha job'])
     const head = await left(ui)
@@ -806,7 +813,7 @@ group('project loops', () => {
     const { clock, panes, flip, close } = world(on, files)
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
-    await ui.press({ key: 'loop-beta' })
+    await ui.select({ key: 'loop-pick', value: 'beta' })
     await drain()
     flip.closeFails = true
     expect(await say($ as unknown as Dollar)).toBe("The loop pane couldn't close. The × in its corner closes it.")
@@ -861,14 +868,15 @@ group('project loops', () => {
     const { clock, close } = world(on, files)
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
-    await ui.press({ key: 'loop-alpha' })
+    await ui.select({ key: 'loop-pick', value: 'alpha' })
     await drain()
     await ui.press({ key: 'tab-finished' })
     await drain()
     files.delete(`${ALPHA}/status.json`)
     await clock.advance(POLL)
     expect(await titles(ui)).toEqual(['#30 harness job'])
-    expect(await ui.find({ key: 'loop-alpha' })).toBeUndefined()
+    expect((await pickOptions(ui)).map(o => o.value)).toEqual(['', 'beta'])
+    expect((await ui.find({ key: 'loop-pick' }))?.props.value).toBe('')
     await ui.unmount()
     await close()
   })
@@ -880,10 +888,10 @@ group('project loops', () => {
     const { clock, toasts, close } = world(on, files)
     await open($ as unknown as Dollar)
     const ui = await $.ui.mount(PANE)
-    await ui.press({ key: 'loop-alpha' })
+    await ui.select({ key: 'loop-pick', value: 'alpha' })
     await drain()
     await clock.advance(POLL)
-    await ui.press({ key: 'loop' })
+    await ui.select({ key: 'loop-pick', value: '' })
     await drain()
     await clock.advance(POLL)
     expect(toasts).toEqual([])
@@ -894,7 +902,7 @@ group('project loops', () => {
     await close()
   })
 
-  // Past LOOP_BUTTONS: the harness and four projects, by name alpha, beta, delta, gamma.
+  // The harness and four projects, by name alpha, beta, delta, gamma.
   const project = (name: string) => `${ROOT}/.loop/projects/${name}`
   const fiveLoops = () => new Map<string, string>([
     ...threeLoops(),
@@ -911,11 +919,21 @@ group('project loops', () => {
     files.set(`${project(name)}/status.json`, statusText(`${name} job`, { issues: [JOB] }))
     files.set(`${project(name)}/lock`, '4242')
   }
-  const LOOP_SURFACES = ['terminal', 'vscode', 'desktop', 'mobile'] as const
   const PICKER_SURFACES = ['terminal', 'vscode', 'desktop'] as const
 
   for (const surface of PICKER_SURFACES) {
-    test(`past four loops on ${surface}, a dropdown takes the buttons' row, with the working loops first`, async ($, on) => {
+    test(`two loops on ${surface} have the dropdown and no row of buttons`, async ($, on) => {
+      const { close } = world(on, twoLoops())
+      await open($ as unknown as Dollar)
+      const ui = await $.ui.mount({ ...PANE, surface })
+      expect((await pickOptions(ui)).map(o => o.value)).toEqual(['', 'alpha'])
+      expect(await ui.find({ key: 'loops' })).toBeUndefined()
+      await ui.unmount()
+      await close()
+    })
+  }
+  for (const surface of PICKER_SURFACES) {
+    test(`more than one loop on ${surface}, a dropdown takes the buttons' row, with the working loops first`, async ($, on) => {
       const files = fiveLoops()
       onAJob(files, 'beta')
       onAJob(files, 'gamma')
@@ -992,19 +1010,17 @@ group('project loops', () => {
     await ui.unmount()
     await close()
   })
-  for (const surface of LOOP_SURFACES) {
-    test(`four loops on ${surface} keep their buttons`, async ($, on) => {
-      const { close } = world(on, fourLoops())
-      await open($ as unknown as Dollar)
-      const ui = await $.ui.mount({ ...PANE, surface })
-      expect(await ui.find({ key: 'loop-pick' })).toBeUndefined()
-      const row = await ui.find({ key: 'loops' })
-      const labels = (row?.children as unknown as { props: { label: string } }[]).map(c => c.props.label)
-      expect(labels).toEqual(['starter', 'alpha', 'beta', 'delta'])
-      await ui.unmount()
-      await close()
-    })
-  }
+  test('four loops on mobile keep their buttons', async ($, on) => {
+    const { close } = world(on, fourLoops())
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount({ ...PANE, surface: 'mobile' })
+    expect(await ui.find({ key: 'loop-pick' })).toBeUndefined()
+    const row = await ui.find({ key: 'loops' })
+    const labels = (row?.children as unknown as { props: { label: string } }[]).map(c => c.props.label)
+    expect(labels).toEqual(['starter', 'alpha', 'beta', 'delta'])
+    await ui.unmount()
+    await close()
+  })
   test('six loops on mobile keep their buttons, since the app draws no dropdown', async ($, on) => {
     const { close } = world(on, sixLoops())
     await open($ as unknown as Dollar)
