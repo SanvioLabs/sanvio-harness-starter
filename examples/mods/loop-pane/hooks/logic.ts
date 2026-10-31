@@ -185,6 +185,11 @@ export function jobAttach(seen: Seen, row: Row): string | null {
   return `tmux attach -r -t '=${`${name}:${row.window}`.replace(/'/g, `'\\''`)}'`
 }
 
+// Whether a pull request link is safe to hand to an opener, which would also run a local file or app.
+export function isWebLink(link: string): boolean {
+  return link.startsWith('https://')
+}
+
 // What a queued issue waits on, beside its title: the open issues it depends on. Null when nothing.
 export function waitingOn(item: QueueItem): string | null {
   const on = item.waiting_on ?? []

@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Open a pull request from the loop pane
+
+A job's button on the loop pane is now **Open pull request** instead of **Copy pull request link**, and it opens the link in the browser. It copies the link instead, and says so, when the link isn't an `https://` link or no browser opens.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-30: `/loop-pane` closes a showing pane
 
 `/loop-pane` now closes the pane when it's showing, and says so. A pane behind another or not placed still opens. Because the command no longer reopens a showing pane, the loop you're on stays until you press another or close and reopen the pane, which picks again.

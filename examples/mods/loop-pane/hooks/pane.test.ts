@@ -218,6 +218,66 @@ group('the tabs', () => {
   })
 })
 
+group("a job's pull request button", () => {
+  const WEB = 'https://example.test/pull/12'
+  // Nothing active or waiting, so the pane opens on Finished, where the job is.
+  const finished = (pr: string): Seen => ({ ...MANY, status: { ...MANY.status!, queue: [], issues: [{ ...FINISHED(12, 1), pr }] } })
+
+  // Press the button with each opener exiting as `exits` says, and record what came of it. Two openers
+  // and a copy take more turns than one drain gives, and a check that nothing was copied mustn't run early.
+  type Mounted = { press: (q: { key: string }) => Promise<unknown>; unmount: () => Promise<unknown> }
+  async function press(mount: () => Promise<Mounted>, on: On, pr: string, exits: Record<string, number>) {
+    const ran: string[][] = []
+    const copied: string[] = []
+    const toasts: string[] = []
+    on('process.run', async (_$, e) => {
+      ran.push([...e.argv])
+      return { value: { exitCode: exits[e.argv[0] ?? ''] ?? 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+    on('ui.copy', async (_$, e) => {
+      copied.push(e.text)
+      return { value: { isCopied: true } }
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(e.text)
+      return { value: undefined }
+    })
+    seed(on, finished(pr))
+    const ui = await mount()
+    await ui.press({ key: 'pr-12' })
+    await drain()
+    await drain()
+    await ui.unmount()
+    return { ran, copied, toasts }
+  }
+
+  test('an https link opens in the browser and nothing is copied', async ($, on) => {
+    const { ran, copied, toasts } = await press(() => $.ui.mount(PANE), on, WEB, { open: 0 })
+    expect(ran).toEqual([['open', WEB]])
+    expect(copied).toEqual([])
+    expect(toasts).toEqual([])
+  })
+  test('any other link reaches no opener and is copied', async ($, on) => {
+    const local = '/Applications/Calculator.app'
+    const { ran, copied, toasts } = await press(() => $.ui.mount(PANE), on, local, {})
+    expect(ran.filter(argv => argv.includes(local))).toEqual([])
+    expect(copied).toEqual([local])
+    expect(toasts).toEqual(["That pull request link isn't a web link, so it's copied"])
+  })
+  test('with no opener working, the link is copied and the toast says so', async ($, on) => {
+    const { ran, copied, toasts } = await press(() => $.ui.mount(PANE), on, WEB, {})
+    expect(ran).toEqual([['open', WEB], ['xdg-open', WEB]])
+    expect(copied).toEqual([WEB])
+    expect(toasts).toEqual(["Couldn't open the browser, so the pull request link is copied"])
+  })
+  test('when open fails and xdg-open works, nothing is copied', async ($, on) => {
+    const { ran, copied, toasts } = await press(() => $.ui.mount(PANE), on, WEB, { 'xdg-open': 0 })
+    expect(ran).toEqual([['open', WEB], ['xdg-open', WEB]])
+    expect(copied).toEqual([])
+    expect(toasts).toEqual([])
+  })
+})
+
 group('a job in the pane', () => {
   // Six minutes and twelve seconds ago, as loop.py writes it: local, to the second, with no zone.
   const d = new Date(Math.floor(Date.now() / 1000) * 1000 - 372_000)

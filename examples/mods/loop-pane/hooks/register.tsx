@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -43,15 +43,29 @@ const EMPTY: Record<Tab, string> = {
 
 let stopPolling: (() => void) | null = null
 
-// Open a read-only Terminal window from a watch file; when it can't, copy the command that does the
-// same and say so. Closing the window leaves the loop running.
-function openWatch($: EngineInterface, file: string, copy: () => Promise<unknown>): void {
+// A watch file opens a read-only Terminal window; closing it leaves the loop running. When it can't
+// open, the buttons copy the command that does the same.
+const WATCH_TOAST = "Couldn't open a window, so the read-only attach command is copied"
+
+// Open a target with the first opener that works; when none does, copy what stands in for it and say
+// so. A rejected run counts as that opener failing, so a missing `open` still reaches the next.
+function openOrCopy($: EngineInterface, target: string, openers: string[], copy: () => Promise<unknown>, toast: string): void {
   void (async () => {
-    const ran = await $.process.run(['open', file]).catch(() => null)
-    if (ran?.exitCode === 0) return
+    for (const opener of openers) {
+      const ran = await $.process.run([opener, target]).catch(() => null)
+      if (ran?.exitCode === 0) return
+    }
     await copy()
-    $.ui.toast("Couldn't open a window, so the read-only attach command is copied")
+    $.ui.toast(toast)
   })().catch(() => {})
+}
+
+// Open a job's pull request in the browser. A link that isn't a web link reaches no opener, since
+// `open` would run a local file or app: it's only copied.
+function openPullRequest($: EngineInterface, link: string, surface: Parameters<EngineInterface['ui']['copy']>[0]['surface']): void {
+  const copy = () => $.ui.copy({ text: link, surface })
+  if (!isWebLink(link)) openOrCopy($, link, [], copy, "That pull request link isn't a web link, so it's copied")
+  else openOrCopy($, link, ['open', 'xdg-open'], copy, "Couldn't open the browser, so the pull request link is copied")
 }
 
 // The tab in view and its first job, kept inside the list. Before the person picks, the busiest tab.
@@ -276,15 +290,15 @@ export const register: Register = on => {
                     key={`watch-${row.number}`}
                     label="Watch"
                     onPress={press =>
-                      openWatch($, `${seen.root}/${jobWatchFile(row.number, seen.project)}`, () =>
-                        $.ui.copy({ text: jobCommand, surface: press.surface }))}
+                      openOrCopy($, `${seen.root}/${jobWatchFile(row.number, seen.project)}`, ['open'], () =>
+                        $.ui.copy({ text: jobCommand, surface: press.surface }), WATCH_TOAST)}
                   />
                 )}
                 {row.pr ? (
                   <Button
                     key={`pr-${row.number}`}
-                    label={fit('Copy pull request link', inner)}
-                    onPress={press => $.ui.copy({ text: row.pr ?? '', surface: press.surface })}
+                    label={fit('Open pull request', inner)}
+                    onPress={press => openPullRequest($, row.pr ?? '', press.surface)}
                   />
                 ) : null}
               </Box>
@@ -317,7 +331,7 @@ export const register: Register = on => {
                 key="watch"
                 label="Watch it"
                 onPress={press =>
-                  openWatch($, watchFile, () => $.ui.copy({ text: watchCommand(seen) ?? '', surface: press.surface }))}
+                  openOrCopy($, watchFile, ['open'], () => $.ui.copy({ text: watchCommand(seen) ?? '', surface: press.surface }), WATCH_TOAST)}
               />
             )}
             <Button

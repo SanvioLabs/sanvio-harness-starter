@@ -61,7 +61,7 @@ Pick **Finished** and it lists the last day's jobs, three at a time:
   started 09:10 · took 18m 03s · 1.2M tokens · ~$3.40 · opus-5-5
   pull request open
   tests passed, review PASS
-  [ Copy pull request link ]
+  [ Open pull request ]
 
 ● #9 README: link the loop section
   started 08:02 · took 1h 04m
@@ -72,7 +72,7 @@ Pick **Finished** and it lists the last day's jobs, three at a time:
   started 07:41 · took 12m 40s
   pull request open
   tests passed, review PASS
-  [ Copy pull request link ]
+  [ Open pull request ]
 ```
 
 It's a Claude Code mod, so it works in Claude Code only: it was seen working in
@@ -119,6 +119,7 @@ it.
 | **Active** | Issues being worked: what each is on (planning, building, checking, opening the pull request) with the round. One left part way by a run that stopped shows where it was left. In tmux, **Watch** opens a read-only Terminal window on that issue's own `issue-N` window, or copies its attach command when it can't. tmux has one current window per session, so it also switches any other window attached to the session, **Watch it**'s included |
 | **Finished** | Issues that reached an end in the last 24 hours: a pull request, blocked, stopped or skipped. Older ones drop off; `.loop/status.json` still has them |
 | Under an issue | The last round's test and review results, and why it was blocked |
+| **Open pull request** | Opens the issue's pull request in the browser. It copies the link instead when the link isn't an `https://` link or no browser opens |
 
 Each tab shows its count. The pane opens on **Active** when something is
 being worked, else **Queue**, else **Finished**, and stays on the tab you pick.
