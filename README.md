@@ -71,7 +71,7 @@ Others pushing to your copy? Ask your agent "what's new", or run `/whats-new`
 in Claude Code. It compares your [`CHANGELOG.md`](CHANGELOG.md) with the one on your copy's own
 remote and tells you what you don't have yet and what to do to take it.
 For what the public starter has shipped since you copied it, ask "check the
-starter": [`skills/check-starter/`](skills/check-starter/) asks what you want to bring over, then lists
+starter": [`skills/starter-updates/`](skills/starter-updates/) asks what you want to bring over, then lists
 each commit and says which to take.
 
 `python3 scripts/check_setup.py` runs the setup check on its own: Python, the

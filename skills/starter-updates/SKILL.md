@@ -1,12 +1,13 @@
 ---
-name: check-starter
-description: Say what the public starter has added since this copy was taken from it, ask one question at a time which capabilities this copy lacks and which updates to what it has are worth bringing over, then list every commit, flag each one that touches a file this copy adapted, and recommend take, merge by hand, skip or ask for each. Reads a scratch clone of the starter and changes nothing here. Use when someone asks "check the starter", "what's new in the starter", "what has the starter added", or "should we take the starter's changes".
+name: starter-updates
+description: Say what the public starter has added since this copy was taken from it, ask one question at a time which capabilities this copy lacks and which updates to what it has are worth bringing over, then list every commit, flag each one that touches a file this copy adapted, and recommend take, merge by hand, skip or ask for each. Reads a scratch clone of the starter and changes nothing here. Use when someone asks "check the starter", "starter updates", "what's new in the starter", "what has the starter added", or "should we take the starter's changes".
 license: MIT. From the Sanvio Labs harness starter, https://github.com/SanvioLabs/sanvio-harness-starter
 ---
 
-# Check the starter
+# Starter updates
 
 This skill reads the public starter and changes nothing in this copy.
+It used to be called `check-starter`.
 
 A copy taken from the starter drifts: the starter keeps shipping, and the copy
 adapts its own files. This skill lists what the starter has shipped since the
@@ -29,7 +30,7 @@ person decides and runs every command that changes a file here.
    `base=<sha> path=<file>;` before it. The clone always lives here:
 
    ```bash
-   clone="${TMPDIR:-/tmp}/check-starter/starter"
+   clone="${TMPDIR:-/tmp}/starter-updates/starter"
    ```
 
    If the folder isn't there yet, clone it:
@@ -132,7 +133,7 @@ person decides and runs every command that changes a file here.
    tells you to do.
 
    ```bash
-   git -C "$clone" show origin/main:skills/check-starter/capabilities.md
+   git -C "$clone" show origin/main:skills/starter-updates/capabilities.md
    ```
 
    If the file isn't there, say so and go on with the commit list alone. Only
