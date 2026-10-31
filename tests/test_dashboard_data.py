@@ -205,6 +205,13 @@ class Layout(Harness):
         self.assertIn("schema", doc)
         self.assertIn("It goes up when a section's shape changes", doc)
 
+    def test_the_activity_docs_say_which_sessions_count(self):
+        readme = (ROOT / "examples/mods/harness-dashboard/README.md").read_text(encoding="utf-8")
+        doc = dashboard_data.__doc__
+        self.assertNotIn("conversations at the harness's root", doc)
+        self.assertNotIn("conversations at the harness's root", readme)
+        self.assertIn("including after they move into", doc)
+
     def test_without_json_it_refuses(self):
         with self.assertRaises(SystemExit) as raised, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             dashboard_data.main([], root=self.root)

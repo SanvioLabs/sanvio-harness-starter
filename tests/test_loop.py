@@ -3731,6 +3731,19 @@ class TestProject(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", names)
 
 
+class TestProjectKeysInDocs(unittest.TestCase):
+    def test_each_doc_names_every_project_key_in_one_sentence(self):
+        root = Path(__file__).resolve().parent.parent
+        for name in ("projects/README.md", "skills/loop-control/SKILL.md", "HOW-IT-WORKS.md"):
+            with self.subTest(doc=name):
+                text = " ".join((root / name).read_text(encoding="utf-8").split())
+                self.assertEqual(text.count("only `test_command`"), 1)
+                sentence = text.split("only `test_command`", 1)[1].partition(". ")[0]
+                sentence = "only `test_command`" + sentence
+                for key in loop.PROJECT_KEYS:
+                    self.assertIn("`{}`".format(key), sentence)
+
+
 # Stand-ins for `loop.py review`: a gh that keeps a pull request list and its comments in the state
 # folder, and an agent that records what it was asked, where, and leaves a file behind.
 REVIEW_GH = """#!/usr/bin/env python3

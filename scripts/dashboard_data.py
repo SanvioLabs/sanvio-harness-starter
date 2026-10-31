@@ -27,7 +27,8 @@
                      slash commands by name, guard refusals by rule, and how many times it asked.
                      skill_spend, agent_spend and command_spend hold each name's tokens and estimated
                      cost_usd, from token_report.py's split of the transcripts in ~/.claude/projects for
-                     conversations at the harness's root, so a name there needn't match the counts: a
+                     sessions started at the harness's root, including after they move into projects/. A
+                     session started under projects/ isn't counted. A name there needn't match the counts: a
                      subagent's are measured, a skill's or command's attributed from where it started to
                      the next prompt. cost_usd prices each model's tokens at .harness/prices.json's
                      dollars per million tokens (scripts/prices.example.json has the shape), and is
