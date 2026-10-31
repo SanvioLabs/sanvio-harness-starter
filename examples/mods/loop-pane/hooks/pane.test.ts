@@ -209,6 +209,9 @@ const queued = (n: number): Seen => ({
 
 const numbered = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `#${from + i} issue ${from + i}`)
 
+// The pane, `bodyRows` tall.
+const atHeight = (bodyRows: number) => ({ ...PANE, props: { ...PANE.props, scroll: { ...PANE.props.scroll, bodyRows } } })
+
 group('the tabs', () => {
   test('nothing active opens on the queue; finished shows three from the last day, the rest below', async ($, on) => {
     seed(on, MANY)
@@ -339,6 +342,124 @@ group('one height for every tab', () => {
     expect(passedOn).toBe(1)
     await ui.unmount()
   })
+
+  // More jobs than fit at 60, so a full list there is filled by jobs and not by the rows held open.
+  const withIssues = (issues: NonNullable<Seen['status']>['issues']): Seen =>
+    ({ ...queued(0), status: { ...queued(0).status!, issues } })
+  const working = withIssues(Array.from({ length: 10 }, (_, i) => WORKING(101 + i)))
+  const finished = withIssues(Array.from({ length: 10 }, (_, i) => FINISHED(101 + i, i + 1)))
+
+  for (const bodyRows of [60, 60.5]) {
+    test(`at ${bodyRows}, Active shows 7 jobs`, async ($, on) => {
+      seed(on, working)
+      const ui = await $.ui.mount(atHeight(bodyRows))
+      expect((await titles(ui)).length).toBe(7)
+      expect((await ui.find({ key: 'down' }))?.props.label).toBe('▼ 3 more')
+      await ui.unmount()
+    })
+    test(`at ${bodyRows}, Finished shows 7 jobs`, async ($, on) => {
+      seed(on, finished)
+      const ui = await $.ui.mount(atHeight(bodyRows))
+      expect((await titles(ui)).length).toBe(7)
+      expect((await ui.find({ key: 'down' }))?.props.label).toBe('▼ 3 more')
+      await ui.unmount()
+    })
+    test(`at ${bodyRows}, Queue shows 49 issues`, async ($, on) => {
+      seed(on, queued(80))
+      const ui = await $.ui.mount(atHeight(bodyRows))
+      expect(await titles(ui)).toEqual(numbered(1, 49))
+      expect((await ui.find({ key: 'down' }))?.props.label).toBe('▼ 31 more')
+      await ui.unmount()
+    })
+  }
+  test('the number shown follows the height when the pane is drawn again', async ($, on) => {
+    seed(on, queued(80))
+    const low = await $.ui.mount(atHeight(30))
+    expect((await titles(low)).length).toBe(21)
+    await low.unmount()
+    const tall = await $.ui.mount(atHeight(60))
+    expect((await titles(tall)).length).toBe(49)
+    await tall.unmount()
+  })
+  test('▼ more reaches the last issue at 60', async ($, on) => {
+    seed(on, queued(80))
+    const ui = await $.ui.mount(atHeight(60))
+    for (let i = 0; i < 31; i++) {
+      await ui.press({ key: 'down' })
+      await drain()
+    }
+    expect(await titles(ui)).toEqual(numbered(32, 80))
+    expect(await ui.find({ key: 'down' })).toBeUndefined()
+    await ui.unmount()
+  })
+  test('the end of the list at 30, drawn at 60, shows 49 with the rest above', async ($, on) => {
+    seed(on, queued(80))
+    const low = await $.ui.mount(atHeight(30))
+    for (let i = 0; i < 59; i++) {
+      await low.press({ key: 'down' })
+      await drain()
+    }
+    expect(await titles(low)).toEqual(numbered(60, 80))
+    await low.unmount()
+    const tall = await $.ui.mount(atHeight(60))
+    expect(await titles(tall)).toEqual(numbered(32, 80))
+    expect((await tall.find({ key: 'up' }))?.props.label).toBe('▲ 31 more')
+    await tall.unmount()
+  })
+  test('the wheel reaches the last issue at 60, then lets the pane scroll', async ($, on) => {
+    let passedOn = 0
+    on('ui.scroll', async () => {
+      passedOn++
+      return {}
+    })
+    seed(on, queued(80))
+    const ui = await $.ui.mount(atHeight(60))
+    for (let i = 0; i < 31; i++) await $.ui.scroll({ ...tick, bodyRows: 60, by: 1 })
+    await drain()
+    expect(await titles(ui)).toEqual(numbered(32, 80))
+    expect(passedOn).toBe(0)
+    await $.ui.scroll({ ...tick, bodyRows: 60, by: 1 })
+    expect(passedOn).toBe(1)
+    await ui.unmount()
+  })
+  for (const { name, seen, tab } of [
+    { name: 'a full Queue', seen: queued(80), tab: 'tab-queue' },
+    { name: 'an empty Queue', seen: queued(0), tab: 'tab-queue' },
+    { name: 'a full Active', seen: working, tab: 'tab-active' },
+    { name: 'an empty Active', seen: queued(0), tab: 'tab-active' },
+    { name: 'a full Finished', seen: finished, tab: 'tab-finished' },
+    { name: 'an empty Finished', seen: queued(0), tab: 'tab-finished' },
+  ]) {
+    test(`${name} takes 49 rows at 60`, async ($, on) => {
+      seed(on, seen)
+      const ui = await $.ui.mount(atHeight(60))
+      await ui.press({ key: tab })
+      await drain()
+      expect(await listRows(ui)).toBe(49)
+      await ui.unmount()
+    })
+  }
+
+  // Jobs and a queue together, so one mount shows both minimums.
+  const both: Seen = { ...working, status: { ...working.status!, queue: queued(30).status!.queue } }
+  for (const { name, pane } of [
+    { name: 'at 30', pane: atHeight(30) },
+    { name: 'at 29', pane: atHeight(29) },
+    { name: 'at 16.5', pane: atHeight(16.5) },
+    { name: 'at 0', pane: atHeight(0) },
+    { name: 'with no bodyRows', pane: { ...PANE, props: { ...PANE.props, scroll: { offset: 0 } } } },
+    { name: 'with no scroll', pane: { ...PANE, props: { ...PANE.props, scroll: undefined } } },
+  ]) {
+    test(`${name}, the lists keep 3 jobs and 21 issues`, async ($, on) => {
+      seed(on, both)
+      const ui = await $.ui.mount(pane as never)
+      expect((await titles(ui)).length).toBe(3)
+      await ui.press({ key: 'tab-queue' })
+      await drain()
+      expect(await titles(ui)).toEqual(numbered(1, 21))
+      await ui.unmount()
+    })
+  }
 })
 
 group("a job's pull request button", () => {
@@ -565,6 +686,21 @@ group('project loops', () => {
     expect(at('"loop-alpha"')).toBeGreaterThan(-1)
     expect(at('"loop-alpha"')).toBeLessThan(at('"tab-queue"'))
     await ui.unmount()
+    await close()
+  })
+  test('with the row showing, the whole pane fits its height on every tab', async ($, on) => {
+    const { close } = world(on, threeLoops())
+    await open($ as unknown as Dollar)
+    for (const bodyRows of [30, 45, 60]) {
+      const ui = await $.ui.mount(atHeight(bodyRows))
+      expect(await ui.find({ key: 'loops' })).toBeDefined()
+      for (const key of ['tab-queue', 'tab-active', 'tab-finished']) {
+        await ui.press({ key })
+        await drain()
+        expect(rowsOf((await ui.drawn()) as unknown as Drawn)).toBeLessThan(bodyRows + 1)
+      }
+      await ui.unmount()
+    }
     await close()
   })
   test('a loop on one job marks its button, and on two adds the count', async ($, on) => {

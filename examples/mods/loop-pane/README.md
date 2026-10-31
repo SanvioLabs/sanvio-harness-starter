@@ -53,7 +53,8 @@ An issue on the **Queue** tab that depends on one still open says so:
 #16 Gate: check the fee total · waiting on #14, #15
 ```
 
-Pick **Finished** and it lists the last day's jobs, three at a time:
+Pick **Finished** and it lists the last day's jobs, as many as fit the pane's
+height and at least three:
 
 ```
 ▲ 1 more
@@ -123,8 +124,9 @@ it.
 
 Each tab shows its count. The pane opens on **Active** when something is
 being worked, else **Queue**, else **Finished**, and stays on the tab you pick.
-**Active** and **Finished** show three jobs at a time and **Queue** up to 21
-issues, in the same 21 rows on the terminal, so nothing moves as you change tabs.
+The lists fill the pane's height, with at least three jobs on **Active** and
+**Finished** and room for 21 issues on **Queue**, in the same rows on the terminal, so
+nothing moves as you change tabs.
 Scroll over the pane, or press the **▲ more** and **▼ more** lines, to move
 through the rest, a job at a time on a job list and a line at a time on
 **Queue**; the header and the tabs stay put.

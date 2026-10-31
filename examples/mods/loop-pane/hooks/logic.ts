@@ -196,7 +196,7 @@ export function waitingOn(item: QueueItem): string | null {
   return on.length ? `waiting on ${on.map(n => `#${n}`).join(', ')}` : null
 }
 
-// Jobs in view at once on Active and Finished, the rest scrolling. Queue fits its lines to the same rows.
+// The fewest jobs in view at once on Active and Finished, the rest scrolling. Queue fits its lines to the same rows.
 export const PAGE = 3
 // How long a finished job stays on the Finished tab.
 export const FINISHED_MS = 24 * 60 * 60 * 1000
