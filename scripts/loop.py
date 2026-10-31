@@ -86,6 +86,14 @@ DEFAULTS = {
     # Run by this script once per worktree, before its first agent, such as `npm ci`. It may write only
     # what git ignores, since anything else would go in a commit. Empty means nothing runs.
     "setup_command": "",
+    # Whether a separate agent writes failing tests after the planner and before round 1, which the build then
+    # has to make pass without changing them. Only true turns it on. A machine key, like the next two: they
+    # limit what an agent may write, so a clone anyone can push to must not set them.
+    "test_first": False,
+    # The agent that writes those tests, named the same way as agent. Empty means agent writes them.
+    "tester_agent": "",
+    # Globs for the files that agent may write. * stays within a folder and ** crosses folders.
+    "test_paths": ["tests/**"],
     "base": "main",
     "ready_label": "loop-ready",
     "blocked_label": "loop:blocked",
@@ -134,7 +142,7 @@ SCOPES = ("this task", "this repo", "every task")  # how far a finding reaches
 UNCLASSIFIED = "**Findings:** unclassified, the retro didn't finish\n"
 NO_SESSION_LOG = "**Evidence:** no session log\n"
 SAID_CAP = 2_000  # how much of the build agent's last reply a block comment quotes, from its end
-DIRTY_CAP = 10  # how many paths setup left behind a block names
+DIRTY_CAP = 10  # how many paths a block names, of those setup left behind or an agent wrote where it shouldn't
 REVIEW_KEEP = 200  # pull requests kept in status.json, newest first
 STATUS_KEEP = 20  # issues kept in status.json, newest first
 # For an agent reading someone else's pull request: read tools only, confined to the checkout.
@@ -457,6 +465,27 @@ def overlaps(a, b):
     return a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
+def path_matches(path, globs):
+    """Whether any glob matches the whole path, case-sensitively. **/ is any folders or none, any other
+    ** is anything, * and ? stay within a folder. Not fnmatch, whose * crosses a /."""
+    for glob in globs:
+        pattern, at = "", 0
+        while at < len(glob):
+            if glob.startswith("**/", at):
+                pattern, at = pattern + "(?:.*/)?", at + 3
+            elif glob.startswith("**", at):
+                pattern, at = pattern + ".*", at + 2
+            elif glob[at] == "*":
+                pattern, at = pattern + "[^/]*", at + 1
+            elif glob[at] == "?":
+                pattern, at = pattern + "[^/]", at + 1
+            else:
+                pattern, at = pattern + re.escape(glob[at]), at + 1
+        if re.fullmatch(pattern, path):
+            return True
+    return False
+
+
 def confined(cmd):
     """A claude command held to UNTRUSTED_CLAUDE, whatever tools or permissions it was given; None if
     the command isn't claude itself, since only claude's flags are known to confine it."""
@@ -504,13 +533,14 @@ def command_name(value):
 def command(cfg, which):
     """(argv, None) for the agent cfg[which] names, or (None, why) when it can't do that job.
 
-    which is "agent", the builder, or a reader: reader_agent or review_agent. A name stands for the
-    command that does the job with that tool; any other value is a command line, split as it is.
+    which is "agent", the builder, "tester_agent", which edits as the builder does, or a reader:
+    reader_agent or review_agent. A name stands for the command that does the job with that tool; any
+    other value is a command line, split as it is.
     """
     name, model = named(cfg[which])
     if name is None:
         return shlex.split(cfg[which]), None
-    build = which == "agent"
+    build = which in ("agent", "tester_agent")
     if name == "claude":
         argv = ["claude", "-p"] + (["--permission-mode", "acceptEdits"] if build else [])
         return argv + (["--model", model] if model else []), None
@@ -597,21 +627,41 @@ def shape_prompt(issue, rules="", generate=""):
     )
 
 
+def tester_prompt(issue, plan, test_paths, rules=""):
+    """Unlike the build agent, the tester gets the ticket too: the acceptance criteria are what it tests."""
+    return rules + (
+        "You are writing the tests for a change, before it is built.\n"
+        "Write tests that prove each acceptance criterion in the ticket below. No implementation "
+        "exists yet, so don't write it: the tests must fail until a separate agent builds the change. "
+        "Touch only files matching these paths, where * stays within a folder and ** crosses folders: "
+        "{paths}. Don't commit, push or use git except for reading. Before each step, say in a line "
+        "what you're about to do and why: the issue's window shows what you say, not what you think.\n\n"
+        "TICKET #{number}: {title}\n{body}\n\nPLAN:\n{plan}\n"
+    ).format(paths=", ".join(test_paths), number=issue["number"], title=issue["title"],
+             body=issue.get("body") or "", plan=plan)
+
+
 def tail(text, size=20_000):
     """The end of a long text, which is where a test failure is."""
     text = text or ""
     return text if len(text) <= size else "...\n" + text[-size:]
 
 
-def build_prompt(number, plan, review="", tests="", rules="", generate=""):
-    """Everything goes in the prompt: an agent in a worktree can't read the loop's own folder."""
+def build_prompt(number, plan, review="", tests="", rules="", generate="", fixed=()):
+    """Everything goes in the prompt: an agent in a worktree can't read the loop's own folder.
+
+    fixed is the files a separate agent's tests are in, when one wrote them first.
+    """
+    held = (" A separate agent already wrote these tests, and they are fixed: {}. Don't change or delete them. "
+            "The job is to make them pass. You may add other test files.".format(", ".join(fixed))) if fixed else ""
     prompt = rules + (
         "Make the change for issue #{n} in this git worktree.\n"
         "Keep to the plan below. Don't commit, push or use git for anything but reading. "
         "Don't run the test suite: the loop runs it. Before each step, say in a line what "
         "you're about to do and why: the issue's window shows what you say, not what you "
-        "think. When the change is in place, say in two lines what you changed.{generate}\n\nPLAN:\n{plan}\n"
-    ).format(n=number, plan=plan, generate=generated(generate, "Don't run it, and don't write its files by hand."))
+        "think. When the change is in place, say in two lines what you changed.{generate}{held}\n\nPLAN:\n{plan}\n"
+    ).format(n=number, plan=plan, held=held,
+             generate=generated(generate, "Don't run it, and don't write its files by hand."))
     if review or tests:
         prompt += (
             "\nAn earlier round failed. Fix exactly what it says.\n\n"
@@ -620,16 +670,20 @@ def build_prompt(number, plan, review="", tests="", rules="", generate=""):
     return prompt
 
 
-def review_prompt(plan, diff, tests, code, rules="", generate=""):
+def review_prompt(plan, diff, tests, code, rules="", generate="", fixed=()):
+    """fixed is the files a separate agent's tests are in, when one wrote them first."""
+    held = (" A separate agent wrote these tests before the build: {}. Judge whether the build worked around "
+            "them, for example with a skip or a mock that makes them meaningless, and say FIX if it "
+            "did.".format(", ".join(fixed))) if fixed else ""
     return rules + (
         "You are the reviewer, in a fresh context. Do not edit any file.\n"
         "Below are the plan, the diff, and the test output (the tests exited {code}). Say "
         "whether the change does what the plan asks, and list the problems that matter, "
         "most important first, one line each.\n"
         "Your last line must be exactly VERDICT: PASS or VERDICT: FIX. PASS only if the "
-        "tests exited 0 and the diff matches the plan.{generate}\n\n"
+        "tests exited 0 and the diff matches the plan.{generate}{held}\n\n"
         "PLAN:\n{plan}\n\nDIFF:\n{diff}\n\nTEST OUTPUT:\n{tests}\n"
-    ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests),
+    ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests), held=held,
              generate=generated(generate, "Its files in the diff aren't outside the plan, and don't ask for it to be "
                                           "run by hand."))
 
@@ -984,12 +1038,13 @@ def usage_table(entries):
             "A subscription is billed differently.\n\n").format("\n".join(rows))
 
 
-def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=None):
+def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=None, tests_first=()):
     """The pull request's description: what a reviewer on GitHub needs without this machine.
 
     numstat is `git diff --numstat` of the branch, or None when git couldn't read it. plan, review
     and tests are the files' text, or None for a file that wasn't there. usage is the issue's
-    usage.json entries; with none, there is no Usage section. The agents' text goes out
+    usage.json entries; with none, there is no Usage section. tests_first is the files a separate
+    agent's tests are in; with none, there is no section for them. The agents' text goes out
     with its mentions made harmless. Over PR_BODY_CAP, the plan is cut first, then the review.
     """
     def missing(name):
@@ -1019,6 +1074,10 @@ def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=No
     head = ("Closes #{n}.\n\nOpened by the loop after {r} round{s}. The loop doesn't merge.\n\n"
             "## Files\n\n{files}\n\n## Tests\n\n`{cmd}`\n\n{shown}\n\n").format(
         n=number, r=rounds, s="" if rounds == 1 else "s", files=files, cmd=test_command, shown=shown)
+    if tests_first:
+        head += ("## Tests written first\n\nA separate agent wrote these tests first, before the build started, "
+                 "and the build could not change them:\n\n{}\n\n").format(
+            "\n".join("- `{}`".format(safe_to_post(path)) for path in tests_first))
     if usage:
         head += usage_table(usage)
 
@@ -1106,6 +1165,12 @@ def lockfiles(paths):
     """The paths whose file name is a lockfile's: one in LOCKFILES, or requirements*.txt."""
     names = [(p, p.rsplit("/", 1)[-1]) for p in paths]
     return [p for p, name in names if name in LOCKFILES or REQUIREMENTS.match(name)]
+
+
+def path_list(paths):
+    """Paths an agent chose, as a block comment names them: mentions made harmless, and no endless list."""
+    more = len(paths) - DIRTY_CAP
+    return safe_to_post(", ".join(paths[:DIRTY_CAP])) + (" and {} more".format(more) if more > 0 else "")
 
 
 class Loop:
@@ -1358,6 +1423,10 @@ class Loop:
         """The config key whose command reviews: review_agent when it's set, reader_agent otherwise."""
         return "review_agent" if self.cfg.get("review_agent") else "reader_agent"
 
+    def tester(self):
+        """The config key whose command writes the tests first: tester_agent when it's set, agent otherwise."""
+        return "tester_agent" if self.cfg.get("tester_agent") else "agent"
+
     def agent(self, which, prompt, cwd, untrusted=False, confine=False, stderr=True, number=None,
               step="", round_no=0):
         """Run a fresh agent session. Returns (exit code, what it said).
@@ -1406,7 +1475,7 @@ class Loop:
                           "which could end up in a posted comment").format(which)
         if untrusted and name != "ollama":
             return None, "{} isn't a claude command, so it can't be confined to the checkout".format(which)
-        if which == "agent" and self.project and Path(cmd[0]).name == "claude":
+        if which in ("agent", "tester_agent") and self.project and Path(cmd[0]).name == "claude":
             cmd = cmd + ["--settings", self.guard_settings()]
         return cmd, None
 
@@ -2000,6 +2069,14 @@ class Loop:
         (folder / "plan.md").write_text(plan)
         self.log("SHAPE", "done plan.md", number)
 
+        # sha and fixed come from here, never from tests-first.json: a leftover file can't change a run with it off.
+        sha, fixed = None, []
+        if self.cfg.get("test_first") is True:
+            first = self.tests_first(issue, plan, tree, folder)
+            if first is None:
+                return
+            sha, fixed = first
+
         problems = []
         for round_no in range(1, self.cfg["max_rounds"] + 1):
             if self.stopped():
@@ -2012,7 +2089,8 @@ class Loop:
 
             last_review = (folder / "review.md").read_text() if (folder / "review.md").exists() else ""
             last_tests = (folder / "test-output.txt").read_text() if (folder / "test-output.txt").exists() else ""
-            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules, generate),
+            code, said = self.agent("agent", build_prompt(number, plan, last_review, last_tests, self.rules, generate,
+                                                          fixed),
                                     tree, number=number, step="build", round_no=round_no)
             if code != 0:
                 return self.block(number, "build failed (agent exit {})".format(code))
@@ -2054,11 +2132,30 @@ class Loop:
                     "the agent's commit (reset the branch to origin/{}), or set "
                     '"allow_lockfile_changes": true in loop.json to let the loop pass them on'
                 ).format(number, ", ".join(lockpaths), self.cfg["base"], self.cfg["base"]), said=said)
+            if sha:
+                # --literal-pathspecs: a file the tester named with a * in it means that file alone.
+                fcode, fout = self.git("--literal-pathspecs", "diff", "--name-only", "--no-renames", "-z",
+                                       sha, "HEAD", "--", *fixed, cwd=tree)
+                if fcode != 0:
+                    return self.block(number, "could not compare the tester's files on loop/issue-{} (git exit {}), "
+                                      "so no tests ran".format(number, fcode), said=said)
+                touched = [p for p in fout.split("\0") if p]
+                if touched:
+                    return self.block(number, (
+                        "the build changed or deleted the tester's files, so no tests ran: {}. "
+                        "Reset the branch to drop that commit, then put the issue back"
+                    ).format(path_list(touched)), said=said)
             # The whole branch against its base, so a resumed branch's earlier commits count.
             # A git that fails proves nothing.
             dcode, diff = self.git("diff", "origin/{}...HEAD".format(self.cfg["base"]), cwd=tree)
             if dcode == 0 and not diff.strip():
                 return self.block(number, "the build made no change in round {}".format(round_no), said=said)
+            if sha:
+                # The tests commit is always in that diff, so the check above can't see a build that did nothing.
+                # This one is only for that: the review still reads the whole branch.
+                ecode, built = self.git("diff", sha, "HEAD", cwd=tree)
+                if ecode == 0 and not built.strip():
+                    return self.block(number, "the build made no change in round {}".format(round_no), said=said)
             # A later round that stages nothing has nothing new to test or review: the last round's
             # findings went unanswered, and running on would only repeat them up to max_rounds.
             if round_no > 1 and not changed:
@@ -2075,7 +2172,8 @@ class Loop:
                 return self.block(number, why)
             # Read tools only: the worktree's settings and hooks are the build agent's to write.
             rcode, review = self.agent(self.reviewer(),
-                                       review_prompt(plan, diff, tout or "(no output)", tcode, self.rules, generate),
+                                       review_prompt(plan, diff, tout or "(no output)", tcode, self.rules, generate,
+                                                     fixed),
                                        tree, confine=True, number=number, step="review", round_no=round_no)
             self.discard_edits(tree, "REVIEW", "reviewer", number)
             (folder / "review.md").write_text(review)
@@ -2089,13 +2187,100 @@ class Loop:
             self.outcomes[number][round_no] = {"tests": "passed" if tcode == 0 else "failed", "verdict": verdict}
             self.mark(number, tests="passed" if tcode == 0 else "failed ({})".format(tcode), review=verdict)
             if passed:
-                return self.scale(issue, branch, round_no, problems)
+                return self.scale(issue, branch, round_no, problems, fixed)
             problems.append("round {}: {}".format(
                 round_no, findings(review) if rcode == 0 else "review did not run"))
 
         self.lesson(number, self.cfg["max_rounds"], problems, passed=False)
         self.block(number, "still failing after {} rounds, see .loop/issue-{}/".format(
             self.cfg["max_rounds"], number), rounds=self.cfg["max_rounds"])
+
+    def tests_first(self, issue, plan, tree, folder):
+        """Have a separate agent write failing tests and commit them, unless the branch already has that commit.
+
+        Returns (the commit's sha, its files), or None once it has blocked the issue or stopped. Nothing a
+        rejected tester wrote stays in the worktree, so it can't reach a build or a retry. Its output and
+        its reply stay out of the comment.
+        """
+        number = issue["number"]
+        message = "Loop: issue #{}, round 0 (tests).".format(number)
+
+        def lookup():
+            return self.sh(["git", "log", "--format=%H", "--fixed-strings", "--grep=" + message,
+                            "origin/{}..HEAD".format(self.cfg["base"])], cwd=tree, stderr=False)
+
+        def record(sha, how):
+            code, out = self.sh(["git", "show", "--name-only", "--no-renames", "-z", "--format=", sha],
+                                cwd=tree, stderr=False)
+            files = [p for p in (q.strip("\n") for q in out.split("\0")) if p]
+            if code != 0 or not files:  # with no files, the round's diff of them would diff everything
+                self.block(number, "could not list the files of the tester's commit on loop/issue-{} (git exit {}), "
+                                   "so no build ran".format(number, code))
+                return None
+            (folder / "tests-first.json").write_text(json.dumps({"commit": sha, "files": files}, indent=2) + "\n")
+            self.log("TEST", "{} {} file{}".format(how, len(files), "" if len(files) == 1 else "s"), number)
+            return sha, files
+
+        def reject(why):
+            self.git("reset", "-q", cwd=tree)
+            self.discard_edits(tree, "TEST", "tester", number)
+            return self.block(number, why)
+
+        code, found = lookup()
+        if code != 0:
+            return self.block(number, "could not look for the tester's commit on loop/issue-{} (git exit {}), "
+                                      "so no agent ran".format(number, code))
+        if found.strip():
+            return record(found.split()[0], "kept the tester's commit with")
+
+        if self.stopped():
+            self.mark(number, state="stopped", note="stopped before the tester")
+            return self.log("STOPPED", "before the tester", number)
+        why = self.over_budget(number)
+        if why:
+            return self.block(number, why)
+        self.mark(number, step="TEST")
+
+        code, _ = self.agent(self.tester(), tester_prompt(issue, plan, self.cfg["test_paths"], self.rules),
+                             tree, number=number, step="test")
+        if code != 0:
+            return reject("tester failed (agent exit {})".format(code))
+
+        self.git("add", "-A", cwd=tree)
+        changed = [p for p in self.git("diff", "--cached", "--name-only", "--no-renames", "-z",
+                                       cwd=tree)[1].split("\0") if p]
+        if not changed:
+            return reject("the tester changed no files, so there are no tests to build against")
+        outside = [p for p in changed if not path_matches(p, self.cfg["test_paths"])]
+        if outside:
+            return reject("the tester changed files outside test_paths: {}".format(path_list(outside)))
+        locks = lockfiles(changed)
+        if locks:  # whatever allow_lockfile_changes says: that setting is about the build
+            return reject("the tester changed a lockfile: {}".format(path_list(locks)))
+
+        tcode, tout = self.sh(self.cfg["test_command"], cwd=tree, shell=True,
+                              timeout=self.cfg["test_timeout"], env=env_for_tests(os.environ))
+        self.halt_if_interrupted()  # a killed test command exits non-zero, which isn't a test that failed
+        (folder / "tester-output.txt").write_text(tout[-OUTPUT_CAP:])
+        if tcode == 0:
+            return reject("the tester's tests pass under test_command, so the tests don't fail without the change. "
+                          "Output is in tester-output.txt")
+
+        # discard_edits looks at git status, which always lists the staged tests, so only when the
+        # command left something else: a second column says so. It keeps what's staged.
+        status = self.git("status", "--porcelain", cwd=tree)[1]
+        if any(line[1:2] != " " for line in status.splitlines()):
+            self.discard_edits(tree, "TEST", "test command", number)
+        # Hooks off: the agent can write .githooks/ in the worktree, and git would run it.
+        ccode = self.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", message, cwd=tree)[0]
+        if ccode != 0:
+            # git's output stays out: it lands on the issue.
+            return self.block(number, "commit refused (git exit {})".format(ccode))
+        code, found = lookup()
+        if code != 0 or not found.strip():
+            return self.block(number, "could not find the tester's commit on loop/issue-{} (git exit {}), "
+                                      "so no build ran".format(number, code))
+        return record(found.split()[0], "committed")
 
     def discard_edits(self, tree, step, who, number):
         """Throw away whatever a reader changed in the worktree. It was told not to edit, and only
@@ -2105,7 +2290,8 @@ class Loop:
             self.git("clean", "-fdq", cwd=tree)
             self.log(step, "{} edited files; discarded".format(who), number)
 
-    def scale(self, issue, branch, rounds, problems):
+    def scale(self, issue, branch, rounds, problems, fixed=()):
+        """fixed is process()'s list of the tester's files, for the pull request to name."""
         number = issue["number"]
         self.halt_if_interrupted()
         self.mark(number, step="SCALE")
@@ -2127,7 +2313,7 @@ class Loop:
         saved = {name: (folder / name).read_text() if (folder / name).exists() else None
                  for name in ("plan.md", "review.md", "test-output.txt")}
         body = pr_body(number, rounds, numstat if code == 0 else None, self.cfg["test_command"],
-                       saved["plan.md"], saved["review.md"], saved["test-output.txt"], self.usage(number))
+                       saved["plan.md"], saved["review.md"], saved["test-output.txt"], self.usage(number), fixed)
         code, out = self.gh("pr", "create", "--base", self.cfg["base"], "--head", branch,
                             "--title", "{} (#{})".format(issue["title"], number), "--body", body)
         if code != 0:
@@ -2262,12 +2448,19 @@ class Loop:
         waits for each worker, which stops itself before its next round. The end of --for starts
         nothing new either, and waits for each worker to finish its issue."""
         self.started_with = fingerprint()
+        test_first = self.cfg.get("test_first") is True
+        agents = ("agent", "reader_agent", self.reviewer()) + ((self.tester(),) if test_first else ())
         # An agent that can't do its job is found before any issue is taken, not one blocked issue later.
-        for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
+        for which in dict.fromkeys(agents):
             why = command(self.cfg, which)[1]
             if why:
                 self.log("ERROR", "{} in loop.json: {}, so no issue is taken".format(which, why))
                 return 1
+        paths = self.cfg.get("test_paths")
+        if test_first and not (isinstance(paths, list) and paths and all(isinstance(p, str) for p in paths)):
+            self.log("ERROR", "test_paths in loop.json: {} isn't a non-empty list of strings, "
+                     "so no issue is taken".format(repr(paths)[:100]))
+            return 1
         if not isinstance(self.cfg.get("allow_lockfile_changes", False), bool):
             self.log("ERROR", "allow_lockfile_changes in loop.json: {} isn't true or false, "
                      "so no issue is taken".format(repr(self.cfg["allow_lockfile_changes"])[:100]))
@@ -2277,7 +2470,7 @@ class Loop:
             self.log("ERROR", "max_issue_tokens in loop.json: {}, so no issue is taken".format(why)[:200])
             return 1
         if limit:
-            for which in dict.fromkeys(("agent", "reader_agent", self.reviewer())):
+            for which in dict.fromkeys(agents):
                 if not reports_usage(command(self.cfg, which)[0]):
                     self.log("WARN", "max_issue_tokens is {:,}, but {} ({}) may not report its tokens, "
                              "so the budget can't count them".format(limit, which, self.cfg[which]))

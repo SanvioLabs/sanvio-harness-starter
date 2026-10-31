@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Tests written first
+
+With `test_first` on, a separate agent writes failing tests after the planner and before round 1, in a commit of their own, and the build has to make them pass without changing them. [`scripts/loop.py`](scripts/loop.py) blocks the issue if the tester changes nothing, changes a path outside `test_paths` or a lockfile, or its tests already pass, and if a build changes or deletes one of its files.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing to leave it off. To turn it on, set "test_first": true in loop.json.
+
 ## 2026-10-31: Session retro
 
 Ordinary sessions can now get the same retro the loop's lessons get. With `HARNESS_RETRO=on`, a hook on `SessionEnd` and `PreCompact` keeps a copy of the session's log in `local-data/retro/` when the person corrected the agent ("that's wrong", "not what I asked", "don't do that", "learn from that", or a message opening "no,") or one file was edited three or more times. Say "retro" and the `retro` skill has a fresh `claude` that can only read classify why the agent didn't know, from the loop's digest of the log plus what the person corrected; [`scripts/loop.py`](scripts/loop.py)'s checks drop what the log doesn't bear out, and the entry goes in `.loop/lessons.md`, headed `session`, for `learn`, naming each correction by its record rather than quoting it. A kept copy is deleted once read, and anything in `local-data/retro/` older than 30 days on the next session end, whether the switch is on or off. With none kept, `retro` reads the current session. Copies hold everything said in a session, are readable by their owner alone, and never leave the machine. The hook copies nothing unless git says `local-data/` is ignored, and [`scripts/loop.py`](scripts/loop.py) starts its agents with `HARNESS_RETRO=off`, so a loop run's session is never kept.

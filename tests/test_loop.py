@@ -497,6 +497,7 @@ if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") 
     atexit.register(emit)
 # Which command started, by the words after the script, and for which step.
 step = ("retro" if "You are reading a finished run" in prompt else "plan" if "You are planning" in prompt
+        else "test" if "You are writing the tests" in prompt
         else "review" if "You are the reviewer" in prompt else "build")
 if "stream-json" in sys.argv and os.path.exists(os.path.join(state, "session-" + step)):
     # As claude's init event: session-<step> holds the id this step's session names.
@@ -535,6 +536,15 @@ elif "You are the reviewer" in prompt:
     if os.path.exists(os.path.join(state, "review-says")):  # more review text, when a test sets it
         print(open(os.path.join(state, "review-says")).read().strip())
     print("VERDICT: " + verdict)
+elif step == "test":
+    # Writes each path in tester-writes, one per line, and exits 3 when tester-fails is there.
+    if os.path.exists(os.path.join(state, "tester-writes")):
+        for line in open(os.path.join(state, "tester-writes")).read().splitlines():
+            os.makedirs(os.path.dirname(line) or ".", exist_ok=True)
+            open(line, "a").write("x")
+    if os.path.exists(os.path.join(state, "tester-fails")):
+        sys.exit(3)
+    print("Wrote the tests.")
 elif os.path.exists(os.path.join(state, "build-noop")):
     # Writes nothing, and says so at length: the start of the reply runs past what a comment keeps.
     print("REPLY-START " + "x" * 3000 + " ping @someone. NOTHING-TO-DO-MARKER")
@@ -3278,6 +3288,326 @@ class TestAPass(unittest.TestCase):
         self.assertNotIn("HOURS", [l.split()[2] for l in self.lines()])
         self.assertIsNone(runner.hours)
 
+    # -- tests written first -------------------------------------------------
+
+    def tests_go_first(self, *paths):
+        """test_first on, and a tester that writes paths: the one test file when none are given."""
+        self.cfg["test_first"] = True
+        (self.state / "tester-writes").write_text("\n".join(paths or ("tests/test_feature.txt",)) + "\n")
+
+    def steps(self):
+        return [l.split()[2] for l in self.lines()]
+
+    def tree(self):
+        return Path(self.cfg["worktree_dir"]) / "issue-12"
+
+    def folder(self):
+        return self.work / ".loop" / "issue-12"
+
+    def opened_pr(self):
+        return any(c.startswith("pr create") for c in self.calls())
+
+    def test_with_test_first_not_true_a_run_is_what_it_was_and_a_leftover_record_changes_nothing(self):
+        for value in (None, False, "true", 1):
+            with self.subTest(value=value):
+                self.tearDown()
+                self.setUp()
+                if value is not None:
+                    self.cfg["test_first"] = value
+                self.folder().mkdir(parents=True)
+                (self.folder() / "tests-first.json").write_text('{"commit": "abc", "files": ["README.md"]}')
+                self.assertEqual(self.go(), 0)
+                self.assertEqual(self.started_steps(), ["plan", "build", "review"])
+                self.assertEqual(self.steps(), ["DISCOVER", "SHAPE", "BUILD", "VALIDATE", "SCALE"])
+                self.assertEqual(git(self.tree(), "log", "--format=%s", "origin/main..HEAD").stdout.split("\n")[:-1],
+                                 ["Add the thing"])
+                self.assertEqual((self.folder() / "tests-first.json").read_text(),
+                                 '{"commit": "abc", "files": ["README.md"]}')
+                self.assertNotIn("separate agent", (self.state / "build-prompt").read_text())
+                self.assertNotIn("separate agent", (self.state / "review-prompt").read_text())
+                self.assertNotIn("## Tests written first", (self.state / "gh-calls").read_text())
+
+    def test_with_it_off_there_is_no_record_at_all(self):
+        self.go()
+        self.assertFalse((self.folder() / "tests-first.json").exists())
+        self.assertFalse((self.state / "test-prompt").exists())
+
+    def test_the_tester_runs_between_the_plan_and_the_build_with_the_ticket_and_the_plan(self):
+        self.tests_go_first()
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps(), ["plan", "test", "build", "review"])
+        self.assertEqual(self.steps(), ["DISCOVER", "SHAPE", "TEST", "BUILD", "VALIDATE", "SCALE"])
+        prompt = (self.state / "test-prompt").read_text()
+        self.assertTrue(prompt.startswith("You are writing the tests for a change, before it is built."), prompt)
+        self.assertIn("TICKET #12: Add the thing\nbody\n", prompt)
+        self.assertIn("PLAN:\nPlan: add feature.txt.", prompt)
+        self.assertLess(prompt.index("TICKET #12"), prompt.index("PLAN:"))
+        for words in ("each acceptance criterion", "tests/**", "No implementation exists yet", "use git except for reading"):
+            self.assertIn(words, prompt)
+        self.assertTrue(self.opened_pr())
+
+    def test_a_rejected_tester_blocks_the_issue_says_why_and_leaves_the_worktree_clean(self):
+        marker = "TESTER-OUTPUT-MARK"
+        table = [
+            ("nothing changed", None, {}, "the tester changed no files, so there are no tests to build against"),
+            ("outside", ("tests/test_ok.txt", "src/sneaky.py"), {},
+             "the tester changed files outside test_paths: src/sneaky.py."),
+            ("a * stays in its folder", ("tests/deep/test_a.txt",), {"test_paths": ["tests/*"]},
+             "the tester changed files outside test_paths: tests/deep/test_a.txt."),
+            ("lockfile", ("tests/requirements.txt",), {}, "the tester changed a lockfile: tests/requirements.txt."),
+            ("lockfile, allowed", ("tests/uv.lock",), {"allow_lockfile_changes": True},
+             "the tester changed a lockfile: tests/uv.lock."),
+            ("passes", ("tests/test_feature.txt",), {"test_command": "echo {}; test -f tests/test_feature.txt".format(marker)},
+             "the tester's tests pass under test_command, so the tests don't fail without the change. "
+             "Output is in tester-output.txt"),
+        ]
+        for name, paths, cfg, words in table:
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                self.cfg["test_first"] = True
+                self.cfg.update(cfg)
+                if paths:
+                    self.tests_go_first(*paths)
+                self.go()
+                self.assertEqual(self.started_steps(), ["plan", "test"])
+                self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+                self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+                self.assertIn(words, self.comments()[0])
+                self.assertNotIn("last reply", self.comments()[0])
+                self.assertNotIn(marker, self.comments()[0])
+                self.assertFalse(self.opened_pr())
+                self.assertEqual(git(self.tree(), "status", "--porcelain").stdout, "")
+                self.assertEqual(git(self.tree(), "log", "--format=%s", "origin/main..HEAD").stdout, "")
+                self.assertFalse((self.folder() / "tests-first.json").exists())
+
+    def test_tests_that_already_pass_keep_their_output_in_the_file_and_off_the_comment(self):
+        self.tests_go_first()
+        self.cfg["test_command"] = "echo TESTER-OUTPUT-MARK; test -f tests/test_feature.txt"
+        self.go()
+        self.assertIn("TESTER-OUTPUT-MARK", (self.folder() / "tester-output.txt").read_text())
+        self.assertNotIn("TESTER-OUTPUT-MARK", (self.state / "gh-calls").read_text())
+
+    def test_a_tester_that_fails_blocks_the_issue_and_what_it_wrote_goes(self):
+        self.tests_go_first()
+        (self.state / "tester-fails").write_text("")
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "test"])
+        self.assertIn("tester failed (agent exit 3)", self.comments()[0])
+        self.assertEqual(git(self.tree(), "status", "--porcelain").stdout, "")
+
+    def test_a_rejected_testers_files_dont_reach_the_retry(self):
+        self.tests_go_first("src/sneaky.py")
+        self.go()
+        self.tests_go_first()
+        self.go()
+        self.assertTrue(self.opened_pr())
+        changed = git(self.tree(), "diff", "--name-only", "origin/main...HEAD").stdout.split()
+        self.assertEqual(sorted(changed), ["feature.txt", "tests/test_feature.txt"])
+
+    def test_the_commit_message_is_exact_and_the_record_lists_the_commit_and_its_files(self):
+        self.tests_go_first("tests/test_b.txt", "tests/sub dir/test_a.txt")
+        self.cfg["test_command"] = "touch junk.txt; test -f feature.txt"  # what a test writes isn't the tester's
+        self.go()
+        sha = git(self.tree(), "rev-parse", "HEAD~1").stdout.strip()
+        self.assertEqual(git(self.tree(), "log", "-1", "--format=%B", sha).stdout.strip(),
+                         "Loop: issue #12, round 0 (tests).")
+        self.assertEqual(json.loads((self.folder() / "tests-first.json").read_text()),
+                         {"commit": sha, "files": ["tests/sub dir/test_a.txt", "tests/test_b.txt"]})
+        self.assertIn("TEST test command edited files; discarded", "\n".join(self.lines()))
+
+    def test_the_build_and_review_prompts_name_the_testers_files(self):
+        self.tests_go_first()
+        self.go()
+        build = (self.state / "build-prompt").read_text()
+        self.assertIn("A separate agent already wrote these tests, and they are fixed: tests/test_feature.txt. "
+                      "Don't change or delete them. The job is to make them pass. You may add other test files.", build)
+        self.assertNotIn("TICKET", build)
+        self.assertIn("A separate agent wrote these tests before the build: tests/test_feature.txt. Judge whether the "
+                      "build worked around them, for example with a skip or a mock that makes them meaningless, and "
+                      "say FIX if it did.", (self.state / "review-prompt").read_text())
+
+    def test_a_build_that_edits_deletes_or_renames_a_testers_file_blocks_before_the_tests_run(self):
+        for writes in ("tests/test_feature.txt", "-tests/test_feature.txt", "tests/test_feature.txt>tests/moved.txt"):
+            with self.subTest(writes=writes):
+                self.tearDown()
+                self.setUp()
+                self.tests_go_first()
+                self.build_writes(writes)
+                self.go()
+                self.assertEqual(self.started_steps(), ["plan", "test", "build"])
+                self.assertFalse((self.folder() / "test-output.txt").exists())
+                self.assertFalse(self.opened_pr())
+                comment = self.comments()[0]
+                self.assertIn("the build changed or deleted the tester's files, so no tests ran: "
+                              "tests/test_feature.txt. Reset the branch to drop that commit, then put the issue back",
+                              comment)
+                self.assertIn("Added feature.txt.", comment)  # the build's reply, as a lockfile's block quotes it
+
+    def test_a_build_that_adds_another_test_file_goes_on_to_a_pull_request(self):
+        self.tests_go_first()
+        self.build_writes("tests/test_more.txt")
+        self.assertEqual(self.go(), 0)
+        self.assertTrue(self.opened_pr())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+
+    def test_put_back_the_tester_doesnt_run_again_and_its_files_stay_fixed(self):
+        self.tests_go_first()
+        (self.state / "verdict").write_text("FIX")  # two rounds, then blocked
+        self.go()
+        first = json.loads((self.folder() / "tests-first.json").read_text())
+        (self.state / "verdict").write_text("PASS")
+        (self.folder() / "tests-first.json").unlink()
+        (self.state / "tester-writes").write_text("tests/second_tester.txt\n")
+        self.go()
+        self.assertEqual(self.started_steps().count("test"), 1)
+        self.assertEqual(json.loads((self.folder() / "tests-first.json").read_text()), first)
+        self.assertIn("they are fixed: tests/test_feature.txt.", (self.state / "build-prompt").read_text())
+        self.assertTrue(self.opened_pr())
+        self.assertFalse((self.tree() / "tests" / "second_tester.txt").exists())
+
+    def test_put_back_an_edit_to_the_testers_files_still_blocks_until_the_branch_is_reset(self):
+        self.tests_go_first()
+        self.build_writes("tests/test_feature.txt")
+        self.go()
+        (self.state / "build-writes").unlink()  # this build leaves them alone, but the branch still has the edit
+        self.go()
+        self.assertEqual(self.started_steps().count("test"), 1)
+        self.assertEqual(len(self.comments()), 2)
+        self.assertIn("the build changed or deleted the tester's files", self.comments()[1])
+        self.assertFalse(self.opened_pr())
+
+    def test_a_build_that_adds_nothing_in_round_one_blocks_though_the_branch_has_the_tests(self):
+        self.tests_go_first()
+        (self.state / "build-noop").write_text("")
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "test", "build"])
+        self.assertIn("the build made no change in round 1", self.comments()[0])
+        self.assertFalse((self.folder() / "test-output.txt").exists())
+        self.assertFalse(self.opened_pr())
+
+    def test_the_testers_run_is_in_usage_under_its_own_step(self):
+        self.report_usage()
+        self.tests_go_first()
+        self.go()
+        entries = json.loads((self.folder() / "usage.json").read_text())
+        self.assertEqual([(e["step"], e["round"]) for e in entries],
+                         [("plan", 0), ("test", 0), ("build", 1), ("review", 1)])
+
+    def test_a_tester_over_the_budget_stops_the_build_from_starting(self):
+        self.report_usage()
+        self.tests_go_first()
+        self.cfg["max_issue_tokens"] = 250  # the planner's 200 is under it; the tester takes it to 400
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan", "test"])
+        self.assertIn("used 400 tokens this run, over max_issue_tokens 250", self.comments()[0])
+
+    def test_a_planner_over_the_budget_stops_the_tester_from_starting(self):
+        self.report_usage()
+        self.tests_go_first()
+        self.cfg["max_issue_tokens"] = 100
+        self.go()
+        self.assertEqual(self.started_steps(), ["plan"])
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+
+    def test_a_stop_before_the_tester_starts_no_tester(self):
+        self.tests_go_first()
+        original = loop.Loop.agent
+
+        def agent(this, which, prompt, cwd, **kwargs):
+            result = original(this, which, prompt, cwd, **kwargs)
+            if "You are planning" in prompt:
+                (this.dir / "STOP").write_text("")
+            return result
+
+        with mock.patch.object(loop.Loop, "agent", agent):
+            self.go()
+        self.assertEqual(self.started_steps(), ["plan"])
+        self.assertEqual(self.status()["issues"][0]["state"], "stopped")
+        self.assertNotIn("issue edit 12 --add-label loop:blocked", self.calls())
+
+    def test_the_pull_request_names_the_testers_files_after_its_tests(self):
+        self.tests_go_first()
+        self.go()
+        body = (self.state / "gh-calls").read_text().split("pr create ", 1)[1]
+        self.assertIn("## Tests written first\n\nA separate agent wrote these tests first, before the build started, "
+                      "and the build could not change them:\n\n- `tests/test_feature.txt`\n", body)
+        self.assertLess(body.index("## Tests\n"), body.index("## Tests written first"))
+        self.assertLess(body.index("## Tests written first"), body.index("## Review"))
+
+    def test_the_pull_requests_section_makes_a_mention_harmless_and_is_absent_with_no_files(self):
+        with_files = loop.pr_body(12, 1, "", "cmd", "p", "r", "t", tests_first=["tests/@someone.py"])
+        self.assertIn("- `tests/@​someone.py`", with_files)
+        self.assertNotIn("## Tests written first", loop.pr_body(12, 1, "", "cmd", "p", "r", "t"))
+
+    def test_a_path_matches_a_glob_whole_and_a_star_stays_in_its_folder(self):
+        table = [
+            ("tests/**", "tests/test_a.py", True),
+            ("tests/**", "tests/deep/er/test_a.py", True),
+            ("tests/**", "tests", False),
+            ("tests/**", "src/tests/test_a.py", False),
+            ("tests/**", "TESTS/test_a.py", False),
+            ("tests/**/test_*.py", "tests/test_a.py", True),
+            ("tests/**/test_*.py", "tests/deep/er/test_a.py", True),
+            ("tests/**/test_*.py", "tests/deep/a_test.py", False),
+            ("tests/**/test_*.py", "tests/test_a.pyc", False),
+            ("src/*.py", "src/a.py", True),
+            ("src/*.py", "src/deep/a.py", False),
+            ("src/*.py", "src/a.txt", False),
+            ("src/?.py", "src/a.py", True),
+            ("src/?.py", "src/ab.py", False),
+            ("src/?", "src//", False),
+            ("a.b", "axb", False),
+        ]
+        for glob, path, want in table:
+            self.assertEqual(loop.path_matches(path, [glob]), want, (glob, path))
+        self.assertTrue(loop.path_matches("src/a.py", ["tests/**", "src/*.py"]))
+        self.assertFalse(loop.path_matches("src/a.py", []))
+
+    def test_a_named_tester_gets_edit_flags_and_the_key_falls_back_to_agent(self):
+        for value, argv in (("claude", "claude -p --permission-mode acceptEdits"),
+                            ("codex", "codex exec --sandbox workspace-write -")):
+            self.assertEqual(loop.command(dict(CFG, tester_agent=value), "tester_agent"), (shlex.split(argv), None))
+        self.assertEqual(loop.command(dict(CFG, tester_agent="ollama:qwen3"), "tester_agent"),
+                         (None, "Ollama has no tools to edit files with"))
+        self.assertEqual(loop.Loop(self.work, dict(self.cfg, tester_agent="")).tester(), "agent")
+        self.assertEqual(loop.Loop(self.work, dict(self.cfg, tester_agent="codex")).tester(), "tester_agent")
+
+    def test_a_named_tester_writes_the_tests_and_the_agent_builds(self):
+        self.tests_go_first()
+        self.cfg["tester_agent"] = "codex"
+        self.assertEqual(self.go(), 0)
+        self.assertIn("workspace-write", json.loads((self.state / "test-argv").read_text()))
+        self.assertNotIn("workspace-write", json.loads((self.state / "build-argv").read_text()))
+
+    def test_an_ollama_tester_is_refused_at_startup_only_when_it_would_run(self):
+        self.tests_go_first()
+        self.cfg["tester_agent"] = "ollama:qwen3"
+        self.assertEqual(self.go(), 1)
+        self.assertIn("ERROR tester_agent in loop.json: Ollama has no tools to edit files with, "
+                      "so no issue is taken", "\n".join(self.lines()))
+        self.assert_nothing_taken()
+        self.tearDown()
+        self.setUp()
+        self.cfg["tester_agent"] = "ollama:qwen3"
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps(), ["plan", "build", "review"])
+
+    def test_test_paths_that_arent_a_list_of_strings_are_an_error_only_when_test_first_is_on(self):
+        for value in ("tests/**", [], [1], None):
+            with self.subTest(value=value):
+                self.tearDown()
+                self.setUp()
+                self.cfg["test_paths"] = value
+                self.cfg["test_first"] = True
+                self.assertEqual(self.go(), 1)
+                self.assertIn("ERROR test_paths in loop.json: ", "\n".join(self.lines()))
+                self.assert_nothing_taken()
+                self.tearDown()
+                self.setUp()
+                self.cfg["test_paths"] = value
+                self.assertEqual(self.go(), 0)
+
 
 # A line from each file of the harness's rules, to find in the prompts. None is a phrase the stand-in agent looks for.
 RULES = {"AGENTS.md": "RULE-FROM-AGENTS", "steering/operating.md": "RULE-FROM-OPERATING",
@@ -3721,6 +4051,8 @@ class TestProject(unittest.TestCase):
             self.assertNotIn("--settings", json.loads((self.state / (step + "-argv")).read_text()), step)
         cfg = dict(loop.load_config(self.project), agent="codex", generate_command="")
         self.assertNotIn("--settings", loop.Loop(self.harness, cfg, project=self.project).argv("agent")[0])
+        cfg["tester_agent"] = "claude"  # it edits as the build agent does, so it's held the same way
+        self.assertIn("--settings", loop.Loop(self.harness, cfg, project=self.project).argv("tester_agent")[0])
 
     def test_the_project_test_command_runs_in_the_checkout_without_the_tokens(self):
         self.go()
