@@ -25,6 +25,9 @@ EM_DASH = chr(0x2014)  # a code point, so this file passes its own check
 STALE = ("- STALE scripts/loop.py changed since this run started; "
          "run python3 scripts/loop.py stop, then start it again to use it")
 RETRO_LOG = Path(__file__).resolve().parent / "fixtures" / "retro_session.jsonl"  # a made-up session log
+PLANNER_ON_THE_TESTER = ("A separate agent writes the tests for the acceptance criteria after this plan, in new files "
+                         "of its own. Don't plan those tests. Name the functions, their signatures and the files "
+                         "those tests will need to import.")
 
 
 def issue(number, labels=("loop-ready",), assignees=(), title="Add the thing"):
@@ -537,9 +540,13 @@ elif "You are the reviewer" in prompt:
         print(open(os.path.join(state, "review-says")).read().strip())
     print("VERDICT: " + verdict)
 elif step == "test":
-    # Writes each path in tester-writes, one per line, and exits 3 when tester-fails is there.
+    # Writes each path in tester-writes, one per line, where a leading - deletes it, and exits 3
+    # when tester-fails is there.
     if os.path.exists(os.path.join(state, "tester-writes")):
         for line in open(os.path.join(state, "tester-writes")).read().splitlines():
+            if line.startswith("-"):
+                os.remove(line[1:])
+                continue
             os.makedirs(os.path.dirname(line) or ".", exist_ok=True)
             open(line, "a").write("x")
     if os.path.exists(os.path.join(state, "tester-fails")):
@@ -3295,6 +3302,25 @@ class TestAPass(unittest.TestCase):
         self.cfg["test_first"] = True
         (self.state / "tester-writes").write_text("\n".join(paths or ("tests/test_feature.txt",)) + "\n")
 
+    def commit_old_test(self):
+        """A test file already on the base branch, for a tester to touch."""
+        (self.work / "tests").mkdir(exist_ok=True)
+        (self.work / "tests" / "test_old.txt").write_text("old")
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-q", "-m", "old test")
+        git(self.work, "push", "-q", "origin", "main")
+
+    def assert_tester_blocked_for_touching(self, path):
+        """Blocked, naming path, with nothing left behind. Returns the comment."""
+        self.assertEqual(self.started_steps(), ["plan", "test"])
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        comment = self.comments()[0]
+        self.assertIn("the tester changed or deleted files that already existed, and it may only add new files: "
+                      + path, comment)
+        self.assertEqual(git(self.tree(), "status", "--porcelain").stdout, "")
+        self.assertEqual(git(self.tree(), "log", "--format=%s", "origin/main..HEAD").stdout, "")
+        return comment
+
     def steps(self):
         return [l.split()[2] for l in self.lines()]
 
@@ -3325,6 +3351,7 @@ class TestAPass(unittest.TestCase):
                                  '{"commit": "abc", "files": ["README.md"]}')
                 self.assertNotIn("separate agent", (self.state / "build-prompt").read_text())
                 self.assertNotIn("separate agent", (self.state / "review-prompt").read_text())
+                self.assertNotIn(PLANNER_ON_THE_TESTER, (self.state / "plan-prompt").read_text())
                 self.assertNotIn("## Tests written first", (self.state / "gh-calls").read_text())
 
     def test_with_it_off_there_is_no_record_at_all(self):
@@ -3380,6 +3407,38 @@ class TestAPass(unittest.TestCase):
                 self.assertEqual(git(self.tree(), "status", "--porcelain").stdout, "")
                 self.assertEqual(git(self.tree(), "log", "--format=%s", "origin/main..HEAD").stdout, "")
                 self.assertFalse((self.folder() / "tests-first.json").exists())
+
+    def test_a_tester_that_edits_an_existing_file_blocks_naming_only_that_file(self):
+        self.commit_old_test()
+        self.tests_go_first("tests/test_old.txt", "tests/test_new.txt")
+        self.go()
+        comment = self.assert_tester_blocked_for_touching("tests/test_old.txt")
+        self.assertNotIn("test_new.txt", comment)
+
+    def test_a_tester_that_deletes_an_existing_file_blocks_and_the_file_comes_back(self):
+        self.commit_old_test()
+        self.tests_go_first("-tests/test_old.txt")
+        self.go()
+        self.assert_tester_blocked_for_touching("tests/test_old.txt")
+        self.assertEqual((self.tree() / "tests" / "test_old.txt").read_text(), "old")
+
+    def test_an_existing_file_outside_test_paths_gets_the_existing_file_comment(self):
+        self.tests_go_first("README.md")
+        self.go()
+        comment = self.assert_tester_blocked_for_touching("README.md")
+        self.assertNotIn("outside test_paths", comment)
+
+    def test_with_test_first_the_planner_is_told_a_separate_agent_writes_the_tests(self):
+        self.tests_go_first()
+        self.go()
+        self.assertIn(PLANNER_ON_THE_TESTER, (self.state / "plan-prompt").read_text())
+
+    def test_the_tester_is_told_new_files_only_and_the_test_command(self):
+        self.tests_go_first()
+        self.go()
+        self.assertIn("Write the tests in new files only, named so the loop's test command runs them: "
+                      "test -f feature.txt. Don't edit or delete any file that already exists.",
+                      (self.state / "test-prompt").read_text())
 
     def test_tests_that_already_pass_keep_their_output_in_the_file_and_off_the_comment(self):
         self.tests_go_first()

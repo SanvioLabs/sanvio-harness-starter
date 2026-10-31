@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Tester writes new files only
+
+With `test_first` on, the tester may only add new files: [`scripts/loop.py`](scripts/loop.py) blocks the issue if it changes or deletes a file that already existed. The planner now leaves those tests out of its plan, and the build can change any existing test file.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing.
+
 ## 2026-10-31: Tests written first
 
 With `test_first` on, a separate agent writes failing tests after the planner and before round 1, in a commit of their own, and the build has to make them pass without changing them. [`scripts/loop.py`](scripts/loop.py) blocks the issue if the tester changes nothing, changes a path outside `test_paths` or a lockfile, or its tests already pass, and if a build changes or deletes one of its files.
