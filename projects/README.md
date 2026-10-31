@@ -62,8 +62,8 @@ default tests the harness. For a TypeScript project:
 ```
 
 or `node --test` with no `package.json` script. The project's `loop.json` may
-set only `test_command`, `test_timeout`, `base`, `ready_label` and
-`blocked_label`. Every other key (`agent`, `max_workers`, `allow_lockfile_changes`
+set only `test_command`, `test_timeout`, `base`, `ready_label`, `blocked_label`,
+`generate_command` and `setup_command`. Every other key (`agent`, `max_workers`, `allow_lockfile_changes`
 and the rest) belongs to the harness's `loop.json`, under `"projects"` for one
 project, and a project's own file that sets one is refused:
 
