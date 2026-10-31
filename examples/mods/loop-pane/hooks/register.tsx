@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { LOOP_BUTTONS, PAGE, PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, loopOptions, openingLoop, othersWorking, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { PAGE,PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, loopOptions, openingLoop, othersWorking, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -35,7 +35,7 @@ let beat = true
 // pull request.
 const JOB_ROWS = 6
 
-// The rows around the list: the header's two, the buttons, the rule, the loop buttons, the tabs, and the
+// The rows around the list: the header's two, the buttons, the rule, the loop picker, the tabs, and the
 // lines above and below it.
 const AROUND_LIST = 8
 
@@ -363,7 +363,7 @@ export const register: Register = on => {
           </Box>
         )}
         <Text dimColor>{'─'.repeat(width)}</Text>
-        {Select && loops.length > LOOP_BUTTONS ? (
+        {Select && loops.length > 1 ? (
           <Box key="loop-picker" flexDirection="row" columnGap={1}>
             <Select
               key="loop-pick"

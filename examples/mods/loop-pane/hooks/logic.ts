@@ -43,10 +43,7 @@ export function loopButtonLabel(seen: Seen): string {
   return `● ${loopLabel(seen)}${working > 1 ? ` ${working}` : ''}`
 }
 
-// The most loops that get a button each: four fit a row at the pane's usual width.
-export const LOOP_BUTTONS = 4
-
-// The dropdown's options past that: the loops on a job first, each group in its own order. A project's
+// The loop picker's options: the loops on a job first, each group in its own order. A project's
 // value is its name, the harness's ''.
 export function loopOptions(loops: Seen[]): { value: string; label: string }[] {
   const working = loops.filter(l => workingCount(l) > 0)
