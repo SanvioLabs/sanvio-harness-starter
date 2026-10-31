@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop retro classifies its lessons
+
+With `"retro": true` in `loop.json`, each entry the loop writes to `.loop/lessons.md` also gets findings on why the lesson reached the agent late, `IGNORED`, `UNLOADED`, `WRONG` or `INHERENT`, each citing a record in the run's session logs and checked against them. `usage.json` entries now hold a `session_id` when the agent names one. [`skills/learn/`](skills/learn/) says where each cause's fix goes. With it unset, the loop does what it did. The log checks come from a made-up session log, so run one real retro before relying on the `(unverified)` marks.
+Files: [`scripts/loop.py`](scripts/loop.py), [`skills/learn/SKILL.md`](skills/learn/SKILL.md), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`tests/test_loop.py`](tests/test_loop.py), [`tests/test_skills.py`](tests/test_skills.py), [`tests/fixtures/retro_session.jsonl`](tests/fixtures/retro_session.jsonl), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** nothing, and set `retro` to use it.
+
 ## 2026-10-30: Loop pane tabs keep one height
 
 The loop pane's **Queue** tab now takes the same 21 rows on the terminal as **Active** and **Finished**, so what's below the list stays put as you change tabs. **Queue** shows up to 21 issues instead of 3, and **▲ more**, **▼ more** and the wheel move it a line at a time. On Desktop and VS Code it shows up to 21 too, and a short queue still holds only three lines open.

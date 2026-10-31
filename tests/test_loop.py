@@ -24,6 +24,7 @@ CFG = dict(loop.DEFAULTS)
 EM_DASH = chr(0x2014)  # a code point, so this file passes its own check
 STALE = ("- STALE scripts/loop.py changed since this run started; "
          "run python3 scripts/loop.py stop, then start it again to use it")
+RETRO_LOG = Path(__file__).resolve().parent / "fixtures" / "retro_session.jsonl"  # a made-up session log
 
 
 def issue(number, labels=("loop-ready",), assignees=(), title="Add the thing"):
@@ -443,13 +444,29 @@ if "--output-format" in sys.argv and sys.argv[sys.argv.index("--output-format") 
         real.flush()
     atexit.register(emit)
 # Which command started, by the words after the script, and for which step.
-step = "plan" if "You are planning" in prompt else "review" if "You are the reviewer" in prompt else "build"
+step = ("retro" if "You are reading a finished run" in prompt else "plan" if "You are planning" in prompt
+        else "review" if "You are the reviewer" in prompt else "build")
+if "stream-json" in sys.argv and os.path.exists(os.path.join(state, "session-" + step)):
+    # As claude's init event: session-<step> holds the id this step's session names.
+    real.write(json.dumps({"type": "system", "subtype": "init", "model": "m",
+                           "session_id": open(os.path.join(state, "session-" + step)).read().strip()}) + "\\n")
+    real.flush()
 with open(os.path.join(state, "agents-started"), "a") as f:
     f.write(" ".join(sys.argv[1:] + [step]) + "\\n")
 # Each step's last prompt, and its words whole, as plan-prompt and plan-argv.
 open(os.path.join(state, step + "-prompt"), "w").write(prompt)
 open(os.path.join(state, step + "-argv"), "w").write(json.dumps(sys.argv[1:]))
-if "You are planning" in prompt:
+if step == "retro":
+    if os.path.exists(os.path.join(state, "retro-edits")):
+        open("retro-sneaky.txt", "w").write("x")
+    if os.path.exists(os.path.join(state, "retro-hangs")):
+        import time
+        time.sleep(60)
+    if os.path.exists(os.path.join(state, "retro-fails")):
+        sys.exit(3)
+    if os.path.exists(os.path.join(state, "retro-says")):
+        print(open(os.path.join(state, "retro-says")).read())
+elif "You are planning" in prompt:
     open(os.path.join(state, "plan-cwd"), "w").write(os.getcwd())
     if os.path.exists(os.path.join(state, "planner-edits")):
         open("planned.txt", "w").write("x")
@@ -458,6 +475,9 @@ elif "You are the reviewer" in prompt:
     if os.path.exists(os.path.join(state, "reviewer-edits")):
         open("sneaky.txt", "w").write("x")
     verdict = open(os.path.join(state, "verdict")).read().strip()
+    if os.path.exists(os.path.join(state, "fix-once")):  # a first round that fails, whatever verdict says
+        os.remove(os.path.join(state, "fix-once"))
+        verdict = "FIX"
     print("Looks right." if verdict == "PASS" else "feature.txt is wrong.")
     if os.path.exists(os.path.join(state, "review-says")):  # more review text, when a test sets it
         print(open(os.path.join(state, "review-says")).read().strip())
@@ -715,6 +735,273 @@ class TestAPass(unittest.TestCase):
     def go(self, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return loop.Loop(self.work, self.cfg).run(once=True, **kwargs)
+
+    # -- the retro ---------------------------------------------------------
+
+    def retro_setup(self, logged=True):
+        """retro on, both agents the claude stand-in, a pass after one failed round, and with logged the
+        made-up session log as the build's and, under its own record ids, the review's."""
+        claude = Path(self.tmp.name) / "bin" / "claude"
+        claude.write_text(AGENT)
+        claude.chmod(claude.stat().st_mode | stat.S_IEXEC)
+        self.cfg.update(agent="claude -p --permission-mode acceptEdits", reader_agent="claude -p", retro=True)
+        (self.state / "fix-once").write_text("")
+        transcripts = Path(self.tmp.name) / "transcripts"
+        patcher = mock.patch.object(loop, "TRANSCRIPTS", transcripts)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        if not logged:
+            return
+        folder = transcripts / "some-project"
+        folder.mkdir(parents=True)
+        made_up = RETRO_LOG.read_text().replace("/work/tree", str(Path(self.tmp.name) / "trees" / "issue-12"))
+        for step, prefix in (("plan", "pln-"), ("build", "rec-"), ("review", "rev-")):
+            (folder / "{}-session.jsonl".format(step)).write_text(made_up.replace("rec-", prefix))
+            (self.state / "session-{}".format(step)).write_text("{}-session".format(step))
+
+    def lessons(self):
+        return (self.work / ".loop" / "lessons.md").read_text()
+
+    def retro_says(self, *lines):
+        (self.state / "retro-says").write_text("\n".join(lines) + "\n")
+
+    def test_with_retro_unset_there_is_no_extra_agent_no_log_read_and_the_same_entry(self):
+        (self.state / "fix-once").write_text("")
+        with mock.patch.object(loop, "session_log", side_effect=AssertionError("read a log")), \
+                mock.patch.object(loop, "session_events", side_effect=AssertionError("read a log")):
+            self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps(), ["plan", "build", "review", "build", "review"])
+        self.assertRegex(self.lessons(), (
+            r"\A## \d{4}-\d{2}-\d{2} #12: 2 rounds\n\*\*What went wrong:\*\* round 1: feature\.txt is wrong\.\n"
+            r"\*\*What should have happened:\*\* the change on loop/issue-12 passed the tests and the review\n\n\Z"))
+        self.assertFalse((self.work / ".loop" / "issue-12" / "evidence.md").exists())
+
+    def test_retro_counts_only_when_it_is_true(self):
+        for value in (False, "true", 1):
+            with self.subTest(value=value):
+                self.tearDown()
+                self.setUp()
+                self.cfg["retro"] = value
+                (self.state / "fix-once").write_text("")
+                self.assertEqual(self.go(), 0)
+                self.assertNotIn("retro", self.started_steps())
+
+    def test_a_usage_entry_has_a_session_id_only_when_the_agent_names_one(self):
+        self.retro_setup()
+        (self.state / "session-review").unlink()
+        self.go()
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual([e.get("session_id") for e in entries if e["step"] == "build"], ["build-session"] * 2)
+        self.assertFalse([e for e in entries if e["step"] == "review" and "session_id" in e])
+
+    def test_a_retro_classifies_the_entry_from_the_digest(self):
+        self.retro_setup()
+        self.retro_says("Some thinking first, which isn't a finding.",
+                        "FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | The agent read it and went on.",
+                        "FINDING: UNLOADED | rec-0004 | project | skill | not-read.md | It never saw this file.",
+                        "FINDING: INHERENT | rev-0001 | person | none | none | No text would have helped.")
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps()[-1], "retro")
+        lessons = self.lessons()
+        self.assertIn("**What went wrong:** round 1: feature.txt is wrong.", lessons)
+        self.assertIn("- IGNORED (everyone, steering) AGENTS.md: The agent read it and went on. [record rec-0004]\n",
+                      lessons)
+        self.assertIn("- UNLOADED (project, skill) not-read.md: It never saw this file. [record rec-0004]\n", lessons)
+        inherent = lessons.split("**Inherent:**\n", 1)[1]
+        self.assertIn("- INHERENT (person, none) no named file: No text would have helped. [record rev-0001]", inherent)
+        self.assertNotIn("IGNORED", inherent)
+        self.assertNotIn("(unverified)", lessons)
+        self.assertNotIn("no session log", lessons)
+        digest = (self.work / ".loop" / "issue-12" / "evidence.md").read_text()
+        self.assertIn("### build session build-session", digest)
+        self.assertIn("rec-0004 2026-10-30T10:00:03.000Z read AGENTS.md", digest)
+        self.assertIn("Edits: feature.txt 1, scripts/thing.py 2", digest)
+        self.assertIn("Tests passed: record rev-0001", digest)
+        self.assertIn("Review FIX: record rev-0010", digest)
+        prompt = (self.state / "retro-prompt").read_text()
+        for held in ("rec-0004", "Plan: add feature.txt.", "VERDICT: PASS", "+++ b/feature.txt"):
+            self.assertIn(held, prompt)
+        self.assertIn("--restricted", json.loads((self.state / "retro-argv").read_text()))
+        entries = json.loads((self.work / ".loop" / "issue-12" / "usage.json").read_text())
+        self.assertEqual(entries[-1]["step"], "retro")
+
+    def test_a_blocked_run_gets_a_retro_and_stays_blocked(self):
+        self.retro_setup()
+        (self.state / "verdict").write_text("FIX")
+        self.retro_says("FINDING: WRONG | rec-0009 | everyone | steering | AGENTS.md | It said the opposite.")
+        self.go()
+        self.assertIn("- WRONG (everyone, steering) AGENTS.md: It said the opposite. [record rec-0009]\n", self.lessons())
+        self.assertEqual(self.status()["issues"][0]["state"], "blocked")
+        self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+
+    def test_a_finding_that_cant_be_checked_is_dropped_with_a_fixed_log_line(self):
+        self.retro_setup()
+        self.retro_says("FINDING: IGNORED | rec-not-there | everyone | steering | AGENTS.md | MADE-UP-TEXT one.",
+                        "FINDING: IGNORED | none | everyone | steering | AGENTS.md | MADE-UP-TEXT two.",
+                        "FINDING: BORED | rec-0004 | everyone | steering | AGENTS.md | MADE-UP-TEXT three.",
+                        "FINDING: IGNORED | rec-0004 | galaxy | steering | AGENTS.md | MADE-UP-TEXT four.",
+                        "FINDING: IGNORED | rec-0004 | MADE-UP-TEXT five.",
+                        "FINDING: INHERENT | rec-0004 | person | none | none | This one stays.")
+        self.go()
+        self.assertNotIn("MADE-UP-TEXT", self.lessons())
+        self.assertIn("This one stays.", self.lessons())
+        retro = [l.split(" ", 3)[3] for l in self.lines() if l.split()[2] == "RETRO"]
+        self.assertEqual(retro, ["dropped a finding: its record isn't in the session logs"] * 2
+                         + ["dropped a finding: unknown cause or scope"] * 2
+                         + ["dropped a finding: not in the asked-for shape", "done 1 finding"])
+
+    def test_unverified_compares_against_the_cited_records_own_session(self):
+        log = loop.session_events(RETRO_LOG, "/work/tree")
+        other = {"events": [{"kind": "read", "uuid": "elsewhere", "timestamp": "", "at": 0, "file": "other.md"}],
+                 "ids": {"elsewhere": 0}}
+        rounds = [{"round": 1, "sessions": [{"step": "build", "session": "a", "log": log},
+                                            {"step": "review", "session": "b", "log": other}]}]
+
+        def marked(*line):
+            kept, dropped = loop.parse_findings("FINDING: {} | {} | everyone | s | {} | x".format(*line),
+                                                rounds, "/work/tree")
+            self.assertEqual(dropped, [])
+            return kept[0]["unverified"]
+
+        self.assertFalse(marked("IGNORED", "rec-0004", "AGENTS.md"))
+        self.assertFalse(marked("IGNORED", "rec-0004", "/work/tree/AGENTS.md"))
+        self.assertFalse(marked("IGNORED", "rec-0004", "steering/building-and-testing.md"))
+        self.assertTrue(marked("UNLOADED", "rec-0004", "AGENTS.md"))
+        self.assertFalse(marked("UNLOADED", "rec-0004", "never-seen.md"))
+        self.assertTrue(marked("IGNORED", "rec-0004", "never-seen.md"))
+        self.assertFalse(marked("WRONG", "rec-0004", "AGENTS.md"))
+        self.assertTrue(marked("WRONG", "rec-0004", "never-seen.md"))
+        # read only in another session, only after the cited record, or only by a subagent
+        self.assertTrue(marked("IGNORED", "rec-0004", "other.md"))
+        self.assertFalse(marked("UNLOADED", "rec-0004", "other.md"))
+        self.assertTrue(marked("IGNORED", "rec-0004", "read-late.md"))
+        self.assertFalse(marked("IGNORED", "rec-0010", "read-late.md"))
+        self.assertTrue(marked("IGNORED", "rec-0010", "subagent-only.md"))
+        self.assertTrue(marked("IGNORED", "rec-0004", "none"))
+
+    def test_session_events_keeps_what_it_can_read_and_never_raises(self):
+        found = loop.session_events(RETRO_LOG, "/work/tree")
+        self.assertEqual([(e["kind"], e["uuid"], e["file"]) for e in found["events"]], [
+            ("injected", "rec-0002", "steering/building-and-testing.md"), ("injected", "rec-0003", None),
+            ("read", "rec-0004", "AGENTS.md"), ("edited", "rec-0005", "scripts/thing.py"),
+            ("edited", "rec-0006", "scripts/thing.py"), ("edited", "rec-0007", "feature.txt"),
+            ("read", "rec-0009", "read-late.md")])
+        self.assertEqual(list(found["ids"]), ["rec-{:04}".format(n) for n in range(1, 11)])
+        self.assertEqual(loop.session_events(Path(self.tmp.name) / "no-such-log"), {"events": [], "ids": {}})
+
+    def test_a_session_id_that_isnt_an_id_is_never_looked_up(self):
+        transcripts = Path(self.tmp.name) / "transcripts"
+        (transcripts / "p").mkdir(parents=True)
+        (transcripts / "p" / "good.jsonl").write_text("")
+        with mock.patch.object(loop, "TRANSCRIPTS", transcripts):
+            self.assertEqual(loop.session_log("good"), transcripts / "p" / "good.jsonl")
+            for bad in ("../good", "*", "go?d", "good\n", "", None, 7):
+                self.assertIsNone(loop.session_log(bad), bad)
+
+    def test_a_run_with_no_session_id_says_no_session_log(self):
+        self.retro_setup(logged=False)
+        folder = self.work / ".loop" / "issue-12"
+        folder.mkdir(parents=True)
+        (folder / "evidence.md").write_text("an earlier run's")
+        self.retro_says("FINDING: IGNORED | none | everyone | steering | AGENTS.md | Nothing to cite.",
+                        "FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | MADE-UP-TEXT.")
+        self.assertEqual(self.go(), 0)
+        self.assertIn("**Evidence:** no session log", self.lessons())
+        self.assertIn("Nothing to cite. [record none] (unverified)", self.lessons())
+        self.assertNotIn("MADE-UP-TEXT", self.lessons())
+        self.assertFalse((folder / "evidence.md").exists())
+        self.assertIn("### build: no session log", (self.state / "retro-prompt").read_text())
+
+    def test_a_codex_run_says_no_session_log(self):
+        self.retro_setup(logged=False)
+        self.cfg.update(agent="codex", reader_agent="codex")
+        self.assertEqual(self.go(), 0)
+        self.assertIn("**Evidence:** no session log", self.lessons())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+
+    def test_a_session_whose_log_is_missing_is_marked_in_its_round_and_the_others_still_count(self):
+        self.retro_setup()
+        (Path(self.tmp.name) / "transcripts" / "some-project" / "review-session.jsonl").unlink()
+        self.retro_says("FINDING: IGNORED | rec-0004 | everyone | steering | AGENTS.md | From the build.")
+        self.go()
+        digest = (self.work / ".loop" / "issue-12" / "evidence.md").read_text()
+        self.assertIn("### review: no session log", digest)
+        self.assertIn("Tests passed: record none, no session log", digest)
+        self.assertIn("From the build. [record rec-0004]\n", self.lessons())
+        self.assertNotIn("**Evidence:**", self.lessons())
+
+    def test_a_retro_that_fails_leaves_the_entry_unclassified_and_the_outcome_the_same(self):
+        for verdict, state in (("PASS", "pr"), ("FIX", "blocked")):
+            with self.subTest(verdict=verdict):
+                self.tearDown()
+                self.setUp()
+                self.retro_setup()
+                (self.state / "verdict").write_text(verdict)
+                (self.state / "retro-fails").write_text("")
+                self.go()
+                self.assertIn(loop.UNCLASSIFIED, self.lessons())
+                self.assertEqual(self.status()["issues"][0]["state"], state)
+                self.assertIn("RETRO unclassified: agent exit 3", "\n".join(self.lines()))
+
+    def test_a_retro_that_times_out_leaves_the_entry_unclassified_and_the_pull_request_stands(self):
+        self.retro_setup()
+        self.cfg["agent_timeout"] = 5
+        (self.state / "retro-hangs").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertIn(loop.UNCLASSIFIED, self.lessons())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+        self.assertIn("RETRO unclassified: agent exit 124", "\n".join(self.lines()))
+
+    def test_a_retro_over_the_budget_never_starts_and_the_outcome_is_the_same(self):
+        self.retro_setup()
+        # 200 tokens a run: the second round's review starts at 800 and takes it to 1,000, which only the retro sees.
+        self.cfg["max_issue_tokens"] = 900
+        self.assertEqual(self.go(), 0)
+        self.assertNotIn("retro", self.started_steps())
+        self.assertIn(loop.UNCLASSIFIED, self.lessons())
+        self.assertEqual(self.status()["issues"][0]["state"], "pr")
+        self.assertIn("RETRO unclassified: over max_issue_tokens", "\n".join(self.lines()))
+
+    def test_a_crash_in_the_retro_leaves_the_entry_unclassified_with_its_type_alone(self):
+        self.retro_setup()
+        with mock.patch.object(loop, "evidence_digest", side_effect=ValueError("SECRET-WORDS")):
+            self.assertEqual(self.go(), 0)
+        self.assertIn(loop.UNCLASSIFIED, self.lessons())
+        self.assertIn("RETRO unclassified: ValueError", "\n".join(self.lines()))
+        self.assertNotIn("SECRET-WORDS", "\n".join(self.lines()))
+
+    def test_a_ctrl_c_in_the_retro_writes_the_entry_and_no_line_and_propagates(self):
+        self.retro_setup()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            lp = loop.Loop(self.work, self.cfg)
+            with mock.patch.object(lp, "retro", side_effect=loop.Interrupted()), self.assertRaises(loop.Interrupted):
+                lp.lesson(12, 1, ["round 1: wrong"], passed=False)
+        self.assertIn(loop.UNCLASSIFIED, self.lessons())
+        log = self.work / ".loop" / "loop.log"
+        self.assertNotIn("RETRO", log.read_text() if log.exists() else "")
+
+    def test_what_a_retro_edits_is_thrown_away(self):
+        self.retro_setup()
+        (self.state / "retro-edits").write_text("")
+        self.go()
+        self.assertFalse((Path(self.tmp.name) / "trees" / "issue-12" / "retro-sneaky.txt").exists())
+        self.assertIn("RETRO retro reader edited files; discarded", "\n".join(self.lines()))
+
+    def test_what_is_in_a_log_or_a_retros_reply_reaches_neither_github_nor_the_log(self):
+        for verdict in ("PASS", "FIX"):
+            with self.subTest(verdict=verdict):
+                self.tearDown()
+                self.setUp()
+                self.retro_setup()
+                (self.state / "verdict").write_text(verdict)
+                self.retro_says("FINDING: IGNORED | rec-0004 | everyone | steering | SENTINEL-FROM-THE-LOG.md | "
+                                "SENTINEL-FROM-THE-LOG")
+                self.go()
+                self.assertIn("SENTINEL-FROM-THE-LOG", self.lessons())
+                self.assertNotIn("SENTINEL-FROM-THE-LOG", (self.state / "gh-calls").read_text())
+                self.assertNotIn("SENTINEL-FROM-THE-LOG", "\n".join(self.raw_lines()))
+                # What the log holds beyond its paths and ids goes no further than the log.
+                self.assertNotIn("SENTINEL-FROM-THE-LOG", (self.work / ".loop" / "issue-12" / "evidence.md").read_text())
 
     def test_a_run_that_reports_no_usage_is_recorded_as_not_reported_never_zero(self):
         self.go()
