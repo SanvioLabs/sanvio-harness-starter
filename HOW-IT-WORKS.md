@@ -174,7 +174,16 @@ on disk under it, it logs one `STALE` line on an idle poll and carries on, and
 
 **More than one at once.** Set `max_workers` in `loop.json` and it works up to
 that many ready issues side by side, each in its own worktree. One that depends
-on an issue still being worked waits for it. Each issue's agents write what
+on an issue still being worked waits for it. So does one held by a path: when a
+ticket's Scope **In** names, in backticks, a file or folder that a running
+issue's ticket also named, it waits until that issue's worker ends, and any
+ready issue that doesn't overlap can start meanwhile. The log says
+`#13 HELD waits on #12 for src/app/main.py` once, its queue row in `status.json`
+has `waiting_on` and `held_path` while it's held, and with more than one worker
+a `--dry-run` prints a `HELD` line for each issue that overlaps its pick. The
+loop only knows what tickets name: it won't notice an agent editing a file its
+ticket left out, and a worker ends once its pull request is open, so an open
+pull request holds nothing. Each issue's agents write what
 they say to `.loop/issue-N/agent.log` as they say it. A `claude` agent's
 window also shows each tool call it makes by its name and target, such as
 `→ Read scripts/loop.py`. Run inside tmux, each

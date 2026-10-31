@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-30: Loop holds tickets that name the same file
+
+With `max_workers` above 1, the loop no longer starts an issue whose ticket names, in backticks under Scope **In**, a file or folder that a running issue's ticket named. It logs `#13 HELD waits on #12 for src/app/main.py` once, shows `waiting_on` and `held_path` on the issue's queue row, and starts it once that worker ends. Ready issues that don't overlap still start, and a `--dry-run` with more than one worker prints a `HELD` line for each issue that overlaps its pick. A ticket that names no path runs as it did. The loop only knows what tickets name, not what else an agent edits.
+Files: [`scripts/loop.py`](scripts/loop.py), [`tests/test_loop.py`](tests/test_loop.py), [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md), [`steering/tickets.md`](steering/tickets.md), [`.github/ISSUE_TEMPLATE/loop-task.md`](.github/ISSUE_TEMPLATE/loop-task.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** name exact files in backticks in a ticket's Scope **In**, with folders as `dir/` or `a/b`. A running loop needs `python3 scripts/loop.py stop`, then starting again, to pick this up.
+
 ## 2026-10-30: Loop pane tabs keep one height
 
 The loop pane's **Queue** tab now takes the same 21 rows on the terminal as **Active** and **Finished**, so what's below the list stays put as you change tabs. **Queue** shows up to 21 issues instead of 3, and **▲ more**, **▼ more** and the wheel move it a line at a time. On Desktop and VS Code it shows up to 21 too, and a short queue still holds only three lines open.

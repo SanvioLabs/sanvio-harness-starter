@@ -40,7 +40,8 @@ they said it. Checkouts live outside the clone, in ~/.harness-loop/. It never me
 
 max_workers in loop.json (default 1) is how many issues it works at once, each on its own thread
 and each agent its own session, so usage grows with it. Inside tmux each issue gets a window,
-issue-N, that follows its agent.log and closes when the issue ends.
+issue-N, that follows its agent.log and closes when the issue ends. An issue whose Scope names a
+path a running issue's Scope names waits for it, with a HELD line in the log.
 
 --project projects/<name> works a clone under projects/ instead of the harness: its GitHub repo's
 issues and pull requests, its loop.json, which has to set test_command, and its checkouts under
@@ -152,6 +153,10 @@ CLOSED_BY_QUERY = """query($owner: String!, $name: String!, $n: Int!) {
 # wrote it from an issue. This keeps the easy reach to your accounts out of it; it's not a sandbox.
 SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSW|API_?KEY|PRIVATE_?KEY|CREDENTIAL|ACCESS_?KEY|^AWS_|^SSH_AUTH_SOCK$", re.I)
 DEPENDS_ON = re.compile(r"(?im)^\s*depends on\b.*$")
+SCOPE = re.compile(r"(?ims)^##[ \t]+scope[ \t]*$(.*?)(?=^#{1,2}\s|\Z)")  # a ticket's Scope section
+SCOPE_IN = re.compile(r"(?is)\*\*in:\*\*(.*?)(?=\*\*out:\*\*|\Z)")  # the In half of it
+BACKTICKED = re.compile(r"`([^`\n]+)`")
+PATH_TOKEN = re.compile(r"[\w./-]+")
 DURATION = re.compile(r"[1-9][0-9]*[mhd]")  # --for's value, whole
 UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")  # in datetime.weekday() order
@@ -408,6 +413,31 @@ def depends_on(body):
     for line in DEPENDS_ON.findall(body or ""):
         found.update(int(n) for n in re.findall(r"#(\d+)", line))
     return sorted(found)
+
+
+def scope_paths(body):
+    """The files and folders an issue's Scope names in backticks under **In:**, in order, each once.
+
+    A token counts when it's only path characters, doesn't start with - or /, and has a slash or a
+    dot: `src/app`, `dir/` and `README.md` do; `max_workers` and `run --dry-run` don't.
+    """
+    section = SCOPE.search((body or "").replace("\r\n", "\n"))
+    part = SCOPE_IN.search(section.group(1)) if section else None
+    found = []
+    for token in BACKTICKED.findall(part.group(1)) if part else []:
+        if not PATH_TOKEN.fullmatch(token) or token.startswith(("-", "/")):
+            continue
+        if "/" not in token and "." not in token:
+            continue
+        path = (token[2:] if token.startswith("./") else token).rstrip("/")
+        if path.strip("./") and path not in found:
+            found.append(path)
+    return found
+
+
+def overlaps(a, b):
+    """Whether two paths are the same, or one is a folder holding the other."""
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
 def confined(cmd):
@@ -871,6 +901,7 @@ class Loop:
         self.finished = set()
         self.session = None  # the tmux session this run is in, once locked() has asked
         self.windows = {}  # issue number -> the tmux window following its agent.log
+        self.claims = {}  # issue number -> the paths its Scope named when a worker started on it
         self.rounds = {}  # issue number -> {"tests": [...], "verdicts": [...]}, a round each, for its history line
         self.agents = set()  # the agents stream() is running, so a Ctrl-C can end them
         self.interrupted = threading.Event()  # set by a Ctrl-C: workers then stop without touching GitHub
@@ -1323,7 +1354,7 @@ class Loop:
 
     def discover(self, only=None, dry_run=False, busy=()):
         """The next issue to start, or None. busy is the issues a worker is already on: never picked again,
-        and an issue that depends on one waits for it."""
+        and an issue that depends on one, or names a path one's Scope names, waits for it."""
         code, out = self.gh("issue", "list", "--state", "open", "--label", self.cfg["ready_label"],
                             "--limit", "1000", "--json", "number,title,body,labels,assignees")
         if code != 0:
@@ -1333,7 +1364,36 @@ class Loop:
         self.save_status(queue=[{"number": i["number"], "title": i["title"]} for i in waiting])
         # Only an issue with nothing left to wait for may be picked; the queue still shows the rest.
         free = [i for i in waiting if i["number"] not in busy and self.held(i, dry_run, busy) == "ok"]
-        return pick(free, self.whoami(), self.cfg, only)
+        free = [i for i in free if not self.hold(i, self.claims)]
+        issue = pick(free, self.whoami(), self.cfg, only)
+        if dry_run and issue and only is None and (workers(self.cfg) or 1) > 1:
+            # A dry run starts nothing, so nothing is claimed: its pick stands in for the running issue.
+            claim = {issue["number"]: scope_paths(issue.get("body"))}
+            for other in free:
+                if other["number"] != issue["number"]:
+                    self.hold(other, claim)
+        return issue
+
+    def hold(self, issue, claims):
+        """Whether a path in this issue's Scope overlaps one a running issue claims. Logged once per
+        issue and path, and shown on its queue row, which the next discover rebuilds."""
+        number = issue["number"]
+        paths = scope_paths(issue.get("body"))
+        waits = {}  # the running issue -> this issue's first path that overlaps it
+        for other in sorted(claims):
+            for path in paths:
+                if any(overlaps(path, theirs) for theirs in claims[other]):
+                    waits.setdefault(other, path)
+                    self.log_once("HELD", "waits on #{} for {}".format(other, path), number)
+        if not waits:
+            return False
+        with self.write_lock:
+            for row in self.status["queue"]:
+                if row["number"] == number:
+                    row["waiting_on"] = list(waits)
+                    row["held_path"] = next(iter(waits.values()))
+            self.save_status()
+        return True
 
     def fresh(self, issue):
         """The issue as GitHub has it now, if the loop may build from it; None when it may not.
@@ -1894,6 +1954,8 @@ class Loop:
                 if dry_run:
                     self.log("DISCOVER", 'would pick "{}"'.format(issue["title"]), issue["number"])
                     break
+                # From the body discover listed, so the claim outlasts any label change while it runs.
+                self.claims[issue["number"]] = scope_paths(issue.get("body"))
                 running[issue["number"]] = self.start(issue)
                 if once or only is not None:
                     break
@@ -1910,6 +1972,7 @@ class Loop:
                 except (ProcessLookupError, PermissionError):
                     pass  # it ended on its own meanwhile
             running.clear()
+            self.claims.clear()
             raise
         finally:
             for sig, before in caught.items():
@@ -1926,6 +1989,7 @@ class Loop:
             thread = running.pop(number, None)  # None for one an earlier run() already joined
             if thread is not None:
                 thread.join()
+            self.claims.pop(number, None)  # so the next discover can start what it held
 
     def start(self, issue):
         """process() the issue on a thread of its own, after opening its tmux window when there's a session."""
