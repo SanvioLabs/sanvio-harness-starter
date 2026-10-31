@@ -2174,6 +2174,185 @@ class TestAPass(unittest.TestCase):
         self.assertNotIn("", ran)
         self.assertNotIn("GENERATE", [l.split()[2] for l in self.lines()])
 
+    # -- setup_command -----------------------------------------------------
+
+    def setup_counts(self, then=""):
+        """Set a setup_command that records each run in setup-ran, then does then."""
+        self.cfg["setup_command"] = "echo ran >> {}/setup-ran{}".format(self.state, "; " + then if then else "")
+
+    def setup_runs(self):
+        path = self.state / "setup-ran"
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def setup_marker(self):
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        return Path(git(tree, "rev-parse", "--absolute-git-dir").stdout.strip()) / "loop-setup-done"
+
+    def test_setup_runs_in_the_worktree_before_the_first_agent(self):
+        self.cfg["setup_command"] = "echo setup >> {0}/agents-started; pwd > {0}/setup-cwd".format(self.state)
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps()[:2], ["setup", "plan"])
+        self.assertEqual([l.split()[2] for l in self.lines()][:3], ["DISCOVER", "SETUP", "SHAPE"])
+        self.assertEqual(Path((self.state / "setup-cwd").read_text().strip()).resolve(),
+                         (Path(self.cfg["worktree_dir"]) / "issue-12").resolve())
+
+    def test_setup_runs_once_across_rounds(self):
+        self.setup_counts()
+        (self.state / "fix-once").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps().count("build"), 2)
+        self.assertEqual(self.setup_runs(), 1)
+
+    def test_an_empty_or_unset_setup_command_runs_nothing(self):
+        for unset in (False, True):
+            with self.subTest(unset=unset):
+                self.tearDown()
+                self.setUp()
+                if unset:
+                    del self.cfg["setup_command"]
+                ran = []
+                sh = loop.Loop.sh
+
+                def spy(me, cmd, *args, **kwargs):
+                    ran.append(cmd)
+                    return sh(me, cmd, *args, **kwargs)
+
+                with mock.patch.object(loop.Loop, "sh", spy):
+                    self.assertEqual(self.go(), 0)
+                self.assertNotIn("", ran)
+                self.assertNotIn(["git", "rev-parse", "--absolute-git-dir"], ran)
+                self.assertNotIn("SETUP", [l.split()[2] for l in self.lines()])
+                self.assertFalse(self.setup_marker().exists())
+                self.assertTrue(any(c.startswith("pr create") for c in self.calls()))
+
+    def test_setup_runs_without_anything_named_like_a_token(self):
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "not-a-real-token", "NPM_TOKEN": "not-a-real-token"}):
+            self.cfg["setup_command"] = "env > {}/setup-env".format(self.state)
+            self.go()
+        seen = (self.state / "setup-env").read_text()
+        self.assertNotRegex(seen, r"(?m)^\w*_TOKEN=")
+        self.assertIn("PATH=", seen)
+
+    def setup_output(self):
+        return (self.work / ".loop" / "issue-12" / "setup-output.txt").read_text()
+
+    def test_a_setup_that_fails_blocks_and_keeps_its_output_on_this_machine(self):
+        self.cfg["setup_command"] = "echo SETUP-OUT; echo SETUP-ERR >&2; exit 3"
+        self.go()
+        self.assertEqual(self.started_steps(), [])
+        self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+        comments = self.comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("setup failed (exit 3), and its output is in setup-output.txt", comments[0])
+        self.assertIn("SETUP-OUT", self.setup_output())
+        self.assertIn("SETUP-ERR", self.setup_output())
+        for kept in (comments[0], (self.work / ".loop" / "loop.log").read_text(),
+                     (self.work / ".loop" / "status.json").read_text()):
+            self.assertNotIn("SETUP-OUT", kept)
+            self.assertNotIn("SETUP-ERR", kept)
+
+    def test_a_setup_that_times_out_blocks_and_keeps_what_it_printed_so_far(self):
+        self.cfg["test_timeout"] = 1
+        self.cfg["setup_command"] = "echo started; echo warned >&2; sleep 5"
+        self.go()
+        self.assertEqual(self.started_steps(), [])
+        self.assertIn("setup failed (exit 124)", self.comments()[0])
+        self.assertNotIn("warned", self.comments()[0])
+        for line in ("started", "warned", "timed out after 1s"):
+            self.assertIn(line, self.setup_output())
+        self.assertFalse(self.setup_marker().exists())
+
+    def test_setup_does_not_run_on_a_branch_with_the_loops_commits_and_no_marker(self):
+        (self.state / "fix-once").write_text("")
+        self.assertEqual(self.go(), 0)  # with no setup_command: the branch now has the loop's commits
+        self.assertTrue(self.started_steps())
+        self.setup_counts()
+        self.go()
+        self.assertEqual(self.setup_runs(), 0)
+        self.assertIn("already has the loop's commits and hasn't run setup", self.comments()[-1])
+        self.assertFalse(self.setup_marker().exists())
+
+    def test_setup_runs_on_a_branch_with_only_a_persons_commit(self):
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        git(self.work, "worktree", "add", "-q", "-b", "loop/issue-12", str(tree), "origin/main")
+        (tree / "mine.txt").write_text("mine\n")
+        git(tree, "add", "-A")
+        git(tree, "commit", "-q", "-m", "A person's own commit")
+        self.setup_counts()
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.setup_runs(), 1)
+
+    def test_a_path_setup_leaves_can_not_ping_anyone(self):
+        self.cfg["setup_command"] = "touch @someone"
+        self.go()
+        self.assertIn("@\u200bsomeone", self.comments()[0])
+        self.assertNotIn("@someone", self.comments()[0])
+
+    def test_setup_runs_again_when_an_issue_is_put_back_after_it_failed(self):
+        self.setup_counts("test -f {}/setup-fixed".format(self.state))
+        self.go()
+        self.assertEqual((self.setup_runs(), self.started_steps()), (1, []))
+        self.assertFalse(self.setup_marker().exists())
+        (self.state / "setup-fixed").write_text("")
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.setup_runs(), 2)
+        self.assertEqual(self.started_steps()[0], "plan")
+        self.assertTrue(self.setup_marker().exists())
+
+    def test_setup_does_not_run_again_when_an_issue_is_put_back_after_it_succeeded(self):
+        self.setup_counts()
+        agent = self.cfg["agent"]
+        self.cfg["agent"] = "false"
+        self.go()
+        self.assertIn("issue edit 12 --add-label loop:blocked", self.calls())
+        self.cfg["agent"] = agent
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(self.started_steps().count("plan"), 2)
+        self.assertEqual(self.setup_runs(), 1)
+
+    def test_a_setup_that_leaves_changes_blocks_naming_them_and_again_when_put_back(self):
+        self.setup_counts("echo x > junk.txt")
+        self.go()
+        self.go()
+        self.assertEqual(self.setup_runs(), 2)
+        self.assertEqual(self.started_steps(), [])
+        comments = self.comments()
+        self.assertEqual(len(comments), 2)
+        for comment in comments:
+            self.assertIn("uncommitted changes after setup", comment)
+            self.assertIn("junk.txt", comment)
+        self.assertFalse(self.setup_marker().exists())
+        self.assertNotIn("junk.txt", git(self.work, "log", "--all", "--name-only", "--format=").stdout)
+
+    def test_a_block_names_only_the_first_paths_setup_left(self):
+        self.cfg["setup_command"] = "seq 25 | xargs touch"
+        self.go()
+        self.assertIn("and 15 more", self.comments()[0])
+
+    def test_a_setup_that_writes_only_ignored_files_goes_on_and_they_stay_out_of_the_commit(self):
+        (self.work / ".gitignore").write_text("node_modules/\n")
+        git(self.work, "add", "-A")
+        git(self.work, "commit", "-q", "-m", "ignore")
+        git(self.work, "push", "-q", "origin", "main")
+        self.cfg["setup_command"] = "mkdir node_modules && touch node_modules/installed"
+        self.assertEqual(self.go(), 0)
+        tree = Path(self.cfg["worktree_dir"]) / "issue-12"
+        self.assertTrue((tree / "node_modules" / "installed").exists())
+        self.assertEqual(git(tree, "show", "--name-only", "--format=", "HEAD").stdout.split(), ["feature.txt"])
+
+    def test_a_git_that_fails_after_setup_blocks_before_any_agent(self):
+        self.cfg["setup_command"] = "rm .git"
+        self.go()
+        self.assertEqual(self.started_steps(), [])
+        self.assertIn("could not check the worktree after setup", self.comments()[0])
+
+    def test_a_worktree_with_no_git_folder_blocks_without_running_setup(self):
+        (Path(self.cfg["worktree_dir"]) / "issue-12").mkdir(parents=True)
+        self.setup_counts()
+        self.go()
+        self.assertEqual((self.setup_runs(), self.started_steps()), (0, []))
+        self.assertIn("could not find the worktree's git folder", self.comments()[0])
+
     def test_dry_run_names_the_issue_and_starts_no_agent(self):
         self.go(dry_run=True)
         self.assertEqual(len(self.lines()), 1)
@@ -3422,9 +3601,10 @@ class TestProject(unittest.TestCase):
     def test_a_projects_own_loop_json_sets_only_the_project_keys(self):
         (self.project / "loop.json").write_text(json.dumps({
             "test_command": "make test", "test_timeout": 9, "base": "dev", "ready_label": "go",
-            "blocked_label": "stuck", "generate_command": "make files"}))
+            "blocked_label": "stuck", "generate_command": "make files", "setup_command": "make deps"}))
         cfg = loop.Loop(self.harness, project=self.project).cfg
-        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS], ["make test", 9, "dev", "go", "stuck", "make files"])
+        self.assertEqual([cfg[k] for k in loop.PROJECT_KEYS],
+                         ["make test", 9, "dev", "go", "stuck", "make files", "make deps"])
 
     def test_a_project_gets_no_generate_command_from_the_harness(self):
         (self.project / "loop.json").write_text(json.dumps({"test_command": PROJECT_TESTS}))

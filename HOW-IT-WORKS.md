@@ -205,6 +205,7 @@ keeps its default:
 | `review_agent` | empty | The command that reviews, when it's set, or a name: `claude`, `codex` or `ollama:<model>`. Empty means `reader_agent` reviews. Held to read tools the same way, and for `review` it has to be `claude` or `ollama:<model>` |
 | `test_command` | `python3 -m unittest discover -s tests` | Run by the script, in the worktree |
 | `generate_command` | For the harness, `UPDATE_SAMPLE=1 python3 -m unittest tests.test_dashboard_data.Sample; python3 scripts/draw_dashboard.py`. For a project, empty | Run by the script after each build, before the commit, in the worktree, with the same environment and timeout as `test_command`. What it writes goes in that round's commit, for files the build agent can't make itself. Empty runs nothing. One that fails logs a `GENERATE` line with its exit code, and the round goes on |
+| `setup_command` | empty | Run by the script once per worktree, before the planner, with the same environment and timeout as `test_command`, such as `npm ci`. Empty runs nothing. It logs `SETUP done` when it passes. One that fails or times out blocks the issue, with its output kept in `.loop/issue-N/setup-output.txt` and off the public comment. On a branch that already has the loop's commits and no record of setup, it doesn't run and the issue blocks, since it would run what an agent wrote; remove the worktree and the branch to start over. One that passes but leaves anything git would commit blocks too, naming the paths, so it may write only what git ignores. A blocked setup runs again when the issue is put back; a passed one doesn't, even if the command changes, until the worktree is removed |
 | `base`, `max_rounds` | `main`, `5` | Where branches start, and rounds before giving up |
 | `max_workers` | `1` | How many issues it works at once. Each runs its own agent sessions, so usage grows with it |
 | `max_issue_tokens` | `0` | Tokens one run of an issue may use before it's blocked. `0` means no budget. *A token budget* above has the detail |
@@ -284,6 +285,13 @@ the manifest disagrees with it: `npm ci && npm test`, or `uv run --locked
 pytest`. A fresh checkout has no `node_modules`, so a Node project needs that
 `npm ci` anyway. In the pull request, read any manifest or lockfile change
 before you merge it.
+
+To have the packages there before the agents start, so the planner and the
+build agent can see them, set `setup_command` to the same locked install, such
+as `npm ci` or `uv sync --locked`. Setup runs with no approval, like
+`test_command`, so don't use a command that can pull anything the lockfile
+doesn't name, such as `npm install`. It runs once for each worktree, with every
+variable named like a token removed.
 
 To give a ticket a new dependency, add it yourself first:
 
@@ -369,7 +377,7 @@ script; [`examples/typescript/`](examples/typescript/) has a fuller one. The loo
 isn't on github.com, or a `loop.json` without `test_command`.
 
 Which `loop.json` sets what: the project's own sets only `test_command`,
-`test_timeout`, `base`, `ready_label`, `blocked_label` and `generate_command`. Every other key,
+`test_timeout`, `base`, `ready_label`, `blocked_label`, `generate_command` and `setup_command`. Every other key,
 `agent`, `max_workers` and `allow_lockfile_changes` among them, comes from the
 harness's `loop.json`, and can be set for one project under `"projects"` there,
 keyed by the folder name:
@@ -377,7 +385,7 @@ keyed by the folder name:
     {"max_rounds": 3, "projects": {"app": {"agent": "claude", "max_workers": 2}}}
 
 The order is the defaults, the harness's other keys, its `"projects"` entry for
-the folder, then the project's own five. One of the five the project leaves out
+the folder, then the project's own seven. One of the seven the project leaves out
 is the default, not the harness's value: the harness's `base` describes the
 harness. A project's `loop.json` that sets one of
 the others is refused with an `ERROR` line naming the key, because a clone
