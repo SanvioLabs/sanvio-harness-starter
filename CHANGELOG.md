@@ -29,7 +29,7 @@ fine).
 
 ## 2026-10-31: Decisions and requirement tests in loop pull requests
 
-The loop's planner now writes a short Decisions section and plans tests for what a rule must not touch, and a pull request shows those Decisions above the folded plan. The loop's reviewer writes a table of each requirement and its test from the diff, and returns `VERDICT: FIX` when a requirement has no test. The must-not-touch rule is also in the building and testing steering.
+The loop's planner now writes a short Decisions section and plans tests for what a rule must not touch, and a pull request shows those Decisions above the folded plan. The loop's reviewer writes a table of each requirement and its test from the diff, and returns `VERDICT: FIX` when a requirement has no test. The must-not-touch rule is also in the building and testing steering. Behaviour the plan's requirements don't ask for gets a row too.
 Files: [`scripts/loop.py`](scripts/loop.py), [`steering/building-and-testing.md`](steering/building-and-testing.md), [`CHANGELOG.md`](CHANGELOG.md), [`tests/test_loop.py`](tests/test_loop.py), [`tests/test_pulse.py`](tests/test_pulse.py).
 
 **Do:** nothing.

@@ -355,10 +355,15 @@ class TestPureParts(unittest.TestCase):
                 self.assertIn(part, prompt)
             self.assertNotIn(EM_DASH, prompt)
 
+    def test_the_reviewer_tests_behaviour_the_plan_did_not_ask_for(self):
+        prompt = loop.review_prompt("Plan.", "+x", "ok", 0)
+        for part in ("don't ask for", "an extra refusal", "gets its own row", "added behaviour has a test"):
+            self.assertIn(part, prompt)
+
     def test_the_reviewer_is_asked_for_a_table_of_requirements_and_their_tests(self):
         prompt = loop.review_prompt("Plan.", "+x", "ok", 0)
         for part in ("columns Requirement and Test", "from the diff", "gets none in the Test column",
-                     "the verdict is VERDICT: FIX", "every requirement has a test",
+                     "the verdict is VERDICT: FIX", "every requirement and added behaviour has a test",
                      "names that file in the Test column instead"):
             self.assertIn(part, prompt)
         # The verdict line is still what the loop reads, so the table can't be what comes last.

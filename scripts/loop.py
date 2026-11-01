@@ -694,9 +694,11 @@ def review_prompt(plan, diff, tests, code, rules="", generate="", fixed=()):
         "each requirement in the plan, filled in from the diff, not from what the plan says the "
         "tests will be. A requirement with no test in the diff gets none in the Test column, and "
         "the verdict is VERDICT: FIX. A requirement that only adds prose, such as a changelog "
-        "entry or a rule in a doc, names that file in the Test column instead.\n"
+        "entry or a rule in a doc, names that file in the Test column instead. Anything the diff makes "
+        "the code do that the plan's requirements don't ask for, such as an extra refusal, gets its own "
+        "row, and with no test in the diff the verdict is VERDICT: FIX too.\n"
         "Your last line must be exactly VERDICT: PASS or VERDICT: FIX. PASS only if the "
-        "tests exited 0, the diff matches the plan and every requirement has a test.{generate}{held}\n\n"
+        "tests exited 0, the diff matches the plan and every requirement and added behaviour has a test.{generate}{held}\n\n"
         "PLAN:\n{plan}\n\nDIFF:\n{diff}\n\nTEST OUTPUT:\n{tests}\n"
     ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests), held=held,
              generate=generated(generate, "Its files in the diff aren't outside the plan, and don't ask for it to be "
