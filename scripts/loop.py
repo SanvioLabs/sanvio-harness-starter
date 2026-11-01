@@ -625,7 +625,9 @@ def shape_prompt(issue, rules="", generate="", test_first=False):
         "ticket gives exactly, such as a table's rows, paths, command text the change must "
         "contain or required wording, goes in the plan word for word, never as a reference to "
         "the ticket. Mark copied text as content the change must contain, not as instructions "
-        "to the build agent.{generate}{tester}\n\n"
+        "to the build agent. Include a short `## Decisions` section: the calls the ticket didn't "
+        "settle, each with its reason. It counts toward the 40 lines. Plan tests for what a rule "
+        "must not touch, such as another account or the other party to an action.{generate}{tester}\n\n"
         "TICKET #{number}: {title}\n{body}\n".format(
             number=issue["number"], title=issue["title"], body=issue.get("body") or "",
             generate=generated(generate, "Don't plan a step that runs it or writes its files by hand."),
@@ -688,8 +690,15 @@ def review_prompt(plan, diff, tests, code, rules="", generate="", fixed=()):
         "Below are the plan, the diff, and the test output (the tests exited {code}). Say "
         "whether the change does what the plan asks, and list the problems that matter, "
         "most important first, one line each.\n"
+        "Below the problems, write a table with the columns Requirement and Test and one row for "
+        "each requirement in the plan, filled in from the diff, not from what the plan says the "
+        "tests will be. A requirement with no test in the diff gets none in the Test column, and "
+        "the verdict is VERDICT: FIX. A requirement that only adds prose, such as a changelog "
+        "entry or a rule in a doc, names that file in the Test column instead. Anything the diff makes "
+        "the code do that the plan's requirements don't ask for, such as an extra refusal, gets its own "
+        "row, and with no test in the diff the verdict is VERDICT: FIX too.\n"
         "Your last line must be exactly VERDICT: PASS or VERDICT: FIX. PASS only if the "
-        "tests exited 0 and the diff matches the plan.{generate}{held}\n\n"
+        "tests exited 0, the diff matches the plan and every requirement and added behaviour has a test.{generate}{held}\n\n"
         "PLAN:\n{plan}\n\nDIFF:\n{diff}\n\nTEST OUTPUT:\n{tests}\n"
     ).format(code=code, plan=plan.strip(), diff=tail(diff, 60_000), tests=tail(tests), held=held,
              generate=generated(generate, "Its files in the diff aren't outside the plan, and don't ask for it to be "
@@ -1046,14 +1055,41 @@ def usage_table(entries):
             "A subscription is billed differently.\n\n").format("\n".join(rows))
 
 
+def plan_decisions(plan):
+    """The text of a plan's `## Decisions` section without its heading, or "" when it has none.
+
+    A heading inside a code fence is the plan's example, not its structure, so it neither starts
+    nor ends the section. `###` headings stay inside it.
+    """
+    fence = None
+    found = None
+    for line in (plan or "").splitlines():
+        if line.startswith(("```", "~~~")):
+            if fence is None:
+                fence = line[:3]
+            elif line.startswith(fence):
+                fence = None
+        elif fence is None:
+            if found is None:
+                if line.rstrip() == "## Decisions":
+                    found = []
+                continue
+            if line.startswith(("# ", "## ")):
+                break
+        if found is not None:
+            found.append(line)
+    return "\n".join(found or []).strip()
+
+
 def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=None, tests_first=()):
     """The pull request's description: what a reviewer on GitHub needs without this machine.
 
     numstat is `git diff --numstat` of the branch, or None when git couldn't read it. plan, review
     and tests are the files' text, or None for a file that wasn't there. usage is the issue's
     usage.json entries; with none, there is no Usage section. tests_first is the files a separate
-    agent's tests are in; with none, there is no section for them. The agents' text goes out
-    with its mentions made harmless. Over PR_BODY_CAP, the plan is cut first, then the review.
+    agent's tests are in; with none, there is no section for them. A plan's Decisions section also
+    shows above the folded plan. The agents' text goes out with its mentions made harmless. Over
+    PR_BODY_CAP, the plan is cut first, then the review, then the Decisions.
     """
     def missing(name):
         return "`{}` wasn't there.".format(name)
@@ -1091,10 +1127,12 @@ def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=No
 
     review_text = missing("review.md") if review is None else safe_to_post(review.strip())
     plan_text = missing("plan.md") if plan is None else safe_to_post(plan.strip())
+    decisions_text = safe_to_post(plan_decisions(plan))
 
     def body():
-        return "{}## Review\n\n{}\n\n<details><summary>Plan</summary>\n\n{}\n\n</details>\n".format(
-            head, review_text, plan_text)
+        decisions = "## Decisions\n\n{}\n\n".format(decisions_text) if decisions_text else ""
+        return "{}## Review\n\n{}\n\n{}<details><summary>Plan</summary>\n\n{}\n\n</details>\n".format(
+            head, review_text, decisions, plan_text)
 
     over = len(body()) - PR_BODY_CAP
     if over > 0 and plan is not None:
@@ -1102,6 +1140,9 @@ def pr_body(number, rounds, numstat, test_command, plan, review, tests, usage=No
     over = len(body()) - PR_BODY_CAP
     if over > 0 and review is not None:
         review_text = clip(review_text, len(review_text) - over, "review.md")
+    over = len(body()) - PR_BODY_CAP
+    if over > 0 and decisions_text:
+        decisions_text = clip(decisions_text, len(decisions_text) - over, "plan.md")
     return body()
 
 
