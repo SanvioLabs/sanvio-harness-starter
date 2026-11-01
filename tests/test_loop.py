@@ -2871,7 +2871,7 @@ class TestAPass(unittest.TestCase):
         self.changed_nothing(tree, sha)
 
     def test_a_branch_that_edits_the_top_of_the_file_is_kept(self):
-        tree, sha = self.changelog_conflict("# Changed\n\n" + self.BRANCH_ENTRY + self.OLD_ENTRY)
+        tree, sha = self.changelog_conflict(self.CHANGELOG_HEAD + "A new line.\n\n" + self.BRANCH_ENTRY + self.OLD_ENTRY)
         self.go()
         self.assertEqual(self.update_lines(), ["kept: the branch changes an existing CHANGELOG.md entry"])
         self.changed_nothing(tree, sha)
