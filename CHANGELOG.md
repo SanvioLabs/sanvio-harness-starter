@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Daily pulse question summary
+
+Ask `/pulse` to summarise for leadership and it writes a period's answers, 14 days by default, to a gitignored report you read and send yourself. `python3 scripts/pulse.py summary` prints the same Markdown: for each date and question, how many answered, how many chose each option, and each Other answer quoted as written. It never prints a login or a file name, and it holds back a question fewer than three people answered.
+Files: [`scripts/pulse.py`](scripts/pulse.py), [`skills/pulse/SKILL.md`](skills/pulse/SKILL.md), [`skills/pulse/README.md`](skills/pulse/README.md), [`reports/pulse/README.md`](reports/pulse/README.md), [`.gitignore`](.gitignore), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`skills/starter-updates/capabilities.md`](skills/starter-updates/capabilities.md), [`CHANGELOG.md`](CHANGELOG.md), [`tests/test_pulse_summary.py`](tests/test_pulse_summary.py).
+
+**Do:** nothing beyond the existing folder setup.
+
 ## 2026-10-31: Daily pulse question
 
 Say "pulse" and a team answers one multiple-choice question a day from a shared synced folder, with no server or connector. Each person's answers land in a file named after their login in that folder, anyone with the folder can read them, and `results` prints counts only. Standup mentions the day's question where `company/DATA.md` clears the folder.
