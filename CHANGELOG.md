@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Loop pane running and queued counts
+
+The line beside the loop pane's dropdown now counts the loops running a job and the live loops with ready issues waiting, the one on screen included (`● 2 running · 3 queued`), in place of `● 2 others working`.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-31: Loop merges CHANGELOG.md conflicts
 
 When a loop pull request stops merging only because `CHANGELOG.md` gained entries on its base, the idle loop merges the base in, keeps both sets of entries with the branch's on top, runs the tests, and pushes the merge if they pass, without a force. Any other conflict, an edited entry, a commit the loop didn't push or a worktree with changes logs an `UPDATE kept:` line and changes nothing. Failing tests push nothing and get one comment on the pull request, and each commit of the base is tried once per issue.
