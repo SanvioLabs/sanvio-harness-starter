@@ -44,6 +44,7 @@ breaks. One that passes whatever the code does is decoration.
 - **Test what it should do, from the outside.** Inputs and outputs, not which
   private function got called. A test tied to the implementation breaks on
   every refactor and catches nothing.
+- **Test what a rule must not touch.** Another account's record, the other party to an action. A correct change can still leak, and tests of the intended record alone won't notice.
 - **Mock only at the edges**: the network, the clock, a paid API. A test of a
   mock tests the mock.
 - **Synthetic data in fixtures.** Never real customer data, never a real

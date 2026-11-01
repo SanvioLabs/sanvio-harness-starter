@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Decisions and requirement tests in loop pull requests
+
+The loop's planner now writes a short Decisions section and plans tests for what a rule must not touch, and a pull request shows those Decisions above the folded plan. The loop's reviewer writes a table of each requirement and its test from the diff, and returns `VERDICT: FIX` when a requirement has no test. The must-not-touch rule is also in the building and testing steering.
+Files: [`scripts/loop.py`](scripts/loop.py), [`steering/building-and-testing.md`](steering/building-and-testing.md), [`CHANGELOG.md`](CHANGELOG.md), [`tests/test_loop.py`](tests/test_loop.py).
+
+**Do:** nothing.
+
 ## 2026-10-31: Daily pulse question summary
 
 Ask `/pulse` to summarise for leadership and it writes a period's answers, 14 days by default, to a gitignored report you read and send yourself. `python3 scripts/pulse.py summary` prints the same Markdown: for each date and question, how many answered, how many chose each option, and each Other answer quoted as written. It never prints a login or a file name, and it holds back a question fewer than three people answered.
