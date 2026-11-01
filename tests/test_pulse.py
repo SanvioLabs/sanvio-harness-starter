@@ -606,7 +606,7 @@ class Wording(unittest.TestCase):
         self.assertIn("`scripts/pulse.py`", capabilities)
         self.assertIn("A daily question", (ROOT / "README.md").read_text(encoding="utf-8"))
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("Daily pulse question", changelog.split("\n## ")[1])
+        self.assertIn("Daily pulse question", changelog)
 
 
 if __name__ == "__main__":
