@@ -84,6 +84,34 @@ because the day's question depends on its place in the file. Answers already giv
 keep the question they answered. A missed day's question comes from the current
 bank, so after an edit it may differ from the one the team answered that day.
 
+## Summarising for leadership
+
+Say "summarise the pulse for leadership" in a session. It asks for the period, the
+last 14 days unless you name another, and writes the summary to
+`reports/pulse/<since>-to-<until>.md` on your machine, where git ignores it. You read
+it and you send it: the harness never does. It stops if the `Pulse folder` row in
+`company/DATA.md` isn't cleared.
+
+In a terminal, this prints the same summary. Leave out `--until` for today, and
+`--since` for the 14 days ending at `--until`:
+
+```bash
+python3 scripts/pulse.py summary --since 2026-10-18 --until 2026-10-31
+```
+
+Each date and question with answers gets its chip and question, how many people
+answered, how many chose each option, and each Other answer. Answers stay with the
+date and question they recorded, so a question you've since moved keeps them, and one
+you've removed keeps them under its id.
+
+- It counts people and never prints a login or a file name.
+- A question fewer than three people answered is held back: the summary shows its
+  date, its chip or id, and that fewer than three answered, with no counts and no
+  Other answers.
+- Other answers are quoted as written, so on a small team they can identify the person
+  who wrote them, and they should never hold customer information. Read them before
+  you send the summary.
+
 ## What others can see
 
 - Your answers are in a file named after your login, and anyone with the folder can
@@ -92,5 +120,7 @@ bank, so after an edit it may differ from the one the team answered that day.
   than three people answered shows only that fewer than three answered.
 - An Other answer is kept as written and can identify the person who wrote it. Never
   put customer information in one.
+- A leadership summary quotes Other answers for any question three or more people
+  answered, to whoever receives it.
 - A login must be unique across the team and used from one machine. Two people with
   one login count as one person, and two machines syncing one file can lose answers.

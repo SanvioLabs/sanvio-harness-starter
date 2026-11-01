@@ -6,6 +6,7 @@
     python3 scripts/pulse.py answer <id> <number> [--date YYYY-MM-DD]
     python3 scripts/pulse.py answer <id> --other-file <path> [--date YYYY-MM-DD]
     python3 scripts/pulse.py results [--date YYYY-MM-DD]             # counts for a day, yesterday by default
+    python3 scripts/pulse.py summary [--since YYYY-MM-DD] [--until YYYY-MM-DD]  # Markdown for a period, 14 days by default
 
 The folder comes from HARNESS_PULSE_FOLDER. It holds questions.md, the bank, and
 answers/<login>.jsonl, one file per person. Only `answer` writes, and only to
@@ -28,6 +29,7 @@ MAX_CHIP = 12
 MIN_OPTIONS = 2
 MAX_OPTIONS = 4
 MIN_TO_SHOW = 3
+SUMMARY_DAYS = 14
 QUESTION_ID = re.compile(r"[a-z0-9-]+")
 NUMBER = re.compile(r"[0-9]+")
 PERSON_FILE = re.compile(r"[A-Za-z0-9._-]+\.jsonl")
@@ -129,13 +131,13 @@ def read_bank(folder):
     return questions, bank_problems(questions)
 
 
-def chosen_day(value, default):
+def chosen_day(value, default, flag="--date"):
     if value is None:
         return default
     try:
         return datetime.date.fromisoformat(value)
     except ValueError:
-        raise Refused("--date must be a real date written YYYY-MM-DD, not {}".format(value))
+        raise Refused("{} must be a real date written YYYY-MM-DD, not {}".format(flag, value))
 
 
 def day_question(questions, day):
@@ -261,13 +263,13 @@ def run_answer(folder, questions, args):
     return 0
 
 
-def tally(folder, day):
-    """({question id: each person's last label}, files skipped, lines skipped) for one date."""
-    picks = {}
+def everyones_records(folder):
+    """(one list of records per person, files skipped, lines skipped), holding no file name."""
+    people = []
     files = lines = 0
     answers = os.path.join(folder, ANSWERS)
     if not os.path.isdir(answers):
-        return picks, files, lines
+        return people, files, lines
     for name in sorted(os.listdir(answers)):
         path = os.path.join(answers, name)
         if not PERSON_FILE.fullmatch(name) or not os.path.isfile(path):
@@ -279,6 +281,15 @@ def tally(folder, day):
             files += 1
             continue
         lines += bad
+        people.append(records)
+    return people, files, lines
+
+
+def tally(folder, day):
+    """({question id: each person's last label}, files skipped, lines skipped) for one date."""
+    people, files, lines = everyones_records(folder)
+    picks = {}
+    for records in people:
         last = {record["id"]: record["answer"] for record in records if record["date"] == day}
         for question_id, label in last.items():
             picks.setdefault(question_id, []).append(label)
@@ -287,6 +298,18 @@ def tally(folder, day):
 
 def counted(count, noun):
     return "{} {}{}".format(count, noun, "" if count == 1 else "s")
+
+
+def skipped_line(files, lines):
+    return "Skipped {} and {}.".format(counted(files, "file"), counted(lines, "line"))
+
+
+def labels_in_order(question, counts):
+    """The bank's options with zeros, Other, then labels it doesn't know. Sorted if it has left the bank."""
+    if not question:
+        return sorted(counts)
+    shown = [label for label, _ in question["options"]] + [OTHER]
+    return shown + sorted(set(counts) - set(shown))
 
 
 def run_results(folder, questions, args):
@@ -307,14 +330,74 @@ def run_results(folder, questions, args):
             continue
         print("{}: {} answered".format(heading, len(labels)))
         counts = collections.Counter(labels)
-        if question:
-            shown = [label for label, _ in question["options"]] + [OTHER]
-            shown += sorted(set(counts) - set(shown))
-        else:
-            shown = sorted(counts)
-        for label in shown:
+        for label in labels_in_order(question, counts):
             print("  {}: {}".format(label, counts[label]))
-    print("Skipped {} and {}.".format(counted(files, "file"), counted(lines, "line")))
+    print(skipped_line(files, lines))
+    return 0
+
+
+def one_line(text):
+    """Text from an answers file, unable to start a Markdown line of its own."""
+    return " ".join(text.split())
+
+
+def recorded_day(value):
+    """The date in a record's date field, or None unless it's a real YYYY-MM-DD."""
+    try:
+        day = datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
+    return day if day.isoformat() == value else None  # newer Pythons also take 20261031
+
+
+def print_summary_entry(date, question_id, question, records):
+    print()
+    print("## {}: {}".format(date, question["chip"] if question else one_line(question_id)))
+    if len(records) < MIN_TO_SHOW:
+        print("Fewer than three answered.")
+        return
+    if question:
+        print(question["question"])
+    print()
+    print("{} answered".format(len(records)))
+    print()
+    counts = collections.Counter(record["answer"] for record in records)
+    for label in labels_in_order(question, counts):
+        print("- {}: {}".format(one_line(label), counts[label]))
+    written = [record["other"] for record in records
+               if record["answer"] == OTHER and isinstance(record.get("other"), str)]
+    others = sorted(text for text in map(one_line, written) if text)  # sorted, so the order can't point at a file
+    if others:
+        print()
+        print("Other answers:")
+        print()
+        for text in others:
+            print("- {}".format(text))
+
+
+def run_summary(folder, questions, args):
+    until = chosen_day(args.until, datetime.date.today(), "--until")
+    earliest = datetime.date.fromordinal(max(1, until.toordinal() - (SUMMARY_DAYS - 1)))
+    since = chosen_day(args.since, earliest, "--since")
+    if until < since:
+        raise Refused("--until is before --since: {} is before {}".format(until.isoformat(), since.isoformat()))
+    people, files, lines = everyones_records(folder)
+    picks = {}
+    for records in people:
+        last = {(record["date"], record["id"]): record for record in records}
+        for key, record in last.items():
+            day = recorded_day(key[0])
+            if day is not None and since <= day <= until:
+                picks.setdefault(key, []).append(record)
+    bank = {question["id"]: question for question in questions}
+    print("# Pulse summary: {} to {}".format(since.isoformat(), until.isoformat()))
+    if not picks:
+        print()
+        print("No answers for this period.")
+    for date, question_id in sorted(picks):
+        print_summary_entry(date, question_id, bank.get(question_id), picks[(date, question_id)])
+    print()
+    print(skipped_line(files, lines))
     return 0
 
 
@@ -332,10 +415,14 @@ def build_parser():
     answer.add_argument("--date", help="another day, YYYY-MM-DD")
     results = commands.add_parser("results", help="print the counts for a day, yesterday by default")
     results.add_argument("--date", help="another day, YYYY-MM-DD")
+    summary = commands.add_parser("summary", help="print a Markdown summary of a period, the last 14 days by default")
+    summary.add_argument("--since", help="the period's first day, YYYY-MM-DD")
+    summary.add_argument("--until", help="the period's last day, YYYY-MM-DD, today by default")
     return parser
 
 
-COMMANDS = {"check": run_check, "question": run_question, "answer": run_answer, "results": run_results}
+COMMANDS = {"check": run_check, "question": run_question, "answer": run_answer, "results": run_results,
+            "summary": run_summary}
 
 
 def main(argv=None):
