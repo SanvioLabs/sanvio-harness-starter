@@ -1,0 +1,6 @@
+{
+  "name": "loop-crew",
+  "version": "0.1.0",
+  "description": "A pane of animated figures, one for each issue the loop is working on, each acting out its step",
+  "types": "./types/index.d.ts"
+}

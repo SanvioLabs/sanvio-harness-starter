@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Loop crew
+
+A new mod: `/loop-crew` opens a pane with an animated figure for each issue the loop is working on, acting out its step: at a drafting board, writing on a board, swinging a hammer, holding up a magnifying glass or carrying a box. `/loop-crew <project>` shows a project's loop. It only reads the loop's files and spends no model tokens. The terminal paints the frames in place and the other surfaces animate an Svg. It hasn't yet been tried on any surface, and the animation on the mobile app is expected but untried.
+Files: [`examples/mods/loop-crew/`](examples/mods/loop-crew/), [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), [`.claude/settings.json`](.claude/settings.json), [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`skills/starter-updates/capabilities.md`](skills/starter-updates/capabilities.md), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin install loop-crew@sanvio-harness-starter` or `/reload-plugins` picks it up.
+
 ## 2026-10-31: Decisions and requirement tests in loop pull requests
 
 The loop's planner now writes a short Decisions section and plans tests for what a rule must not touch, and a pull request shows those Decisions above the folded plan. The loop's reviewer writes a table of each requirement and its test from the diff, and returns `VERDICT: FIX` when a requirement has no test. The must-not-touch rule is also in the building and testing steering. Behaviour the plan's requirements don't ask for gets a row too.
