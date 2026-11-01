@@ -76,7 +76,7 @@ function world(on: On, files: Map<string, string>) {
   on('ui.blit', async (_$, e, next) => {
     const args = e as unknown as { key: string; cells: string }
     blits.push({ key: args.key, cells: args.cells })
-    if (flip.blit === 'deny') return { value: { deny: 'not mounted' } }
+    if (flip.blit === 'deny') return { deny: 'not mounted' }
     // Left unanswered: nothing sits beneath, so the kit's own "no implementation" rejects it.
     if (flip.blit === 'none') return next(e)
     return { value: {} }
@@ -117,8 +117,9 @@ group('the figures', () => {
         expect(await ui.find({ key: 'figure-12' })).toBeDefined()
         expect(await ui.find({ key: 'figure-13' })).toBeDefined()
       } else {
-        // An Svg's key isn't carried into the drawing, so it's found by type.
-        expect((await ui.find({ type: 'Svg' }))?.type).toBe('Svg')
+        // An Svg's key isn't carried into the drawing, so each is found by type and told apart by its alt.
+        const figures = await ui.findAll({ type: 'Svg' })
+        expect(figures.map(figure => figure.props.alt)).toEqual(['Issue #12: building', 'Issue #13: checking'])
       }
       await ui.unmount()
       await close()
