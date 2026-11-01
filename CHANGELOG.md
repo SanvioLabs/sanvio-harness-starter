@@ -27,6 +27,13 @@ never changes once it's written, because copies are compared by it. Under it:
 what it adds in a sentence or two, the files, and a **Do:** line ("nothing" is
 fine).
 
+## 2026-10-31: Loop pane running and queued counts
+
+The line beside the loop pane's dropdown now counts the loops running a job and the live loops with ready issues waiting, the one on screen included (`● 2 running · 3 queued`), in place of `● 2 others working`.
+Files: [`examples/mods/loop-pane/hooks/logic.ts`](examples/mods/loop-pane/hooks/logic.ts), [`examples/mods/loop-pane/hooks/register.tsx`](examples/mods/loop-pane/hooks/register.tsx), [`examples/mods/loop-pane/hooks/pane.test.ts`](examples/mods/loop-pane/hooks/pane.test.ts), [`examples/mods/loop-pane/README.md`](examples/mods/loop-pane/README.md), [`examples/mods/loop-pane/.claude-plugin/plugin.json`](examples/mods/loop-pane/.claude-plugin/plugin.json), [`CHANGELOG.md`](CHANGELOG.md).
+
+**Do:** `/plugin update`, then `/reload-plugins` or a new session, picks it up.
+
 ## 2026-10-31: Daily pulse question summary
 
 Ask `/pulse` to summarise for leadership and it writes a period's answers, 14 days by default, to a gitignored report you read and send yourself. `python3 scripts/pulse.py summary` prints the same Markdown: for each date and question, how many answered, how many chose each option, and each Other answer quoted as written. It never prints a login or a file name, and it holds back a question fewer than three people answered.

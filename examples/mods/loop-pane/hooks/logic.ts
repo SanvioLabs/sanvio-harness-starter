@@ -51,12 +51,16 @@ export function loopOptions(loops: Seen[]): { value: string; label: string }[] {
   return [...working, ...rest].map(loop => ({ value: loop.project ?? '', label: loopButtonLabel(loop) }))
 }
 
-// What sits beside the dropdown, whose closed face shows only the loop on screen: how many other loops
-// are on a job, whatever number of jobs each has. Null when none is.
-export function othersWorking(loops: Seen[], seen: Seen): string | null {
-  const others = loops.filter(l => l.project !== seen.project && workingCount(l) > 0).length
-  if (!others) return null
-  return `● ${others} ${others > 1 ? 'others' : 'other'} working`
+// What sits beside the dropdown, whose closed face shows only the loop on screen: how many loops are on
+// a job and how many live ones have issues waiting, the one on screen included, so a loop can count in
+// both. A stopped loop's old queue doesn't count. Null when both are none.
+export function loopCounts(loops: Seen[]): string | null {
+  const running = loops.filter(l => workingCount(l) > 0).length
+  const queued = loops.filter(l => l.isLocked && waiting(l.status).length > 0).length
+  if (running && queued) return `● ${running} running · ${queued} queued`
+  if (running) return `● ${running} running`
+  if (queued) return `${queued} queued`
+  return null
 }
 
 const STEPS: Record<string, string> = {

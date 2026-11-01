@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { PAGE,PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopDir, loopOptions, openingLoop, othersWorking, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
+import { PAGE,PROJECTS_DIR, TABS, attach, changes, clip, clock, describe, dot, findRoot, firstTab, header, isPulsing, isWebLink, jobAttach, jobWatchFile, lists, lockPid, loopButtonLabel, loopCounts, loopDir, loopOptions, openingLoop, page, parseStatus, projectNames, sameSeen, waitingOn, watch, watchCommand } from './logic'
 import type { Lists, Tone } from './logic'
 import type { Row, Seen, Tab, View } from '../types'
 
@@ -332,7 +332,7 @@ export const register: Register = on => {
       Array.from({ length: n }, (_, i) => <Box key={`gap-${i}`} marginTop={rows > 1 ? 1 : 0} height={rows} />)
     const shownCount = (jobs ?? queue).shown.length
     const held = wraps && !jobs ? PAGE : pageSize(view.tab, bodyRows)
-    const others = othersWorking(loops, seen)
+    const counts = loopCounts(loops)
 
     return (
       <Box flexDirection="column">
@@ -374,7 +374,7 @@ export const register: Register = on => {
                 return loop && show($, loop)
               }}
             />
-            {others && <Text dimColor>{others}</Text>}
+            {counts && <Text dimColor>{counts}</Text>}
           </Box>
         ) : (
           loops.length > 1 && (
