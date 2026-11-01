@@ -692,8 +692,13 @@ elif args[:2] == ["pr", "view"]:
         print("HTTP 502")  # on stdout, as gh prints its errors
         sys.exit(1)
     path, head = os.path.join(state, "pr-state"), os.path.join(state, "pr-head")
-    print(open(path).read().strip() if os.path.exists(path) else "OPEN",
-          open(head).read().strip() if os.path.exists(head) else "")
+    fields = [open(path).read().strip() if os.path.exists(path) else "OPEN",
+              open(head).read().strip() if os.path.exists(head) else ""]
+    # Only when asked for: tidy() splits this line once at its first space, so a third value would reach its head.
+    if "baseRefName" in args[args.index("--json") + 1]:
+        base = os.path.join(state, "pr-base")
+        fields.append(open(base).read().strip() if os.path.exists(base) else "main")
+    print(*fields)
 elif args[:2] == ["issue", "comment"] and os.path.exists(os.path.join(state, "comment-fails")):
     print("HTTP 403: comments are locked", file=sys.stderr)
     sys.exit(1)
@@ -2725,6 +2730,246 @@ class TestAPass(unittest.TestCase):
         self.assertTrue(self.branch_exists())
         self.assertIn("could not read the pull request's state: HTTP 502", "\n".join(self.lines()))
         self.assertNotIn("CLEANUP", [l.split()[2] for l in self.lines()])
+
+    # -- a pull request that conflicts with its base in CHANGELOG.md ---------
+
+    CHANGELOG_HEAD = "# What's new\n\n"
+    OLD_ENTRY = "## 2026-01-01: Old\n\nAn old entry.\n\n"
+    BASE_ENTRY = "## 2026-01-02: From the base\n\nThe base's entry.\n\n"
+    BRANCH_ENTRY = "## 2026-01-03: From the branch\n\nThe branch's entry.\n\n"
+    MERGE_SUBJECT = "Merge main into loop/issue-12: keep both CHANGELOG.md entries, this one on top"
+
+    def commit_and_push(self, where, ref, path, text):
+        """One file by name, never -A: .loop/ sits untracked in self.work. Returns the commit."""
+        (where / path).write_text(text)
+        git(where, "add", path)
+        git(where, "commit", "-q", "-m", "change " + path)
+        git(where, "push", "-q", "origin", ref)
+        return git(where, "rev-parse", "HEAD").stdout.strip()
+
+    def loop_pushed(self, sha):
+        """As if the loop pushed this commit and the pull request's head is it."""
+        loop.Loop(self.work, self.cfg).mark(12, pushed=sha)
+        (self.state / "pr-head").write_text(sha)
+
+    def changelog_conflict(self, branch_text=None):
+        """An open pull request for #12 and nothing ready, conflicting with main in CHANGELOG.md alone.
+
+        Both sides insert directly above the one old entry, which is what makes it conflict.
+        Returns (the worktree, the pushed commit)."""
+        self.commit_and_push(self.work, "main", "CHANGELOG.md", self.CHANGELOG_HEAD + self.OLD_ENTRY)
+        tree = self.open_then_idle()
+        sha = self.commit_and_push(tree, "loop/issue-12", "CHANGELOG.md",
+                                   branch_text or self.CHANGELOG_HEAD + self.BRANCH_ENTRY + self.OLD_ENTRY)
+        self.loop_pushed(sha)
+        self.commit_and_push(self.work, "main", "CHANGELOG.md",
+                             self.CHANGELOG_HEAD + self.BASE_ENTRY + self.OLD_ENTRY)
+        return tree, sha
+
+    def update_lines(self):
+        return [l.split(" ", 3)[3] for l in self.lines() if l.split()[2] == "UPDATE"]
+
+    def pr_comments(self):
+        """What follows each pull request comment's --body, which can run on into the next calls."""
+        text = (self.state / "gh-calls").read_text()
+        return [chunk.split("--body ", 1)[1] for chunk in text.split("pr comment ")[1:]]
+
+    def on_branch_at(self, tree, sha):
+        self.assertEqual(git(tree, "symbolic-ref", "HEAD").stdout.strip(), "refs/heads/loop/issue-12")
+        self.assertEqual(git(tree, "rev-parse", "HEAD").stdout.strip(), sha)
+
+    def changed_nothing(self, tree, sha):
+        self.on_branch_at(tree, sha)
+        self.assertEqual(git(self.origin, "rev-parse", "loop/issue-12").stdout.strip(), sha)
+        row = self.status()["issues"][0]
+        self.assertEqual(row["pushed"], sha)
+        self.assertNotIn("update_tried", row)
+        self.assertEqual(self.pr_comments(), [])
+
+    def test_a_changelog_only_conflict_is_merged_and_pushed_with_the_branchs_entry_on_top(self):
+        tree, before = self.changelog_conflict()
+        base = git(self.origin, "rev-parse", "main").stdout.strip()
+        self.assertEqual(self.go(), 0)
+        merged = git(self.origin, "rev-parse", "loop/issue-12").stdout.strip()
+        self.assertNotEqual(merged, before)
+        self.assertEqual(git(self.origin, "show", "loop/issue-12:CHANGELOG.md").stdout,
+                         self.CHANGELOG_HEAD + self.BRANCH_ENTRY + self.BASE_ENTRY + self.OLD_ENTRY)
+        self.assertEqual(git(self.origin, "log", "-1", "--format=%s", merged).stdout.strip(), self.MERGE_SUBJECT)
+        self.assertEqual(git(self.origin, "log", "-1", "--format=%P", merged).stdout.split(), [before, base])
+        row = self.status()["issues"][0]
+        self.assertEqual(row["pushed"], merged)
+        self.assertEqual(row["update_tried"], base)
+        self.assertEqual(git(self.work, "rev-parse", "loop/issue-12").stdout.strip(), merged)
+        self.on_branch_at(tree, merged)
+        self.assertEqual(git(tree, "status", "--porcelain").stdout, "")
+        self.assertEqual(self.update_lines(), ["merged main, kept both CHANGELOG.md entries"])
+        self.assertTrue((self.work / ".loop" / "issue-12" / "update-output.txt").exists())
+        comments = self.pr_comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("keep both `CHANGELOG.md` entries", comments[0])
+        self.assertIn("The tests passed", comments[0])
+
+    def test_failing_tests_push_nothing_and_a_second_poll_neither_tests_nor_comments_again(self):
+        tree, before = self.changelog_conflict()
+        base = git(self.origin, "rev-parse", "main").stdout.strip()
+        runs = self.state / "update-runs"
+        self.cfg["test_command"] = ('echo ran >> "{}"; printf "gone\\n1\\n2\\n3\\n4\\nTESTS-BROKE ping @someone\\n"; '
+                                    "exit 1").format(runs)
+        self.go()
+        self.go()
+        self.assertEqual(runs.read_text().splitlines(), ["ran"])
+        self.assertEqual(git(self.origin, "rev-parse", "loop/issue-12").stdout.strip(), before)
+        self.on_branch_at(tree, before)
+        self.assertEqual(git(tree, "status", "--porcelain").stdout, "")
+        row = self.status()["issues"][0]
+        self.assertEqual(row["pushed"], before)
+        self.assertEqual(row["update_tried"], base)
+        self.assertEqual(self.update_lines(), ["kept: tests failed after merging main"])
+        self.assertIn("TESTS-BROKE", (self.work / ".loop" / "issue-12" / "update-output.txt").read_text())
+        comments = self.pr_comments()
+        self.assertEqual(len(comments), 1)
+        self.assertIn("TESTS-BROKE ping @​someone", comments[0])
+        self.assertNotIn("gone", comments[0])  # the last PR_TEST_LINES lines only
+
+    def test_a_new_commit_on_the_base_is_tried_after_the_last_one_failed(self):
+        self.changelog_conflict()
+        runs = self.state / "update-runs"
+        self.cfg["test_command"] = 'echo ran >> "{}"; exit 1'.format(runs)
+        self.go()
+        self.commit_and_push(self.work, "main", "other.txt", "more on the base")
+        self.go()
+        self.assertEqual(len(runs.read_text().splitlines()), 2)
+
+    def test_a_conflict_in_another_file_changes_nothing(self):
+        tree = self.open_then_idle()
+        sha = self.commit_and_push(tree, "loop/issue-12", "README.md", "the branch's")
+        self.loop_pushed(sha)
+        self.commit_and_push(self.work, "main", "README.md", "the base's")
+        self.go()
+        self.go()
+        # Once per run, and these are two runs.
+        self.assertEqual(self.update_lines(), ["kept: conflicts in README.md, needs a person"] * 2)
+        self.changed_nothing(tree, sha)
+
+    def test_a_conflict_in_another_file_as_well_as_the_changelog_changes_nothing(self):
+        tree, _ = self.changelog_conflict()
+        sha = self.commit_and_push(tree, "loop/issue-12", "README.md", "the branch's")
+        self.loop_pushed(sha)
+        self.commit_and_push(self.work, "main", "README.md", "the base's")
+        self.go()
+        kept = self.update_lines()
+        self.assertEqual(len(kept), 1)
+        self.assertIn("CHANGELOG.md", kept[0])
+        self.assertIn("README.md", kept[0])
+        self.changed_nothing(tree, sha)
+
+    def test_a_branch_that_edits_an_existing_entry_is_kept(self):
+        edited = self.OLD_ENTRY.replace("An old", "An edited")
+        tree, sha = self.changelog_conflict(self.CHANGELOG_HEAD + self.BRANCH_ENTRY + edited)
+        self.go()
+        self.assertEqual(self.update_lines(), ["kept: the branch changes an existing CHANGELOG.md entry"])
+        self.changed_nothing(tree, sha)
+
+    def test_a_branch_that_edits_the_top_of_the_file_is_kept(self):
+        tree, sha = self.changelog_conflict("# Changed\n\n" + self.BRANCH_ENTRY + self.OLD_ENTRY)
+        self.go()
+        self.assertEqual(self.update_lines(), ["kept: the branch changes an existing CHANGELOG.md entry"])
+        self.changed_nothing(tree, sha)
+
+    def test_a_pull_request_head_that_isnt_the_loops_push_is_kept(self):
+        tree, sha = self.changelog_conflict()
+        (self.state / "pr-head").write_text("f" * 40)
+        self.go()
+        self.assertEqual(self.update_lines(), ["kept: the pull request has commits the loop didn't push"])
+        self.changed_nothing(tree, sha)
+
+    def test_a_branch_past_the_loops_push_is_kept(self):
+        tree, sha = self.changelog_conflict()
+        git(tree, "commit", "-q", "--allow-empty", "-m", "never pushed")
+        self.go()
+        self.assertEqual(self.update_lines(), ["kept: the pull request has commits the loop didn't push"])
+        self.assertEqual(git(self.origin, "rev-parse", "loop/issue-12").stdout.strip(), sha)
+        self.assertEqual(self.pr_comments(), [])
+
+    def test_a_worktree_with_changes_keeps_the_pull_request_as_it_is(self):
+        tree, sha = self.changelog_conflict()
+        (tree / "notes.txt").write_text("not pushed")
+        self.go()
+        self.assertEqual(self.update_lines(), ["kept: worktree has changes"])
+        self.assertTrue((tree / "notes.txt").exists())
+        self.changed_nothing(tree, sha)
+
+    def test_no_git_hook_runs_while_the_loop_merges(self):
+        tree, _ = self.changelog_conflict()
+        marker = self.state / "hook-ran"
+        hooks = tree / ".githooks"
+        hooks.mkdir()
+        for name in ("pre-commit", "post-checkout", "post-commit", "post-merge", "pre-push", "reference-transaction"):
+            hook = hooks / name
+            hook.write_text('#!/bin/sh\necho {} >> "{}"\n'.format(name, marker))
+            hook.chmod(hook.stat().st_mode | stat.S_IEXEC)
+        git(tree, "add", ".githooks")
+        git(tree, "commit", "-q", "-m", "add hooks")
+        git(tree, "push", "-q", "origin", "loop/issue-12")
+        self.loop_pushed(git(tree, "rev-parse", "HEAD").stdout.strip())
+        git(self.work, "config", "core.hooksPath", ".githooks")  # as the harness sets it
+        self.go()
+        self.assertEqual(self.update_lines(), ["merged main, kept both CHANGELOG.md entries"])
+        self.assertFalse(marker.exists())
+        git(tree, "checkout", "-q", "--detach")  # and a plain checkout here does run it, so the above means something
+        self.assertIn("post-checkout", marker.read_text())
+
+    def test_a_test_command_that_makes_a_commit_pushes_nothing(self):
+        tree, sha = self.changelog_conflict()
+        self.cfg["test_command"] = "git -c core.hooksPath=/dev/null commit -q --allow-empty -m moved"
+        self.go()
+        self.assertIn("ERROR could not update the pull request: the test command moved HEAD", "\n".join(self.lines()))
+        self.assertEqual(self.update_lines(), [])
+        self.assertEqual(git(self.origin, "rev-parse", "loop/issue-12").stdout.strip(), sha)
+        self.assertEqual(self.status()["issues"][0]["pushed"], sha)
+        self.on_branch_at(tree, sha)
+        self.assertEqual(self.pr_comments(), [])
+
+    def interrupt_at(self, when, sha, tree):
+        """Run with a KeyboardInterrupt raised when when(cmd), and check it left things as they were."""
+        real = loop.Loop.sh
+
+        def sh(runner, cmd, *args, **kwargs):
+            if when(cmd):
+                raise KeyboardInterrupt
+            return real(runner, cmd, *args, **kwargs)
+
+        with mock.patch.object(loop.Loop, "sh", sh), contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaises(KeyboardInterrupt):
+            loop.Loop(self.work, self.cfg).run(once=True)
+        self.assertEqual(git(tree, "status", "--porcelain").stdout, "")
+        self.assertEqual(self.update_lines(), [])
+        self.changed_nothing(tree, sha)
+
+    def test_an_interrupt_during_the_tests_leaves_the_worktree_on_the_branch(self):
+        tree, sha = self.changelog_conflict()
+        self.cfg["test_command"] = "the test command"
+        self.interrupt_at(lambda cmd: cmd == "the test command", sha, tree)
+
+    def test_an_interrupt_with_the_merge_in_progress_aborts_it(self):
+        tree, sha = self.changelog_conflict()
+        self.interrupt_at(lambda cmd: isinstance(cmd, list) and "commit" in cmd, sha, tree)
+
+    def test_a_branch_that_merges_cleanly_is_left_alone(self):
+        tree = self.open_then_idle()
+        sha = git(tree, "rev-parse", "HEAD").stdout.strip()
+        self.commit_and_push(self.work, "main", "other.txt", "more on the base")
+        self.go()
+        self.assertEqual(self.update_lines(), [])
+        self.assertNotIn("ERROR", [l.split()[2] for l in self.lines()])
+        self.changed_nothing(tree, sha)
+
+    def test_a_pull_request_retargeted_to_another_base_is_left_alone(self):
+        tree, sha = self.changelog_conflict()
+        (self.state / "pr-base").write_text("release")
+        self.go()
+        self.assertEqual(self.update_lines(), [])
+        self.changed_nothing(tree, sha)
 
     def run_issue_flag(self):
         """A run with --issue 12 and no --once. Sleeping means it went on polling, so that fails at once."""
