@@ -26,6 +26,11 @@
       "description": "A pane with the harness's numbers: what's waiting on you, the loop's spend and rework, evals and tokens"
     },
     {
+      "name": "loop-crew",
+      "source": "./examples/mods/loop-crew",
+      "description": "A pane of animated figures, one for each issue the loop is working on, each acting out its step"
+    },
+    {
       "name": "stelliad",
       "source": {
         "source": "github",
