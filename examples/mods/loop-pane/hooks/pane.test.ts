@@ -919,6 +919,12 @@ group('project loops', () => {
     files.set(`${project(name)}/status.json`, statusText(`${name} job`, { issues: [JOB] }))
     files.set(`${project(name)}/lock`, '4242')
   }
+  const onAJobWithNothingWaiting = (files: Map<string, string>, name: string) => {
+    files.set(`${project(name)}/status.json`, statusText(`${name} job`, { queue: [], issues: [JOB] }))
+    files.set(`${project(name)}/lock`, '4242')
+  }
+  // The line beside the dropdown. Anchored and case-sensitive, so the header's "● Running" can't match.
+  const COUNT_LINE = /^(● \d+ running|\d+ queued)/
   const PICKER_SURFACES = ['terminal', 'vscode', 'desktop'] as const
 
   for (const surface of PICKER_SURFACES) {
@@ -955,7 +961,7 @@ group('project loops', () => {
       // One row between them, the dropdown and the count line, so the list below keeps its place.
       const children = ((await ui.drawn()) as unknown as Drawn).children ?? []
       const row = children.find(c => JSON.stringify(c).includes('"loop-pick"'))
-      expect(JSON.stringify(row)).toContain('● 1 other working')
+      expect(JSON.stringify(row)).toContain('● 2 running · 2 queued')
       expect(rowsOf(row as Drawn)).toBe(1)
       await ui.unmount()
       await close()
@@ -977,23 +983,67 @@ group('project loops', () => {
     await close()
   })
   for (const { working, count } of [
-    { working: ['alpha', 'beta'], count: ['● 1 other working'] },
-    { working: ['alpha', 'beta', 'delta', 'gamma'], count: ['● 3 others working'] },
-    { working: ['alpha'], count: [] },
+    { working: ['alpha', 'beta'], count: ['● 2 running · 2 queued'] },
+    { working: ['alpha', 'beta', 'delta', 'gamma'], count: ['● 4 running · 4 queued'] },
+    { working: ['alpha'], count: ['● 1 running · 1 queued'] },
   ]) {
-    test(`with ${working.length} on a job, the pane opens on the first and the count line says ${count[0] ?? 'nothing'}`, async ($, on) => {
+    test(`with ${working.length} on a job, the pane opens on the first and the count line says ${count[0]}`, async ($, on) => {
       const files = fiveLoops()
       for (const name of working) onAJob(files, name)
       const { close } = world(on, files)
       await open($ as unknown as Dollar)
       const ui = await $.ui.mount(PANE)
       expect((await ui.find({ key: 'loop-pick' }))?.props.value).toBe('alpha')
-      const lines = await ui.findAll({ type: 'Text', text: /others? working/ })
+      const lines = await ui.findAll({ type: 'Text', text: COUNT_LINE })
       expect(lines.map(t => t.text)).toEqual(count)
       await ui.unmount()
       await close()
     })
   }
+  test('the count line counts running and queued loops apart', async ($, on) => {
+    const files = fiveLoops()
+    onAJobWithNothingWaiting(files, 'alpha')
+    onAJobWithNothingWaiting(files, 'beta')
+    files.set(`${project('delta')}/lock`, '4242')
+    const { close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    const lines = await ui.findAll({ type: 'Text', text: COUNT_LINE })
+    expect(lines.map(t => t.text)).toEqual(['● 2 running · 1 queued'])
+    await ui.unmount()
+    await close()
+  })
+  test('the loop on screen counts, and with nothing queued the line says only running', async ($, on) => {
+    const files = fiveLoops()
+    onAJobWithNothingWaiting(files, 'alpha')
+    const { close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    expect((await ui.find({ key: 'loop-pick' }))?.props.value).toBe('alpha')
+    const lines = await ui.findAll({ type: 'Text', text: COUNT_LINE })
+    expect(lines.map(t => t.text)).toEqual(['● 1 running'])
+    await ui.unmount()
+    await close()
+  })
+  test('a live loop with a queue and no job says only queued', async ($, on) => {
+    const files = fiveLoops()
+    files.set(`${project('alpha')}/lock`, '4242')
+    const { close } = world(on, files)
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    const lines = await ui.findAll({ type: 'Text', text: COUNT_LINE })
+    expect(lines.map(t => t.text)).toEqual(['1 queued'])
+    await ui.unmount()
+    await close()
+  })
+  test('queues with no live lock add nothing, so there is no count line', async ($, on) => {
+    const { close } = world(on, fiveLoops())
+    await open($ as unknown as Dollar)
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.findAll({ type: 'Text', text: COUNT_LINE })).toEqual([])
+    await ui.unmount()
+    await close()
+  })
   test("a pick opens on that loop's busiest tab and holds through the next poll", async ($, on) => {
     const { clock, close } = world(on, fiveLoops())
     await open($ as unknown as Dollar)

@@ -189,6 +189,8 @@ HOURS = re.compile(r"(\S+) ([0-9]{2}):([0-9]{2})-([0-9]{2}):([0-9]{2})")  # hour
 GITHUB_REMOTE = re.compile(r"^(https://([^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)", re.I)
 STEERING = re.compile(r"(?m)^@(steering/[\w.-]+\.md)\s*$")  # the steering files AGENTS.md loads every session
 NEVER_LOOSENS = "The project's own AGENTS.md or CLAUDE.md adds to these rules and never loosens them."
+NO_HOOKS = ("-c", "core.hooksPath=/dev/null")  # for a git command that could run a hook the branch carries
+UPDATE_FAILED = "could not update the pull request: "
 
 
 class Interrupted(BaseException):
@@ -1216,6 +1218,32 @@ def path_list(paths):
     """Paths an agent chose, as a block comment names them: mentions made harmless, and no endless list."""
     more = len(paths) - DIRTY_CAP
     return safe_to_post(", ".join(paths[:DIRTY_CAP])) + (" and {} more".format(more) if more > 0 else "")
+
+
+def changelog_sections(text):
+    """(what comes before the first entry, each entry from its `## ` line up to the next)."""
+    parts = re.split(r"(?m)^(?=## )", text)
+    return parts[0], parts[1:]
+
+
+def changelog_added(base, branch):
+    """The whole sections branch put above base's first entry, or None if it changed anything else."""
+    head, sections = changelog_sections(base)
+    branch_head, branch_sections = changelog_sections(branch)
+    added = len(branch_sections) - len(sections)
+    if branch_head != head or added < 0 or branch_sections[added:] != sections:
+        return None
+    return branch_sections[:added]
+
+
+def changelog_with(base, added):
+    """base's text with the added sections, in their order, above its first entry."""
+    head, sections = changelog_sections(base)
+    top = "".join(added)
+    if top and sections:
+        # A section that ended the branch's file may not end in a blank line, and this one has a next.
+        top = top.rstrip("\n") + "\n\n"
+    return head + top + "".join(sections)
 
 
 class Loop:
@@ -2343,8 +2371,8 @@ class Loop:
         """Throw away whatever a reader changed in the worktree. It was told not to edit, and only
         claude can be held to read tools; codex or another command could have written anyway."""
         if self.git("status", "--porcelain", cwd=tree)[1].strip():
-            self.git("checkout", "--", ".", cwd=tree)
-            self.git("clean", "-fdq", cwd=tree)
+            self.git(*NO_HOOKS, "checkout", "--", ".", cwd=tree)
+            self.git(*NO_HOOKS, "clean", "-fdq", cwd=tree)
             self.log(step, "{} edited files; discarded".format(who), number)
 
     def scale(self, issue, branch, rounds, problems, fixed=()):
@@ -2437,6 +2465,152 @@ class Loop:
                 self.log("ERROR", "removed the worktree but not {}: {}".format(branch, out.strip()[:200]), number)
                 continue
             self.log("CLEANUP", "pull request {}, removed its worktree and {}".format(state.lower(), branch), number)
+
+    def update_prs(self):
+        """Merge the base into each open loop pull request whose only conflict with it is CHANGELOG.md.
+
+        Runs beside tidy() on an idle poll, so no worker is using a worktree. Each commit of the base
+        is tried once per issue, recorded as update_tried, so failing tests don't rerun every poll.
+        """
+        for row in list(self.status["issues"]):  # mark() reorders the rows
+            tree = self.worktrees() / "issue-{}".format(row["number"])
+            if row.get("state") == "pr" and row.get("pr") and tree.exists():
+                self.update_pr(row, tree)
+
+    def update_error(self, number, why):
+        self.log_once("ERROR", UPDATE_FAILED + why.strip()[:200], number)
+
+    def update_pr(self, row, tree):
+        """Look at one pull request, and merge only when every check says the merge is the loop's to make."""
+        number, base = row["number"], self.cfg["base"]
+        branch, remote = "loop/issue-{}".format(number), "origin/" + base
+
+        def kept(why):
+            self.log_once("UPDATE", "kept: " + why, number)
+
+        code, out = self.gh("pr", "view", row["pr"], "--json", "state,headRefOid,baseRefName",
+                            "-q", '.state + " " + .headRefOid + " " + .baseRefName')
+        if code != 0:
+            return self.update_error(number, out)
+        fields = out.strip().split(" ")  # not split(): an empty head leaves an empty middle field
+        if len(fields) != 3 or fields[0] != "OPEN" or fields[2] != base:
+            return
+        head = fields[1]
+        code, out = self.git(*NO_HOOKS, "fetch", "-q", "origin", "+refs/heads/{0}:refs/remotes/origin/{0}".format(base))
+        if code != 0:
+            return self.update_error(number, out)
+        code, out = self.git("rev-parse", "--verify", remote)
+        if code != 0:
+            return self.update_error(number, out)
+        target = out.strip()
+        if row.get("update_tried") == target:
+            return
+        code, out = self.git("merge-tree", "--write-tree", "--name-only", "--no-messages", remote, branch)
+        if code == 0:
+            return
+        if code != 1:
+            return self.update_error(number, out)
+        paths = [line for line in out.splitlines()[1:] if line.strip()]
+        if paths != ["CHANGELOG.md"]:
+            return kept("conflicts in {}, needs a person".format(path_list(paths)))
+        pushed = row.get("pushed")
+        tip = self.git("rev-parse", "--verify", "-q", branch)[1].strip()
+        if not pushed or head != pushed or tip != pushed:
+            return kept("the pull request has commits the loop didn't push")
+        code, out = self.git("status", "--porcelain", cwd=tree)
+        if code != 0:
+            return self.update_error(number, out)
+        if out.strip():
+            return kept("worktree has changes")
+        code, out = self.git("merge-base", branch, remote)
+        if code != 0:
+            return self.update_error(number, out)
+        texts = []
+        for rev in (out.strip(), pushed, remote):
+            # Exactly as stored: no stderr mixed in and nothing stripped, since sections compare whole.
+            code, text = self.sh(["git", "show", "{}:CHANGELOG.md".format(rev)], cwd=self.repo, stderr=False)
+            if code != 0:
+                return self.update_error(number, "could not read CHANGELOG.md at {}".format(rev))
+            texts.append(text)
+        added = changelog_added(texts[0], texts[1])
+        if added is None:  # an edited preamble lands here too: the merge would drop that edit
+            return kept("the branch changes an existing CHANGELOG.md entry")
+        self.merge_changelog(row, tree, target, changelog_with(texts[2], added))
+
+    def merging(self, tree):
+        return self.git("rev-parse", "-q", "--verify", "MERGE_HEAD", cwd=tree)[0] == 0
+
+    def merge_changelog(self, row, tree, target, resolved):
+        """Build the merge on a detached HEAD at the pushed commit, test it, and push it if they pass.
+
+        loop/issue-<N> stays where it is until the push succeeds, and whatever happens the worktree
+        ends up back on it. A Ctrl-C carries on up to work() with no comment and no update_tried.
+        """
+        number, base = row["number"], self.cfg["base"]
+        branch = "loop/issue-{}".format(number)
+        try:
+            code, out = self.git(*NO_HOOKS, "checkout", "-q", "--detach", row["pushed"], cwd=tree)
+            if code != 0:
+                return self.update_error(number, out)
+            code, out = self.git(*NO_HOOKS, "merge", "-q", "--no-commit", "--no-ff", "--no-edit", target, cwd=tree)
+            # Exit 1 is the conflict merge-tree found. With no merge in progress it's a merge that never began.
+            if code not in (0, 1) or not self.merging(tree):
+                return self.update_error(number, out)
+            try:
+                (tree / "CHANGELOG.md").write_text(resolved, encoding="utf-8")
+            except OSError as err:
+                return self.update_error(number, "could not write CHANGELOG.md: {}".format(type(err).__name__))
+            code, out = self.git(*NO_HOOKS, "add", "CHANGELOG.md", cwd=tree)
+            if code != 0:
+                return self.update_error(number, out)
+            message = "Merge {} into {}: keep both CHANGELOG.md entries, this one on top".format(base, branch)
+            code, out = self.git(*NO_HOOKS, "commit", "-q", "-m", message, cwd=tree)
+            if code != 0:
+                return self.update_error(number, out)
+            code, out = self.git("rev-parse", "HEAD", cwd=tree)
+            if code != 0:
+                return self.update_error(number, out)
+            merge = out.strip()
+
+            code, out = self.sh(self.cfg["test_command"], cwd=tree, shell=True,
+                                timeout=self.cfg["test_timeout"], env=env_for_tests(os.environ))
+            # From here each line can appear only once for this commit of the base, so plain log() will do.
+            self.mark(number, update_tried=target)
+            folder = self.dir / "issue-{}".format(number)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "update-output.txt").write_text(out[-OUTPUT_CAP:])
+            if code != 0:
+                self.log("UPDATE", "kept: tests failed after merging {}".format(base), number)
+                last = [line for line in out.splitlines() if line.strip()][-PR_TEST_LINES:]
+                shown = "~~~~\n{}\n~~~~".format(safe_to_post("\n".join(last))) if last else "The tests printed nothing."
+                return self.comment_on_pr(row, "The loop tried merging `{}` to keep both `CHANGELOG.md` entries, "
+                                               "but the tests failed, so it pushed nothing.\n\n{}".format(base, shown))
+            if self.git("rev-parse", "HEAD", cwd=tree)[1].strip() != merge:
+                return self.log("ERROR", UPDATE_FAILED + "the test command moved HEAD", number)
+            code, out = self.git(*NO_HOOKS, "push", "-q", "origin", "{}:refs/heads/{}".format(merge, branch), cwd=tree)
+            if code != 0:
+                return self.log("ERROR", UPDATE_FAILED + out.strip()[:200], number)
+            self.mark(number, pushed=merge)
+            # The push happened whatever this does, so the line and the comment below still go out.
+            code, out = self.git(*NO_HOOKS, "branch", "-f", branch, merge)
+            if code != 0:
+                self.log("ERROR", UPDATE_FAILED + out.strip()[:200], number)
+            self.log("UPDATE", "merged {}, kept both CHANGELOG.md entries".format(base), number)
+            self.comment_on_pr(row, "The loop merged `{}` into this branch to keep both `CHANGELOG.md` entries, "
+                                    "this one on top. The tests passed.".format(base))
+        finally:
+            if self.merging(tree):
+                self.git(*NO_HOOKS, "merge", "--abort", cwd=tree)
+            self.discard_edits(tree, "UPDATE", "test command", number)
+            code, out = self.git(*NO_HOOKS, "checkout", "-q", branch, cwd=tree)
+            if code != 0:
+                self.log("ERROR", UPDATE_FAILED + out.strip()[:200], number)
+
+    def comment_on_pr(self, row, text):
+        """One comment on the pull request. A failure is logged and not retried."""
+        code, out = self.gh("pr", "comment", row["pr"], "--body", text)
+        if code != 0:
+            self.log("ERROR", UPDATE_FAILED + out.strip()[:200], row["number"])
 
     # -- running ----------------------------------------------------------
 
@@ -2572,6 +2746,7 @@ class Loop:
                         idle = True
                     if not dry_run:
                         self.tidy()
+                        self.update_prs()
                     self.stale()
                     if once or dry_run or only is not None:
                         break
